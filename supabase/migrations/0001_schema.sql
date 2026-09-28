@@ -5,23 +5,29 @@
 
 
 -- ---------------------------------------------------------------------
+-- Esquema propio (convive con otros proyectos en la misma base de datos)
+-- ---------------------------------------------------------------------
+create schema if not exists academia;
+grant usage on schema academia to anon, authenticated;
+
+-- ---------------------------------------------------------------------
 -- Tipos
 -- ---------------------------------------------------------------------
-create type public.app_role as enum ('admin', 'profesor', 'padre');
-create type public.student_status as enum ('activo', 'suspendido', 'baja');
-create type public.attendance_status as enum ('presente', 'falta', 'justificada', 'retardo');
-create type public.payment_method as enum ('efectivo', 'transferencia', 'tarjeta', 'deposito', 'otro');
-create type public.match_status as enum ('programado', 'jugado', 'cancelado');
+create type academia.app_role as enum ('admin', 'profesor', 'padre');
+create type academia.student_status as enum ('activo', 'suspendido', 'baja');
+create type academia.attendance_status as enum ('presente', 'falta', 'justificada', 'retardo');
+create type academia.payment_method as enum ('efectivo', 'transferencia', 'tarjeta', 'deposito', 'otro');
+create type academia.match_status as enum ('programado', 'jugado', 'cancelado');
 
 -- ---------------------------------------------------------------------
 -- Usuarios y roles
 -- ---------------------------------------------------------------------
-create table public.profiles (
+create table academia.profiles (
   id          uuid primary key references auth.users (id) on delete cascade,
   email       text,
   full_name   text not null default '',
   phone       text,
-  role        public.app_role not null default 'padre',
+  role        academia.app_role not null default 'padre',
   active      boolean not null default true,
   created_at  timestamptz not null default now()
 );
@@ -29,7 +35,7 @@ create table public.profiles (
 -- ---------------------------------------------------------------------
 -- Configuración general (una sola fila)
 -- ---------------------------------------------------------------------
-create table public.settings (
+create table academia.settings (
   id                   smallint primary key default 1 check (id = 1),
   academy_name         text not null default 'Deportivo Rancho Seco',
   default_country_code text not null default '52',
@@ -46,12 +52,12 @@ create table public.settings (
     '¡Gracias por confiar en Deportivo Rancho Seco!',
   updated_at           timestamptz not null default now()
 );
-insert into public.settings (id) values (1);
+insert into academia.settings (id) values (1);
 
 -- ---------------------------------------------------------------------
 -- Categorías y profesores asignados
 -- ---------------------------------------------------------------------
-create table public.categories (
+create table academia.categories (
   id           uuid primary key default gen_random_uuid(),
   name         text not null unique,
   description  text,
@@ -61,52 +67,52 @@ create table public.categories (
   created_at   timestamptz not null default now()
 );
 
-create table public.coach_categories (
-  coach_id     uuid not null references public.profiles (id) on delete cascade,
-  category_id  uuid not null references public.categories (id) on delete cascade,
+create table academia.coach_categories (
+  coach_id     uuid not null references academia.profiles (id) on delete cascade,
+  category_id  uuid not null references academia.categories (id) on delete cascade,
   primary key (coach_id, category_id)
 );
 
 -- ---------------------------------------------------------------------
 -- Tutores y alumnos
 -- ---------------------------------------------------------------------
-create table public.guardians (
+create table academia.guardians (
   id            uuid primary key default gen_random_uuid(),
   full_name     text not null,
   phone         text not null check (phone ~ '^[0-9]{10,15}$'),  -- internacional, sólo dígitos (ej. 5215512345678)
   email         text,
   relationship  text,
-  user_id       uuid unique references public.profiles (id) on delete set null,
+  user_id       uuid unique references academia.profiles (id) on delete set null,
   created_at    timestamptz not null default now()
 );
 
-create table public.students (
+create table academia.students (
   id                       uuid primary key default gen_random_uuid(),
   full_name                text not null,
   photo_path               text,
   birth_date               date,
-  category_id              uuid references public.categories (id) on delete set null,
-  coach_id                 uuid references public.profiles (id) on delete set null,
+  category_id              uuid references academia.categories (id) on delete set null,
+  coach_id                 uuid references academia.profiles (id) on delete set null,
   enrolled_at              date not null default current_date,
-  status                   public.student_status not null default 'activo',
+  status                   academia.student_status not null default 'activo',
   emergency_contact_name   text,
   emergency_contact_phone  text,
   notes                    text,
   created_at               timestamptz not null default now()
 );
-create index students_category_idx on public.students (category_id);
-create index students_name_idx on public.students (lower(full_name));
+create index students_category_idx on academia.students (category_id);
+create index students_name_idx on academia.students (lower(full_name));
 
-create table public.student_guardians (
-  student_id   uuid not null references public.students (id) on delete cascade,
-  guardian_id  uuid not null references public.guardians (id) on delete cascade,
+create table academia.student_guardians (
+  student_id   uuid not null references academia.students (id) on delete cascade,
+  guardian_id  uuid not null references academia.guardians (id) on delete cascade,
   is_primary   boolean not null default true,
   primary key (student_id, guardian_id)
 );
 
 -- Información médica: tabla aparte para restringir su acceso.
-create table public.student_medical (
-  student_id   uuid primary key references public.students (id) on delete cascade,
+create table academia.student_medical (
+  student_id   uuid primary key references academia.students (id) on delete cascade,
   blood_type   text,
   allergies    text,
   conditions   text,
@@ -117,10 +123,10 @@ create table public.student_medical (
 );
 
 -- Historial de inscripciones por categoría (lo llena un trigger).
-create table public.enrollments (
+create table academia.enrollments (
   id           uuid primary key default gen_random_uuid(),
-  student_id   uuid not null references public.students (id) on delete cascade,
-  category_id  uuid references public.categories (id) on delete set null,
+  student_id   uuid not null references academia.students (id) on delete cascade,
+  category_id  uuid references academia.categories (id) on delete set null,
   start_date   date not null default current_date,
   end_date     date,
   created_at   timestamptz not null default now()
@@ -129,9 +135,9 @@ create table public.enrollments (
 -- ---------------------------------------------------------------------
 -- Mensualidades y pagos
 -- ---------------------------------------------------------------------
-create table public.fees (
+create table academia.fees (
   id          uuid primary key default gen_random_uuid(),
-  student_id  uuid not null references public.students (id) on delete cascade,
+  student_id  uuid not null references academia.students (id) on delete cascade,
   concept     text not null default 'Mensualidad',
   period      date not null,               -- primer día del mes que cubre
   amount      numeric(10,2) not null check (amount > 0),
@@ -140,29 +146,29 @@ create table public.fees (
   created_at  timestamptz not null default now(),
   unique (student_id, concept, period)
 );
-create index fees_student_idx on public.fees (student_id);
+create index fees_student_idx on academia.fees (student_id);
 
-create table public.payments (
+create table academia.payments (
   id            uuid primary key default gen_random_uuid(),
-  fee_id        uuid not null references public.fees (id) on delete cascade,
-  student_id    uuid not null references public.students (id) on delete cascade,
+  fee_id        uuid not null references academia.fees (id) on delete cascade,
+  student_id    uuid not null references academia.students (id) on delete cascade,
   amount        numeric(10,2) not null check (amount > 0),
   paid_at       date not null default current_date,
-  method        public.payment_method not null default 'efectivo',
+  method        academia.payment_method not null default 'efectivo',
   receipt_path  text,
   notes         text,
-  recorded_by   uuid references public.profiles (id) on delete set null default auth.uid(),
+  recorded_by   uuid references academia.profiles (id) on delete set null default auth.uid(),
   created_at    timestamptz not null default now()
 );
-create index payments_fee_idx on public.payments (fee_id);
+create index payments_fee_idx on academia.payments (fee_id);
 
 -- ---------------------------------------------------------------------
 -- Entrenamientos, asistencias y partidos
 -- ---------------------------------------------------------------------
-create table public.trainings (
+create table academia.trainings (
   id           uuid primary key default gen_random_uuid(),
-  category_id  uuid not null references public.categories (id) on delete cascade,
-  coach_id     uuid references public.profiles (id) on delete set null default auth.uid(),
+  category_id  uuid not null references academia.categories (id) on delete cascade,
+  coach_id     uuid references academia.profiles (id) on delete set null default auth.uid(),
   date         date not null,
   start_time   time,
   end_time     time,
@@ -171,23 +177,23 @@ create table public.trainings (
   notes        text,
   created_at   timestamptz not null default now()
 );
-create index trainings_cat_date_idx on public.trainings (category_id, date);
+create index trainings_cat_date_idx on academia.trainings (category_id, date);
 
-create table public.attendance (
+create table academia.attendance (
   id           uuid primary key default gen_random_uuid(),
-  training_id  uuid not null references public.trainings (id) on delete cascade,
-  student_id   uuid not null references public.students (id) on delete cascade,
-  status       public.attendance_status not null,
+  training_id  uuid not null references academia.trainings (id) on delete cascade,
+  student_id   uuid not null references academia.students (id) on delete cascade,
+  status       academia.attendance_status not null,
   notes        text,
-  recorded_by  uuid references public.profiles (id) on delete set null default auth.uid(),
+  recorded_by  uuid references academia.profiles (id) on delete set null default auth.uid(),
   updated_at   timestamptz not null default now(),
   unique (training_id, student_id)
 );
-create index attendance_student_idx on public.attendance (student_id);
+create index attendance_student_idx on academia.attendance (student_id);
 
-create table public.matches (
+create table academia.matches (
   id             uuid primary key default gen_random_uuid(),
-  category_id    uuid not null references public.categories (id) on delete cascade,
+  category_id    uuid not null references academia.categories (id) on delete cascade,
   opponent       text not null,
   date           date not null,
   time           time,
@@ -195,17 +201,17 @@ create table public.matches (
   is_home        boolean not null default true,
   goals_for      smallint check (goals_for >= 0),
   goals_against  smallint check (goals_against >= 0),
-  status         public.match_status not null default 'programado',
+  status         academia.match_status not null default 'programado',
   notes          text,
-  created_by     uuid references public.profiles (id) on delete set null default auth.uid(),
+  created_by     uuid references academia.profiles (id) on delete set null default auth.uid(),
   created_at     timestamptz not null default now()
 );
-create index matches_cat_date_idx on public.matches (category_id, date);
+create index matches_cat_date_idx on academia.matches (category_id, date);
 
 -- Convocatoria, alineación y estadísticas individuales.
-create table public.match_players (
-  match_id    uuid not null references public.matches (id) on delete cascade,
-  student_id  uuid not null references public.students (id) on delete cascade,
+create table academia.match_players (
+  match_id    uuid not null references academia.matches (id) on delete cascade,
+  student_id  uuid not null references academia.students (id) on delete cascade,
   starter     boolean not null default false,
   position    text,
   goals       smallint not null default 0 check (goals >= 0),
@@ -218,10 +224,10 @@ create table public.match_players (
 -- ---------------------------------------------------------------------
 -- Seguimiento deportivo
 -- ---------------------------------------------------------------------
-create table public.evaluations (
+create table academia.evaluations (
   id               uuid primary key default gen_random_uuid(),
-  student_id       uuid not null references public.students (id) on delete cascade,
-  coach_id         uuid references public.profiles (id) on delete set null default auth.uid(),
+  student_id       uuid not null references academia.students (id) on delete cascade,
+  coach_id         uuid references academia.profiles (id) on delete set null default auth.uid(),
   date             date not null default current_date,
   -- Técnica
   pase             smallint not null check (pase between 1 and 5),
@@ -248,147 +254,132 @@ create table public.evaluations (
   comments         text,
   created_at       timestamptz not null default now()
 );
-create index evaluations_student_idx on public.evaluations (student_id, date);
+create index evaluations_student_idx on academia.evaluations (student_id, date);
 
 -- ---------------------------------------------------------------------
 -- Reportes PDF generados
 -- ---------------------------------------------------------------------
-create table public.reports (
+create table academia.reports (
   id            uuid primary key default gen_random_uuid(),
-  student_id    uuid not null references public.students (id) on delete cascade,
+  student_id    uuid not null references academia.students (id) on delete cascade,
   period_from   date not null,
   period_to     date not null,
   file_path     text,
-  generated_by  uuid references public.profiles (id) on delete set null default auth.uid(),
+  generated_by  uuid references academia.profiles (id) on delete set null default auth.uid(),
   created_at    timestamptz not null default now()
 );
-create index reports_student_idx on public.reports (student_id);
+create index reports_student_idx on academia.reports (student_id);
 
 -- =====================================================================
 -- Funciones auxiliares de autorización (SECURITY DEFINER evita recursión RLS)
 -- =====================================================================
-create or replace function public.current_app_role()
-returns public.app_role language sql stable security definer set search_path = public as $$
-  select role from public.profiles where id = auth.uid() and active
+create or replace function academia.current_app_role()
+returns academia.app_role language sql stable security definer set search_path = academia, public as $$
+  select role from academia.profiles where id = auth.uid() and active
 $$;
 
-create or replace function public.is_admin()
-returns boolean language sql stable security definer set search_path = public as $$
-  select coalesce((select role = 'admin' from public.profiles where id = auth.uid() and active), false)
+create or replace function academia.is_admin()
+returns boolean language sql stable security definer set search_path = academia, public as $$
+  select coalesce((select role = 'admin' from academia.profiles where id = auth.uid() and active), false)
 $$;
 
-create or replace function public.coach_has_category(cat uuid)
-returns boolean language sql stable security definer set search_path = public as $$
+create or replace function academia.coach_has_category(cat uuid)
+returns boolean language sql stable security definer set search_path = academia, public as $$
   select exists (
-    select 1 from public.coach_categories cc
-    join public.profiles p on p.id = cc.coach_id and p.active and p.role = 'profesor'
+    select 1 from academia.coach_categories cc
+    join academia.profiles p on p.id = cc.coach_id and p.active and p.role = 'profesor'
     where cc.coach_id = auth.uid() and cc.category_id = cat
   )
 $$;
 
-create or replace function public.coach_has_student(stu uuid)
-returns boolean language sql stable security definer set search_path = public as $$
+create or replace function academia.coach_has_student(stu uuid)
+returns boolean language sql stable security definer set search_path = academia, public as $$
   select exists (
-    select 1 from public.students s
-    join public.profiles p on p.id = auth.uid() and p.active and p.role = 'profesor'
+    select 1 from academia.students s
+    join academia.profiles p on p.id = auth.uid() and p.active and p.role = 'profesor'
     where s.id = stu
       and (s.coach_id = auth.uid()
-           or exists (select 1 from public.coach_categories cc
+           or exists (select 1 from academia.coach_categories cc
                       where cc.coach_id = auth.uid() and cc.category_id = s.category_id))
   )
 $$;
 
-create or replace function public.parent_has_student(stu uuid)
-returns boolean language sql stable security definer set search_path = public as $$
+create or replace function academia.parent_has_student(stu uuid)
+returns boolean language sql stable security definer set search_path = academia, public as $$
   select exists (
-    select 1 from public.student_guardians sg
-    join public.guardians g on g.id = sg.guardian_id
-    join public.profiles p on p.id = g.user_id and p.active
+    select 1 from academia.student_guardians sg
+    join academia.guardians g on g.id = sg.guardian_id
+    join academia.profiles p on p.id = g.user_id and p.active
     where sg.student_id = stu and g.user_id = auth.uid()
   )
 $$;
 
-create or replace function public.parent_has_category(cat uuid)
-returns boolean language sql stable security definer set search_path = public as $$
+create or replace function academia.parent_has_category(cat uuid)
+returns boolean language sql stable security definer set search_path = academia, public as $$
   select exists (
-    select 1 from public.students s
-    where s.category_id = cat and public.parent_has_student(s.id)
+    select 1 from academia.students s
+    where s.category_id = cat and academia.parent_has_student(s.id)
   )
 $$;
 
-create or replace function public.can_see_student(stu uuid)
-returns boolean language sql stable security definer set search_path = public as $$
-  select public.is_admin() or public.coach_has_student(stu) or public.parent_has_student(stu)
+create or replace function academia.can_see_student(stu uuid)
+returns boolean language sql stable security definer set search_path = academia, public as $$
+  select academia.is_admin() or academia.coach_has_student(stu) or academia.parent_has_student(stu)
 $$;
 
 -- =====================================================================
 -- Triggers
 -- =====================================================================
 
--- Nuevo usuario de Auth -> perfil. El rol NUNCA se toma de los metadatos
--- del cliente: siempre inicia como 'padre' y sólo un admin puede cambiarlo.
--- Si su correo coincide con un tutor registrado, se vincula automáticamente.
-create or replace function public.handle_new_user()
-returns trigger language plpgsql security definer set search_path = public as $$
-begin
-  insert into public.profiles (id, email, full_name)
-  values (new.id, new.email, coalesce(new.raw_user_meta_data ->> 'full_name', ''))
-  on conflict (id) do nothing;
-
-  update public.guardians
-     set user_id = new.id
-   where user_id is null and email is not null and lower(email) = lower(new.email);
-  return new;
-end $$;
-
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute function public.handle_new_user();
+-- Proyecto de Supabase compartido: NO se crea perfil automáticamente al
+-- registrarse alguien en Auth. Sólo tienen acceso los usuarios a los que el
+-- administrador les crea un perfil (Edge Function admin-users o SQL de arranque).
+-- Un usuario de Auth sin perfil en academia.profiles no ve ningún dato.
 
 -- Un usuario puede editar su nombre/teléfono, pero no su rol ni su estado.
-create or replace function public.protect_profile_fields()
-returns trigger language plpgsql security definer set search_path = public as $$
+create or replace function academia.protect_profile_fields()
+returns trigger language plpgsql security definer set search_path = academia, public as $$
 begin
   if (new.role is distinct from old.role or new.active is distinct from old.active)
-     and not public.is_admin() and auth.uid() is not null then
+     and not academia.is_admin() and auth.uid() is not null then
     raise exception 'Sólo un administrador puede cambiar roles o estatus';
   end if;
   return new;
 end $$;
 
-create trigger profiles_protect before update on public.profiles
-  for each row execute function public.protect_profile_fields();
+create trigger profiles_protect before update on academia.profiles
+  for each row execute function academia.protect_profile_fields();
 
 -- Historial de inscripción cuando cambia la categoría del alumno.
-create or replace function public.track_enrollment()
-returns trigger language plpgsql security definer set search_path = public as $$
+create or replace function academia.track_enrollment()
+returns trigger language plpgsql security definer set search_path = academia, public as $$
 begin
   if tg_op = 'INSERT' then
-    insert into public.enrollments (student_id, category_id, start_date)
+    insert into academia.enrollments (student_id, category_id, start_date)
     values (new.id, new.category_id, new.enrolled_at);
   elsif new.category_id is distinct from old.category_id then
-    update public.enrollments set end_date = current_date
+    update academia.enrollments set end_date = current_date
      where student_id = new.id and end_date is null;
-    insert into public.enrollments (student_id, category_id, start_date)
+    insert into academia.enrollments (student_id, category_id, start_date)
     values (new.id, new.category_id, current_date);
   end if;
   return new;
 end $$;
 
-create trigger students_enrollment after insert or update of category_id on public.students
-  for each row execute function public.track_enrollment();
+create trigger students_enrollment after insert or update of category_id on academia.students
+  for each row execute function academia.track_enrollment();
 
 -- Un pago no puede exceder el saldo del cargo y debe pertenecer al mismo alumno.
-create or replace function public.validate_payment()
-returns trigger language plpgsql security definer set search_path = public as $$
+create or replace function academia.validate_payment()
+returns trigger language plpgsql security definer set search_path = academia, public as $$
 declare
   fee_amount numeric; fee_student uuid; paid numeric;
 begin
-  select amount, student_id into fee_amount, fee_student from public.fees where id = new.fee_id;
+  select amount, student_id into fee_amount, fee_student from academia.fees where id = new.fee_id;
   if fee_student is distinct from new.student_id then
     raise exception 'El pago no corresponde al alumno del cargo';
   end if;
-  select coalesce(sum(amount), 0) into paid from public.payments
+  select coalesce(sum(amount), 0) into paid from academia.payments
    where fee_id = new.fee_id and id is distinct from new.id;
   if paid + new.amount > fee_amount then
     raise exception 'El pago (%) excede el saldo pendiente (%)', new.amount, fee_amount - paid;
@@ -396,15 +387,15 @@ begin
   return new;
 end $$;
 
-create trigger payments_validate before insert or update on public.payments
-  for each row execute function public.validate_payment();
+create trigger payments_validate before insert or update on academia.payments
+  for each row execute function academia.validate_payment();
 
 -- Asistencia sólo para alumnos de la categoría del entrenamiento.
-create or replace function public.validate_attendance()
-returns trigger language plpgsql security definer set search_path = public as $$
+create or replace function academia.validate_attendance()
+returns trigger language plpgsql security definer set search_path = academia, public as $$
 begin
   if not exists (
-    select 1 from public.trainings t join public.students s on s.category_id = t.category_id
+    select 1 from academia.trainings t join academia.students s on s.category_id = t.category_id
     where t.id = new.training_id and s.id = new.student_id
   ) then
     raise exception 'El alumno no pertenece a la categoría de este entrenamiento';
@@ -413,13 +404,13 @@ begin
   return new;
 end $$;
 
-create trigger attendance_validate before insert or update on public.attendance
-  for each row execute function public.validate_attendance();
+create trigger attendance_validate before insert or update on academia.attendance
+  for each row execute function academia.validate_attendance();
 
 -- =====================================================================
 -- Vistas (security_invoker => respetan el RLS de quien consulta)
 -- =====================================================================
-create view public.fee_balances with (security_invoker = true) as
+create view academia.fee_balances with (security_invoker = true) as
 select
   f.id, f.student_id, f.concept, f.period, f.amount, f.due_date, f.notes, f.created_at,
   coalesce(p.paid, 0)::numeric(10,2)                 as paid,
@@ -431,14 +422,14 @@ select
     when coalesce(p.paid, 0) > 0 then 'parcial'
     else 'pendiente'
   end as status
-from public.fees f
+from academia.fees f
 left join lateral (
   select sum(amount) as paid, max(paid_at) as last_paid_at
-  from public.payments where fee_id = f.id
+  from academia.payments where fee_id = f.id
 ) p on true;
 
 -- Resumen de cuenta por alumno.
-create view public.student_accounts with (security_invoker = true) as
+create view academia.student_accounts with (security_invoker = true) as
 select
   s.id as student_id,
   coalesce(sum(fb.balance), 0)::numeric(10,2) as balance,
@@ -452,168 +443,167 @@ select
     when count(*) filter (where fb.status = 'pendiente') > 0 then 'pendiente'
     else 'al_corriente'
   end as status
-from public.students s
-left join public.fee_balances fb on fb.student_id = s.id
+from academia.students s
+left join academia.fee_balances fb on fb.student_id = s.id
 group by s.id;
 
 -- Asistencia con fecha y categoría del entrenamiento.
-create view public.attendance_detail with (security_invoker = true) as
+create view academia.attendance_detail with (security_invoker = true) as
 select a.id, a.training_id, a.student_id, a.status, a.notes, a.updated_at,
        t.date, t.category_id, t.start_time
-from public.attendance a
-join public.trainings t on t.id = a.training_id;
+from academia.attendance a
+join academia.trainings t on t.id = a.training_id;
 
 -- =====================================================================
 -- Row Level Security
 -- =====================================================================
-alter table public.profiles          enable row level security;
-alter table public.settings          enable row level security;
-alter table public.categories        enable row level security;
-alter table public.coach_categories  enable row level security;
-alter table public.guardians         enable row level security;
-alter table public.students          enable row level security;
-alter table public.student_guardians enable row level security;
-alter table public.student_medical   enable row level security;
-alter table public.enrollments       enable row level security;
-alter table public.fees              enable row level security;
-alter table public.payments          enable row level security;
-alter table public.trainings         enable row level security;
-alter table public.attendance        enable row level security;
-alter table public.matches           enable row level security;
-alter table public.match_players     enable row level security;
-alter table public.evaluations       enable row level security;
-alter table public.reports           enable row level security;
+alter table academia.profiles          enable row level security;
+alter table academia.settings          enable row level security;
+alter table academia.categories        enable row level security;
+alter table academia.coach_categories  enable row level security;
+alter table academia.guardians         enable row level security;
+alter table academia.students          enable row level security;
+alter table academia.student_guardians enable row level security;
+alter table academia.student_medical   enable row level security;
+alter table academia.enrollments       enable row level security;
+alter table academia.fees              enable row level security;
+alter table academia.payments          enable row level security;
+alter table academia.trainings         enable row level security;
+alter table academia.attendance        enable row level security;
+alter table academia.matches           enable row level security;
+alter table academia.match_players     enable row level security;
+alter table academia.evaluations       enable row level security;
+alter table academia.reports           enable row level security;
 
 -- profiles: cada quien ve su perfil; todos ven a admins y profesores (nombre del profe);
 -- el profesor ve los perfiles de los padres de sus alumnos; admin ve y edita todo.
-create policy profiles_select on public.profiles for select to authenticated using (
-  id = auth.uid() or public.is_admin() or role in ('admin', 'profesor')
+create policy profiles_select on academia.profiles for select to authenticated using (
+  id = auth.uid() or academia.is_admin() or role in ('admin', 'profesor')
 );
-create policy profiles_update_self on public.profiles for update to authenticated
-  using (id = auth.uid() or public.is_admin())
-  with check (id = auth.uid() or public.is_admin());
-create policy profiles_admin_insert on public.profiles for insert to authenticated with check (public.is_admin());
-create policy profiles_admin_delete on public.profiles for delete to authenticated using (public.is_admin());
+create policy profiles_update_self on academia.profiles for update to authenticated
+  using (id = auth.uid() or academia.is_admin())
+  with check (id = auth.uid() or academia.is_admin());
+create policy profiles_admin_insert on academia.profiles for insert to authenticated with check (academia.is_admin());
+create policy profiles_admin_delete on academia.profiles for delete to authenticated using (academia.is_admin());
 
 -- settings
-create policy settings_select on public.settings for select to authenticated using (true);
-create policy settings_update on public.settings for update to authenticated using (public.is_admin()) with check (public.is_admin());
+create policy settings_select on academia.settings for select to authenticated using (true);
+create policy settings_update on academia.settings for update to authenticated using (academia.is_admin()) with check (academia.is_admin());
 
 -- categories
-create policy categories_select on public.categories for select to authenticated using (
-  public.is_admin() or public.coach_has_category(id) or public.parent_has_category(id)
+create policy categories_select on academia.categories for select to authenticated using (
+  academia.is_admin() or academia.coach_has_category(id) or academia.parent_has_category(id)
 );
-create policy categories_write on public.categories for all to authenticated
-  using (public.is_admin()) with check (public.is_admin());
+create policy categories_write on academia.categories for all to authenticated
+  using (academia.is_admin()) with check (academia.is_admin());
 
 -- coach_categories
-create policy coach_categories_select on public.coach_categories for select to authenticated using (
-  public.is_admin() or coach_id = auth.uid() or public.parent_has_category(category_id)
+create policy coach_categories_select on academia.coach_categories for select to authenticated using (
+  academia.is_admin() or coach_id = auth.uid() or academia.parent_has_category(category_id)
 );
-create policy coach_categories_write on public.coach_categories for all to authenticated
-  using (public.is_admin()) with check (public.is_admin());
+create policy coach_categories_write on academia.coach_categories for all to authenticated
+  using (academia.is_admin()) with check (academia.is_admin());
 
 -- students
-create policy students_select on public.students for select to authenticated using (public.can_see_student(id));
-create policy students_write on public.students for all to authenticated
-  using (public.is_admin()) with check (public.is_admin());
+create policy students_select on academia.students for select to authenticated using (academia.can_see_student(id));
+create policy students_write on academia.students for all to authenticated
+  using (academia.is_admin()) with check (academia.is_admin());
 
 -- guardians: admin; profesor de alguno de sus hijos; el propio padre.
-create policy guardians_select on public.guardians for select to authenticated using (
-  public.is_admin() or user_id = auth.uid() or exists (
-    select 1 from public.student_guardians sg
-    where sg.guardian_id = guardians.id and public.coach_has_student(sg.student_id)
+create policy guardians_select on academia.guardians for select to authenticated using (
+  academia.is_admin() or user_id = auth.uid() or exists (
+    select 1 from academia.student_guardians sg
+    where sg.guardian_id = guardians.id and academia.coach_has_student(sg.student_id)
   )
 );
-create policy guardians_write on public.guardians for all to authenticated
-  using (public.is_admin()) with check (public.is_admin());
+create policy guardians_write on academia.guardians for all to authenticated
+  using (academia.is_admin()) with check (academia.is_admin());
 
 -- student_guardians
-create policy student_guardians_select on public.student_guardians for select to authenticated
-  using (public.can_see_student(student_id));
-create policy student_guardians_write on public.student_guardians for all to authenticated
-  using (public.is_admin()) with check (public.is_admin());
+create policy student_guardians_select on academia.student_guardians for select to authenticated
+  using (academia.can_see_student(student_id));
+create policy student_guardians_write on academia.student_guardians for all to authenticated
+  using (academia.is_admin()) with check (academia.is_admin());
 
 -- student_medical: acceso restringido (admin, profesor responsable, padre del alumno)
-create policy medical_select on public.student_medical for select to authenticated
-  using (public.can_see_student(student_id));
-create policy medical_write on public.student_medical for all to authenticated
-  using (public.is_admin()) with check (public.is_admin());
+create policy medical_select on academia.student_medical for select to authenticated
+  using (academia.can_see_student(student_id));
+create policy medical_write on academia.student_medical for all to authenticated
+  using (academia.is_admin()) with check (academia.is_admin());
 
 -- enrollments
-create policy enrollments_select on public.enrollments for select to authenticated
-  using (public.can_see_student(student_id));
-create policy enrollments_write on public.enrollments for all to authenticated
-  using (public.is_admin()) with check (public.is_admin());
+create policy enrollments_select on academia.enrollments for select to authenticated
+  using (academia.can_see_student(student_id));
+create policy enrollments_write on academia.enrollments for all to authenticated
+  using (academia.is_admin()) with check (academia.is_admin());
 
 -- fees / payments: admin y el padre del alumno (profesores no ven cobranza)
-create policy fees_select on public.fees for select to authenticated
-  using (public.is_admin() or public.parent_has_student(student_id));
-create policy fees_write on public.fees for all to authenticated
-  using (public.is_admin()) with check (public.is_admin());
+create policy fees_select on academia.fees for select to authenticated
+  using (academia.is_admin() or academia.parent_has_student(student_id));
+create policy fees_write on academia.fees for all to authenticated
+  using (academia.is_admin()) with check (academia.is_admin());
 
-create policy payments_select on public.payments for select to authenticated
-  using (public.is_admin() or public.parent_has_student(student_id));
-create policy payments_write on public.payments for all to authenticated
-  using (public.is_admin()) with check (public.is_admin());
+create policy payments_select on academia.payments for select to authenticated
+  using (academia.is_admin() or academia.parent_has_student(student_id));
+create policy payments_write on academia.payments for all to authenticated
+  using (academia.is_admin()) with check (academia.is_admin());
 
 -- trainings
-create policy trainings_select on public.trainings for select to authenticated using (
-  public.is_admin() or public.coach_has_category(category_id) or public.parent_has_category(category_id)
+create policy trainings_select on academia.trainings for select to authenticated using (
+  academia.is_admin() or academia.coach_has_category(category_id) or academia.parent_has_category(category_id)
 );
-create policy trainings_write on public.trainings for all to authenticated
-  using (public.is_admin() or public.coach_has_category(category_id))
-  with check (public.is_admin() or public.coach_has_category(category_id));
+create policy trainings_write on academia.trainings for all to authenticated
+  using (academia.is_admin() or academia.coach_has_category(category_id))
+  with check (academia.is_admin() or academia.coach_has_category(category_id));
 
 -- attendance
-create policy attendance_select on public.attendance for select to authenticated
-  using (public.can_see_student(student_id));
-create policy attendance_write on public.attendance for all to authenticated
-  using (public.is_admin() or exists (
-    select 1 from public.trainings t where t.id = training_id and public.coach_has_category(t.category_id)))
-  with check (public.is_admin() or exists (
-    select 1 from public.trainings t where t.id = training_id and public.coach_has_category(t.category_id)));
+create policy attendance_select on academia.attendance for select to authenticated
+  using (academia.can_see_student(student_id));
+create policy attendance_write on academia.attendance for all to authenticated
+  using (academia.is_admin() or exists (
+    select 1 from academia.trainings t where t.id = training_id and academia.coach_has_category(t.category_id)))
+  with check (academia.is_admin() or exists (
+    select 1 from academia.trainings t where t.id = training_id and academia.coach_has_category(t.category_id)));
 
 -- matches
-create policy matches_select on public.matches for select to authenticated using (
-  public.is_admin() or public.coach_has_category(category_id) or public.parent_has_category(category_id)
+create policy matches_select on academia.matches for select to authenticated using (
+  academia.is_admin() or academia.coach_has_category(category_id) or academia.parent_has_category(category_id)
 );
-create policy matches_write on public.matches for all to authenticated
-  using (public.is_admin() or public.coach_has_category(category_id))
-  with check (public.is_admin() or public.coach_has_category(category_id));
+create policy matches_write on academia.matches for all to authenticated
+  using (academia.is_admin() or academia.coach_has_category(category_id))
+  with check (academia.is_admin() or academia.coach_has_category(category_id));
 
 -- match_players: el padre sólo ve las filas de su hijo
-create policy match_players_select on public.match_players for select to authenticated using (
-  public.is_admin() or public.parent_has_student(student_id) or exists (
-    select 1 from public.matches m where m.id = match_id and public.coach_has_category(m.category_id))
+create policy match_players_select on academia.match_players for select to authenticated using (
+  academia.is_admin() or academia.parent_has_student(student_id) or exists (
+    select 1 from academia.matches m where m.id = match_id and academia.coach_has_category(m.category_id))
 );
-create policy match_players_write on public.match_players for all to authenticated
-  using (public.is_admin() or exists (
-    select 1 from public.matches m where m.id = match_id and public.coach_has_category(m.category_id)))
-  with check (public.is_admin() or exists (
-    select 1 from public.matches m where m.id = match_id and public.coach_has_category(m.category_id)));
+create policy match_players_write on academia.match_players for all to authenticated
+  using (academia.is_admin() or exists (
+    select 1 from academia.matches m where m.id = match_id and academia.coach_has_category(m.category_id)))
+  with check (academia.is_admin() or exists (
+    select 1 from academia.matches m where m.id = match_id and academia.coach_has_category(m.category_id)));
 
 -- evaluations
-create policy evaluations_select on public.evaluations for select to authenticated
-  using (public.can_see_student(student_id));
-create policy evaluations_insert on public.evaluations for insert to authenticated
-  with check (public.is_admin() or (public.coach_has_student(student_id) and coach_id = auth.uid()));
-create policy evaluations_update on public.evaluations for update to authenticated
-  using (public.is_admin() or (coach_id = auth.uid() and public.coach_has_student(student_id)))
-  with check (public.is_admin() or (coach_id = auth.uid() and public.coach_has_student(student_id)));
-create policy evaluations_delete on public.evaluations for delete to authenticated
-  using (public.is_admin() or (coach_id = auth.uid() and public.coach_has_student(student_id)));
+create policy evaluations_select on academia.evaluations for select to authenticated
+  using (academia.can_see_student(student_id));
+create policy evaluations_insert on academia.evaluations for insert to authenticated
+  with check (academia.is_admin() or (academia.coach_has_student(student_id) and coach_id = auth.uid()));
+create policy evaluations_update on academia.evaluations for update to authenticated
+  using (academia.is_admin() or (coach_id = auth.uid() and academia.coach_has_student(student_id)))
+  with check (academia.is_admin() or (coach_id = auth.uid() and academia.coach_has_student(student_id)));
+create policy evaluations_delete on academia.evaluations for delete to authenticated
+  using (academia.is_admin() or (coach_id = auth.uid() and academia.coach_has_student(student_id)));
 
 -- reports
-create policy reports_select on public.reports for select to authenticated
-  using (public.can_see_student(student_id));
-create policy reports_insert on public.reports for insert to authenticated
-  with check (public.is_admin() or public.coach_has_student(student_id));
-create policy reports_delete on public.reports for delete to authenticated
-  using (public.is_admin());
+create policy reports_select on academia.reports for select to authenticated
+  using (academia.can_see_student(student_id));
+create policy reports_insert on academia.reports for insert to authenticated
+  with check (academia.is_admin() or academia.coach_has_student(student_id));
+create policy reports_delete on academia.reports for delete to authenticated
+  using (academia.is_admin());
 
 -- Privilegios base (RLS decide qué filas)
-grant usage on schema public to authenticated;
-grant select, insert, update, delete on all tables in schema public to authenticated;
-grant execute on all functions in schema public to authenticated;
-revoke all on all tables in schema public from anon;
+grant select, insert, update, delete on all tables in schema academia to authenticated;
+grant execute on all functions in schema academia to authenticated;
+revoke all on all tables in schema academia from anon;
