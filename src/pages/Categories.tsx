@@ -114,13 +114,13 @@ function CategoryModal({ category, onClose }: { category?: Category; onClose: ()
           <Field label="Horario"><Input value={f.schedule} onChange={(e) => setF({ ...f, schedule: e.target.value })} placeholder="Lun y Mié 6:00 pm" /></Field>
           <Field label="Mensualidad" hint="Vacío = usar la mensualidad general"><Input type="number" inputMode="decimal" min="0" value={f.monthly_fee} onChange={(e) => setF({ ...f, monthly_fee: e.target.value })} /></Field>
         </div>
-        <Field label="Profesores asignados">
+        <Field label="Profesor de la categoría" hint="Cada categoría tiene un solo profesor. Un profesor puede llevar varias categorías.">
           {coaches?.length ? (
             <div className="flex flex-wrap gap-2">
               {coaches.filter((c) => c.active || assigned.has(c.id)).map((c) => {
                 const on = assigned.has(c.id)
                 return (
-                  <button type="button" key={c.id} onClick={() => setAssigned((s) => { const n = new Set(s); on ? n.delete(c.id) : n.add(c.id); return n })}
+                  <button type="button" key={c.id} onClick={() => setAssigned(on ? new Set() : new Set([c.id]))}
                     className={cx('rounded-xl border px-3 py-2 text-sm', on ? 'border-brand bg-brand text-ink font-semibold' : 'border-ink-600 text-muted hover:text-white')}>
                     {c.full_name}
                   </button>

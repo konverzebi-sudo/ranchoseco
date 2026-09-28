@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Plus, Receipt, Trash2, Users, Wallet, UserCog, Check, Loader2, Calculator } from 'lucide-react'
 import { Badge, Button, Card, ConfirmDialog, Empty, ErrorState, Field, IconButton, Input, Modal, PageHeader, Select, Spinner, StatCard, Textarea, cx } from '@/components/ui'
 import CategoryResults from '@/components/CategoryResults'
+import CoachCategoryPicker from '@/components/CoachCategoryPicker'
 import { useToast } from '@/components/toast'
 import { useCategories, useCoachCategories, useCoachPay, useCoaches, useExpenses, useStudents } from '@/lib/api'
 import { supabase, unwrap } from '@/lib/supabase'
@@ -22,6 +23,7 @@ export default function Expenses() {
   const cc = useCoachCategories()
   const categories = useCategories()
   const [adding, setAdding] = useState(false)
+  const [picking, setPicking] = useState<{ id: string; name: string } | null>(null)
   const month = today().slice(0, 7)
 
   const active = useMemo(() => (students.data ?? []).filter((s) => s.status === 'activo'), [students.data])
@@ -93,7 +95,13 @@ export default function Expenses() {
               {coachRows.map(({ c, p, cats, catStudents, monthly }) => (
                 <tr key={c.id}>
                   <td className="font-medium">{c.full_name}</td>
-                  <td>{cats.length ? <div className="flex flex-wrap gap-1">{cats.map((k) => <Badge key={k!.id} tone="brand">{k!.name}</Badge>)}</div> : <Link to="/profesores" className="text-xs text-warn hover:underline">Asignar categoría</Link>}</td>
+                  <td>
+                    <button onClick={() => setPicking({ id: c.id, name: c.full_name })} className="group flex flex-wrap items-center gap-1 text-left" aria-label={`Categorías de ${c.full_name}`}>
+                      {cats.length
+                        ? <>{cats.map((k) => <Badge key={k!.id} tone="brand">{k!.name}</Badge>)}<span className="ml-1 text-xs text-muted group-hover:text-brand">Cambiar</span></>
+                        : <span className="text-xs text-warn group-hover:underline">Asignar categoría</span>}
+                    </button>
+                  </td>
                   <td>{money(p!.amount)} <span className="text-xs text-muted">{FREQUENCY_LABEL[p!.frequency]}</span></td>
                   <td>{money(Math.round(monthly))}</td>
                   <td>{catStudents ? <>{cents(Number(p!.amount) / catStudents)} <span className="text-xs text-muted">{FREQUENCY_LABEL[p!.frequency]}</span></> : <span className="text-xs text-muted">Se reparte entre todos</span>}</td>
@@ -120,6 +128,7 @@ export default function Expenses() {
         </Card>
       )}
 
+      {picking && <CoachCategoryPicker coachId={picking.id} coachName={picking.name} onClose={() => setPicking(null)} />}
       {adding && <ExpenseModal onClose={() => setAdding(false)} nextOrder={list.length + 1} />}
     </>
   )

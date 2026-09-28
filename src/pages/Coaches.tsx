@@ -5,6 +5,8 @@ import { Avatar, Badge, Button, Card, Empty, ErrorState, Field, Input, Modal, Pa
 import { useToast } from '@/components/toast'
 import { useCategories, useCoachCategories, useCoachPay, useCoaches, useSettings, useStudents } from '@/lib/api'
 import { FREQUENCY_LABEL, monthlyCost } from '@/lib/finance'
+import { useCategoryOwners } from '@/components/CoachCategoryPicker'
+import { Lock } from 'lucide-react'
 import { supabase, unwrap } from '@/lib/supabase'
 import { isValidPhone, normalizePhone, prettyPhone } from '@/lib/format'
 import { waLink } from '@/lib/whatsapp'
@@ -75,6 +77,7 @@ function CoachModal({ coach, onClose }: { coach?: Coach; onClose: () => void }) 
   const { data: settings } = useSettings()
   const { data: pays } = useCoachPay()
   const current = pays?.find((p) => p.coach_id === coach?.id)
+  const owners = useCategoryOwners()
   const qc = useQueryClient()
   const toast = useToast()
   const [f, setF] = useState({ full_name: coach?.full_name ?? '', phone: coach?.phone ?? '', email: coach?.email ?? '', active: coach?.active ?? true })
@@ -130,10 +133,15 @@ function CoachModal({ coach, onClose }: { coach?: Coach; onClose: () => void }) 
           <div className="flex flex-wrap gap-2">
             {categories?.map((c) => {
               const on = cats.has(c.id)
+              const owner = owners.get(c.id)
+              const lockedBy = owner && owner.id !== coach?.id ? owner.name : null
               return (
-                <button type="button" key={c.id} onClick={() => setCats((s) => { const n = new Set(s); on ? n.delete(c.id) : n.add(c.id); return n })}
-                  className={cx('rounded-xl border px-3 py-2 text-sm', on ? 'border-brand bg-brand font-semibold text-ink' : 'border-ink-600 text-muted hover:text-white')}>
-                  {c.name}
+                <button type="button" key={c.id} disabled={!!lockedBy} title={lockedBy ? `Asignada a ${lockedBy}` : undefined}
+                  onClick={() => setCats((s) => { const n = new Set(s); on ? n.delete(c.id) : n.add(c.id); return n })}
+                  className={cx('inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm',
+                    lockedBy ? 'cursor-not-allowed border-ink-700 text-ink-500' : on ? 'border-brand bg-brand font-semibold text-ink' : 'border-ink-600 text-muted hover:text-white')}>
+                  {lockedBy && <Lock className="h-3.5 w-3.5" />}
+                  {c.name}{lockedBy && <span className="text-xs"> · {lockedBy}</span>}
                 </button>
               )
             })}
