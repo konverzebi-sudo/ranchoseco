@@ -67,8 +67,19 @@ create table academia.categories (
   created_at   timestamptz not null default now()
 );
 
+-- Profesores: existen aunque no tengan cuenta de acceso (user_id opcional).
+create table academia.coaches (
+  id          uuid primary key default gen_random_uuid(),
+  full_name   text not null,
+  phone       text check (phone is null or phone ~ '^[0-9]{10,15}$'),
+  email       text,
+  active      boolean not null default true,
+  user_id     uuid unique references academia.profiles (id) on delete set null,
+  created_at  timestamptz not null default now()
+);
+
 create table academia.coach_categories (
-  coach_id     uuid not null references academia.profiles (id) on delete cascade,
+  coach_id     uuid not null references academia.coaches (id) on delete cascade,
   category_id  uuid not null references academia.categories (id) on delete cascade,
   primary key (coach_id, category_id)
 );
@@ -92,7 +103,7 @@ create table academia.students (
   photo_path               text,
   birth_date               date,
   category_id              uuid references academia.categories (id) on delete set null,
-  coach_id                 uuid references academia.profiles (id) on delete set null,
+  coach_id                 uuid references academia.coaches (id) on delete set null,
   enrolled_at              date not null default current_date,
   status                   academia.student_status not null default 'activo',
   emergency_contact_name   text,
@@ -168,7 +179,7 @@ create index payments_fee_idx on academia.payments (fee_id);
 create table academia.trainings (
   id           uuid primary key default gen_random_uuid(),
   category_id  uuid not null references academia.categories (id) on delete cascade,
-  coach_id     uuid references academia.profiles (id) on delete set null default auth.uid(),
+  coach_id     uuid references academia.coaches (id) on delete set null,
   date         date not null,
   start_time   time,
   end_time     time,
@@ -227,7 +238,7 @@ create table academia.match_players (
 create table academia.evaluations (
   id               uuid primary key default gen_random_uuid(),
   student_id       uuid not null references academia.students (id) on delete cascade,
-  coach_id         uuid references academia.profiles (id) on delete set null default auth.uid(),
+  coach_id         uuid references academia.coaches (id) on delete set null,
   date             date not null default current_date,
   -- Técnica
   pase             smallint not null check (pase between 1 and 5),
@@ -283,12 +294,18 @@ returns boolean language sql stable security definer set search_path = academia,
   select coalesce((select role = 'admin' from academia.profiles where id = auth.uid() and active), false)
 $$;
 
+create or replace function academia.my_coach_id()
+returns uuid language sql stable security definer set search_path = academia, public as $$
+  select c.id from academia.coaches c
+  join academia.profiles p on p.id = c.user_id and p.active and p.role = 'profesor'
+  where c.user_id = auth.uid() and c.active
+$$;
+
 create or replace function academia.coach_has_category(cat uuid)
 returns boolean language sql stable security definer set search_path = academia, public as $$
   select exists (
     select 1 from academia.coach_categories cc
-    join academia.profiles p on p.id = cc.coach_id and p.active and p.role = 'profesor'
-    where cc.coach_id = auth.uid() and cc.category_id = cat
+    where cc.coach_id = academia.my_coach_id() and cc.category_id = cat
   )
 $$;
 
@@ -296,11 +313,10 @@ create or replace function academia.coach_has_student(stu uuid)
 returns boolean language sql stable security definer set search_path = academia, public as $$
   select exists (
     select 1 from academia.students s
-    join academia.profiles p on p.id = auth.uid() and p.active and p.role = 'profesor'
-    where s.id = stu
-      and (s.coach_id = auth.uid()
+    where s.id = stu and academia.my_coach_id() is not null
+      and (s.coach_id = academia.my_coach_id()
            or exists (select 1 from academia.coach_categories cc
-                      where cc.coach_id = auth.uid() and cc.category_id = s.category_id))
+                      where cc.coach_id = academia.my_coach_id() and cc.category_id = s.category_id))
   )
 $$;
 
@@ -460,6 +476,7 @@ join academia.trainings t on t.id = a.training_id;
 alter table academia.profiles          enable row level security;
 alter table academia.settings          enable row level security;
 alter table academia.categories        enable row level security;
+alter table academia.coaches           enable row level security;
 alter table academia.coach_categories  enable row level security;
 alter table academia.guardians         enable row level security;
 alter table academia.students          enable row level security;
@@ -497,9 +514,16 @@ create policy categories_select on academia.categories for select to authenticat
 create policy categories_write on academia.categories for all to authenticated
   using (academia.is_admin()) with check (academia.is_admin());
 
+-- coaches: visibles para usuarios con perfil; sólo el admin los edita
+create policy coaches_select on academia.coaches for select to authenticated using (
+  academia.current_app_role() is not null
+);
+create policy coaches_write on academia.coaches for all to authenticated
+  using (academia.is_admin()) with check (academia.is_admin());
+
 -- coach_categories
 create policy coach_categories_select on academia.coach_categories for select to authenticated using (
-  academia.is_admin() or coach_id = auth.uid() or academia.parent_has_category(category_id)
+  academia.is_admin() or coach_id = academia.my_coach_id() or academia.parent_has_category(category_id)
 );
 create policy coach_categories_write on academia.coach_categories for all to authenticated
   using (academia.is_admin()) with check (academia.is_admin());
@@ -588,12 +612,12 @@ create policy match_players_write on academia.match_players for all to authentic
 create policy evaluations_select on academia.evaluations for select to authenticated
   using (academia.can_see_student(student_id));
 create policy evaluations_insert on academia.evaluations for insert to authenticated
-  with check (academia.is_admin() or (academia.coach_has_student(student_id) and coach_id = auth.uid()));
+  with check (academia.is_admin() or (academia.coach_has_student(student_id) and coach_id = academia.my_coach_id()));
 create policy evaluations_update on academia.evaluations for update to authenticated
-  using (academia.is_admin() or (coach_id = auth.uid() and academia.coach_has_student(student_id)))
-  with check (academia.is_admin() or (coach_id = auth.uid() and academia.coach_has_student(student_id)));
+  using (academia.is_admin() or (coach_id = academia.my_coach_id() and academia.coach_has_student(student_id)))
+  with check (academia.is_admin() or (coach_id = academia.my_coach_id() and academia.coach_has_student(student_id)));
 create policy evaluations_delete on academia.evaluations for delete to authenticated
-  using (academia.is_admin() or (coach_id = auth.uid() and academia.coach_has_student(student_id)));
+  using (academia.is_admin() or (coach_id = academia.my_coach_id() and academia.coach_has_student(student_id)));
 
 -- reports
 create policy reports_select on academia.reports for select to authenticated

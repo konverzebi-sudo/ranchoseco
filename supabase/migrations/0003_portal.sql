@@ -72,7 +72,7 @@ begin
     into s
     from academia.students st
     left join academia.categories c on c.id = st.category_id
-    left join academia.profiles pr on pr.id = st.coach_id
+    left join academia.coaches pr on pr.id = st.coach_id
    where st.id = sid;
 
   if s.status = 'baja' then
@@ -87,7 +87,7 @@ begin
       'category_id', s.category_id, 'category', s.category_name, 'schedule', s.category_schedule,
       'coach', coalesce(s.coach_name, (
         select string_agg(p.full_name, ', ') from academia.coach_categories cc
-        join academia.profiles p on p.id = cc.coach_id where cc.category_id = s.category_id)),
+        join academia.coaches p on p.id = cc.coach_id where cc.category_id = s.category_id and p.active)),
       'enrolled_at', s.enrolled_at, 'status', s.status, 'has_photo', s.photo_path is not null
     ),
     'academy', (select jsonb_build_object('name', academy_name, 'payment_instructions', payment_instructions)
@@ -118,7 +118,7 @@ begin
     'evaluations', coalesce((
       select jsonb_agg(to_jsonb(e) - 'student_id' - 'coach_id' - 'created_at'
                        || jsonb_build_object('coach', pr.full_name) order by e.date)
-      from academia.evaluations e left join academia.profiles pr on pr.id = e.coach_id
+      from academia.evaluations e left join academia.coaches pr on pr.id = e.coach_id
       where e.student_id = sid), '[]'::jsonb),
     'matches', coalesce((
       select jsonb_agg(jsonb_build_object('date', m.date, 'opponent', m.opponent, 'goals_for', m.goals_for,

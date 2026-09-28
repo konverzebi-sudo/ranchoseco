@@ -49,6 +49,8 @@ beforeAll(async () => {
   await db.exec(SUPABASE_STUB)
   await db.exec(readFileSync('supabase/migrations/0001_schema.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0003_portal.sql', 'utf8'))
+  await db.exec(readFileSync('supabase/migrations/0004_open_mode.sql', 'utf8'))
+  await db.exec('update academia.settings set open_mode = false') // las pruebas por rol corren con el sitio cerrado
 
   const users: [string, string, string][] = [
     [ADMIN, 'admin@rs.mx', 'admin'],
@@ -71,6 +73,7 @@ beforeAll(async () => {
     await db.query('update academia.guardians set user_id = $1 where lower(email) = lower($2)', [id, email])
   }
   await db.exec(`
+    insert into academia.coaches (id, full_name, user_id) values ('${COACH_A}', 'Profe A', '${COACH_A}'), ('${COACH_B}', 'Profe B', '${COACH_B}');
     insert into academia.coach_categories values ('${COACH_A}', '${CAT_A}'), ('${COACH_B}', '${CAT_B}');
     insert into academia.students (id, full_name, category_id) values
       ('${STU_1}', 'Alumno Uno', '${CAT_A}'), ('${STU_2}', 'Alumno Dos', '${CAT_B}');
@@ -156,9 +159,9 @@ describe('profesor', () => {
   it('evalúa sólo a sus jugadores', async () => {
     const cols = 'pase,control_balon,conduccion,tiro,recepcion,velocidad,resistencia,coordinacion,agilidad,posicionamiento,toma_decisiones,juego_equipo,disciplina,esfuerzo,companerismo'
     const vals = Array(15).fill(4).join(',')
-    await as(COACH_A, `insert into academia.evaluations (student_id, ${cols}) values ($1, ${vals})`, [STU_1])
+    await as(COACH_A, `insert into academia.evaluations (student_id, coach_id, ${cols}) values ($1, $2, ${vals})`, [STU_1, COACH_A])
     await expect(
-      as(COACH_A, `insert into academia.evaluations (student_id, ${cols}) values ($1, ${vals})`, [STU_2]),
+      as(COACH_A, `insert into academia.evaluations (student_id, coach_id, ${cols}) values ($1, $2, ${vals})`, [STU_2, COACH_A]),
     ).rejects.toThrow(/row-level security/)
   })
   it('no puede modificar alumnos ni cambiarse de rol', async () => {
@@ -236,8 +239,8 @@ describe('portal para padres por link privado', () => {
     expect(r.rows[0].p).toBeNull()
   })
   it('un visitante sin sesión no puede leer tablas directamente', async () => {
-    await expect(anon('select * from academia.portal_links')).rejects.toThrow(/permission denied/)
-    await expect(anon('select * from academia.students')).rejects.toThrow(/permission denied/)
+    expect((await anon('select * from academia.portal_links')).rows.length).toBe(0)
+    expect((await anon('select * from academia.students')).rows.length).toBe(0)
   })
   it('regenerar el link invalida el anterior', async () => {
     const old = (await db.query<{ token: string }>('select token from academia.portal_links where student_id = $1', [STU_1])).rows[0].token
@@ -248,5 +251,30 @@ describe('portal para padres por link privado', () => {
   it('un profesor no puede regenerar links de alumnos ajenos ni leerlos', async () => {
     await expect(as(COACH_A, 'select academia.regenerate_portal_link($1)', [STU_2])).rejects.toThrow(/permiso/)
     expect(await count(COACH_A, 'academia.portal_links')).toBe(1)
+  })
+})
+
+describe('modo abierto', () => {
+  async function anon(sql: string, params: unknown[] = []) {
+    await db.exec(`reset role; set request.jwt.claim.sub = ''; set role anon;`)
+    try { return await db.query<any>(sql, params) } finally { await db.exec('reset role;') }
+  }
+  it('cerrado: un visitante no ve nada', async () => {
+    expect((await anon('select * from academia.students')).rows.length).toBe(0)
+  })
+  it('abierto: un visitante puede consultar y registrar', async () => {
+    await db.exec('update academia.settings set open_mode = true')
+    expect((await anon('select * from academia.students')).rows.length).toBe(2)
+    expect((await anon('select * from academia.fee_balances')).rows.length).toBe(2)
+    await anon(`insert into academia.students (full_name) values ('Nuevo desde el sitio')`)
+    expect((await anon('select * from academia.students')).rows.length).toBe(3)
+  })
+  it('el visitante no puede apagar ni encender el modo abierto', async () => {
+    await expect(anon('update academia.settings set open_mode = false')).rejects.toThrow(/panel de Supabase/)
+  })
+  it('al cerrarlo se pierde el acceso inmediatamente', async () => {
+    await db.exec('update academia.settings set open_mode = false')
+    expect((await anon('select * from academia.students')).rows.length).toBe(0)
+    await expect(anon(`insert into academia.students (full_name) values ('X')`)).rejects.toThrow(/row-level security/)
   })
 })
