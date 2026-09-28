@@ -24,7 +24,7 @@ import {
 import { attendanceRate, consecutiveAbsences, overallAverage } from '@/lib/stats'
 import { supabase, unwrap, signedUrl, BUCKETS } from '@/lib/supabase'
 import { waLink } from '@/lib/whatsapp'
-import { SKILL_GROUPS, type AttendanceStatus, type Evaluation, type SkillKey } from '@/lib/types'
+import { SKILL_GROUPS, type AttendanceStatus, type Evaluation, type FeeBalance, type SkillKey } from '@/lib/types'
 
 type Tab = 'general' | 'asistencias' | 'pagos' | 'seguimiento' | 'actividad' | 'reportes'
 const TABS: { id: Tab; label: string; icon: typeof User }[] = [
@@ -310,6 +310,19 @@ function PaymentsTab({ s }: { s: StudentRow }) {
   const toast = useToast()
   const [pay, setPay] = useState<string | null | undefined>(undefined)
   const [newFee, setNewFee] = useState(false)
+  const [waive, setWaive] = useState<FeeBalance | null>(null)
+  const [waiving, setWaiving] = useState(false)
+  const qc = useQueryClient()
+  const doWaive = async () => {
+    if (!waive) return
+    setWaiving(true)
+    try {
+      unwrap(await supabase.from('fees').update({ late_fee_waived: Number(waive.late_fee_waived) + Number(waive.late_fee) }).eq('id', waive.id))
+      await Promise.all(['fees', 'accounts'].map((k) => qc.invalidateQueries({ queryKey: [k] })))
+      toast.ok('Recargo condonado')
+      setWaive(null)
+    } catch (e) { toast.error(e) } finally { setWaiving(false) }
+  }
   const balance = (fees.data ?? []).reduce((t, f) => t + Number(f.balance), 0)
   const openReceipt = async (path: string) => {
     const url = await signedUrl(BUCKETS.receipts, path, 300)
@@ -330,20 +343,30 @@ function PaymentsTab({ s }: { s: StudentRow }) {
         </div>
       </div>
       <Card className="overflow-x-auto">
-        <table className="table-base min-w-[640px]">
-          <thead><tr><th>Concepto</th><th>Vence</th><th>Importe</th><th>Pagado</th><th>Saldo</th><th>Estado</th><th /></tr></thead>
+        <table className="table-base min-w-[760px]">
+          <thead><tr><th>Concepto</th><th>Vence</th><th>Importe</th><th>Recargo</th><th>Pagado</th><th>Saldo</th><th>Estado</th><th /></tr></thead>
           <tbody>
-            {fees.isLoading ? <tr><td colSpan={7}><Spinner /></td></tr> :
-              !fees.data?.length ? <tr><td colSpan={7} className="py-8 text-center text-muted">Sin cargos registrados.</td></tr> :
+            {fees.isLoading ? <tr><td colSpan={8}><Spinner /></td></tr> :
+              !fees.data?.length ? <tr><td colSpan={8} className="py-8 text-center text-muted">Sin cargos registrados.</td></tr> :
               fees.data.map((f) => (
                 <tr key={f.id}>
                   <td className="font-medium">{f.concept} {monthName(f.period)}</td>
                   <td>{shortDate(f.due_date)}</td>
                   <td>{money(f.amount)}</td>
+                  <td>
+                    {Number(f.late_fee) > 0 ? (
+                      <span className="text-bad">{money(f.late_fee)}<span className="block text-xs text-muted">{f.late_days} días × {money(f.late_fee_per_day)}</span></span>
+                    ) : Number(f.late_fee_waived) > 0 ? <span className="text-xs text-muted">Condonado</span> : <span className="text-muted">—</span>}
+                  </td>
                   <td>{money(f.paid)}</td>
                   <td className="font-semibold">{money(f.balance)}</td>
                   <td><Badge tone={feeTone(f.status)}>{FEE_LABEL[f.status]}</Badge></td>
-                  <td className="text-right">{Number(f.balance) > 0 && <Button size="sm" variant="secondary" onClick={() => setPay(f.id)}>Pagar</Button>}</td>
+                  <td className="text-right">
+                    <div className="flex justify-end gap-1">
+                      {Number(f.late_fee) > 0 && <Button size="sm" variant="ghost" onClick={() => setWaive(f)}>Condonar recargo</Button>}
+                      {Number(f.balance) > 0 && <Button size="sm" variant="secondary" onClick={() => setPay(f.id)}>Pagar</Button>}
+                    </div>
+                  </td>
                 </tr>
               ))}
           </tbody>
@@ -371,6 +394,8 @@ function PaymentsTab({ s }: { s: StudentRow }) {
       </Card>
       {pay !== undefined && <PaymentModal student={s} feeId={pay ?? undefined} onClose={() => setPay(undefined)} />}
       {newFee && <FeeModal student={s} onClose={() => setNewFee(false)} />}
+      <ConfirmDialog open={!!waive} onClose={() => setWaive(null)} onConfirm={doWaive} loading={waiving} title="Condonar recargo" confirmLabel="Condonar"
+        text={waive ? <>Se perdonan <b className="text-white">{money(waive.late_fee)}</b> de recargo de {waive.concept} {monthName(waive.period)}. Si el pago sigue pendiente, a partir de mañana el recargo vuelve a correr.</> : null} />
     </div>
   )
 }

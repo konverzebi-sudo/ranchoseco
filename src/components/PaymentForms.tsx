@@ -74,7 +74,7 @@ export function PaymentModal({ student, feeId, onClose }: { student: StudentRow;
             </Select>
           </Field>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Importe" hint={`Saldo: ${money(fee?.balance)}. Déjalo así para liquidar o escribe un pago parcial.`}>
+            <Field label="Importe" hint={`Saldo: ${money(fee?.balance)}${Number(fee?.late_fee) > 0 ? ` (incluye ${money(fee?.late_fee)} de recargo)` : ''}. Déjalo así para liquidar o escribe un pago parcial.`}>
               <Input type="number" inputMode="decimal" min="0.01" step="0.01" max={fee?.balance} placeholder={String(fee?.balance ?? '')} value={amount} onChange={(e) => setAmount(e.target.value)} />
             </Field>
             <Field label="Fecha de pago"><Input type="date" value={paidAt} max={today()} onChange={(e) => setPaidAt(e.target.value)} /></Field>

@@ -47,10 +47,11 @@ export default function Billing() {
         const list = byStudent.get(s.id) ?? []
         const open = list.filter((f) => Number(f.balance) > 0)
         const balance = open.reduce((a, f) => a + Number(f.balance), 0)
+        const late = open.reduce((a, f) => a + Number(f.late_fee), 0)
         const overdue = open.some((f) => f.status === 'vencido')
         const dueSoon = open.some((f) => f.status !== 'vencido' && f.due_date <= soon && f.due_date >= t)
         const status = overdue ? 'vencido' : open.some((f) => f.status === 'parcial') ? 'parcial' : open.length ? 'pendiente' : 'al_corriente'
-        return { s, open, balance, overdue, dueSoon, status: status as 'vencido' | 'parcial' | 'pendiente' | 'al_corriente', hasFees: list.length > 0 }
+        return { s, open, balance, late, overdue, dueSoon, status: status as 'vencido' | 'parcial' | 'pendiente' | 'al_corriente', hasFees: list.length > 0 }
       })
       .filter((r) =>
         filter === 'todos' ? true :
@@ -75,10 +76,10 @@ export default function Billing() {
 
   const setFilter = (f: Filter) => setParams({ f }, { replace: true })
   const doExport = () =>
-    exportCsv(`cobranza-${t}.csv`, ['Alumno', 'Categoría', 'Tutor', 'Teléfono', 'Conceptos pendientes', 'Saldo', 'Estado'],
+    exportCsv(`cobranza-${t}.csv`, ['Alumno', 'Categoría', 'Tutor', 'Teléfono', 'Conceptos pendientes', 'Recargo', 'Saldo', 'Estado'],
       rows.map((r) => {
         const g = primaryGuardian(r.s)
-        return [r.s.full_name, catName(r.s.category_id), g?.full_name, g ? prettyPhone(g.phone) : '', r.open.map((f) => `${f.concept} ${monthName(f.period)}`).join('; '), r.balance, ACCOUNT_LABEL[r.status]]
+        return [r.s.full_name, catName(r.s.category_id), g?.full_name, g ? prettyPhone(g.phone) : '', r.open.map((f) => `${f.concept} ${monthName(f.period)}`).join('; '), r.late, r.balance, ACCOUNT_LABEL[r.status]]
       }))
 
   const error = students.error || fees.error
@@ -138,6 +139,7 @@ export default function Billing() {
                             <p className="truncate text-xs text-muted">
                               {catName(r.s.category_id)} · {r.open.length ? r.open.map((f) => `${f.concept} ${monthName(f.period)}`).join(', ') : 'Al corriente'}
                             </p>
+                            {r.late > 0 && <p className="text-xs text-bad">Incluye {money(r.late)} de recargo</p>}
                             {!g && r.balance > 0 && <p className="text-xs text-warn">Falta WhatsApp del tutor</p>}
                           </div>
                         </Link>

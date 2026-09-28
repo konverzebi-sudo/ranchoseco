@@ -50,6 +50,7 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase/migrations/0001_schema.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0003_portal.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0004_open_mode.sql', 'utf8'))
+  await db.exec(readFileSync('supabase/migrations/0006_late_fees.sql', 'utf8'))
   await db.exec('update academia.settings set open_mode = false') // las pruebas por rol corren con el sitio cerrado
 
   const users: [string, string, string][] = [
@@ -276,5 +277,49 @@ describe('modo abierto', () => {
     await db.exec('update academia.settings set open_mode = false')
     expect((await anon('select * from academia.students')).rows.length).toBe(0)
     await expect(anon(`insert into academia.students (full_name) values ('X')`)).rejects.toThrow(/row-level security/)
+  })
+})
+
+describe('recargos por pago tardío ($550 del 1 al 5, $50 por día desde el 6)', () => {
+  const bal = async (id: string) =>
+    (await as<any>(ADMIN, 'select late_days, late_fee::float, total_due::float, balance::float, status from academia.fee_balances where id = $1', [id])).rows[0]
+  let late: string, onTime: string, old: string
+
+  beforeAll(async () => {
+    old = (await db.query<{ id: string }>(`insert into academia.fees (student_id, concept, period, amount, due_date)
+      values ($1, 'Anterior', '2026-01-01', 550, current_date - 3) returning id`, [STU_2])).rows[0].id // creado con tarifa 0
+    await db.exec('update academia.settings set late_fee_per_day = 50')
+    late = (await db.query<{ id: string }>(`insert into academia.fees (student_id, concept, period, amount, due_date)
+      values ($1, 'Mensualidad', '2026-08-01', 550, current_date - 3) returning id`, [STU_2])).rows[0].id
+    onTime = (await db.query<{ id: string }>(`insert into academia.fees (student_id, concept, period, amount, due_date)
+      values ($1, 'Mensualidad', '2026-10-01', 550, current_date + 2) returning id`, [STU_2])).rows[0].id
+  })
+
+  it('3 días tarde suma $150 de recargo', async () => {
+    expect(await bal(late)).toMatchObject({ late_days: 3, late_fee: 150, total_due: 700, balance: 700, status: 'vencido' })
+  })
+  it('dentro del plazo no hay recargo', async () => {
+    expect(await bal(onTime)).toMatchObject({ late_days: 0, late_fee: 0, balance: 550, status: 'pendiente' })
+  })
+  it('un cargo conserva la tarifa con la que se creó', async () => {
+    expect(await bal(old)).toMatchObject({ late_fee: 0, balance: 550 })
+  })
+  it('no se puede pagar más del saldo con recargo', async () => {
+    await expect(as(ADMIN, `insert into academia.payments (fee_id, student_id, amount) values ($1, $2, 701)`, [late, STU_2])).rejects.toThrow(/excede/)
+  })
+  it('al cubrir la mensualidad el recargo se congela y queda pendiente', async () => {
+    await as(ADMIN, `insert into academia.payments (fee_id, student_id, amount) values ($1, $2, 550)`, [late, STU_2])
+    expect(await bal(late)).toMatchObject({ late_fee: 150, balance: 150, status: 'vencido' })
+  })
+  it('condonar el recargo deja el cargo pagado', async () => {
+    await as(ADMIN, `update academia.fees set late_fee_waived = 150 where id = $1`, [late])
+    expect(await bal(late)).toMatchObject({ late_fee: 0, balance: 0, status: 'pagado' })
+  })
+  it('el portal de papás muestra el recargo', async () => {
+    const tok = (await db.query<{ token: string }>('select token from academia.portal_links where student_id = $1', [STU_2])).rows[0].token
+    const p = (await db.query<any>('select academia.get_portal($1) as p', [tok])).rows[0].p
+    const f = p.fees.find((x: any) => x.id === old)
+    expect(f).toMatchObject({ late_fee: 0, total_due: 550 })
+    expect(p.academy.late_fee_per_day).toBe(50)
   })
 })

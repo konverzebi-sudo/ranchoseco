@@ -16,11 +16,11 @@ import type { AttendanceStatus, Evaluation, FeeStatus, PaymentMethod } from '@/l
 
 interface PortalData {
   student: { id: string; full_name: string; birth_date: string | null; category: string | null; schedule: string | null; coach: string | null; enrolled_at: string; status: string }
-  academy: { name: string; payment_instructions: string }
+  academy: { name: string; payment_instructions: string; due_day: number; late_fee_per_day: number }
   upcoming_trainings: { date: string; start_time: string | null; end_time: string | null; objectives: string | null }[]
   upcoming_matches: { date: string; time: string | null; opponent: string; venue: string | null; is_home: boolean }[]
   attendance: { date: string; status: AttendanceStatus }[]
-  fees: { id: string; concept: string; period: string; amount: number; paid: number; balance: number; due_date: string; status: FeeStatus }[]
+  fees: { id: string; concept: string; period: string; amount: number; paid: number; balance: number; due_date: string; status: FeeStatus; late_fee: number; late_days: number; total_due: number }[]
   payments: { amount: number; paid_at: string; method: PaymentMethod; concept: string; period: string }[]
   evaluations: (Evaluation & { coach: string | null })[]
   matches: { date: string; opponent: string; goals_for: number | null; goals_against: number | null; status: string; starter: boolean; position: string | null; goals: number; assists: number; minutes: number }[]
@@ -144,11 +144,18 @@ export default function Portal() {
             <ul className="mt-4 space-y-2">
               {openFees.map((f) => (
                 <li key={f.id} className="flex items-center justify-between rounded-xl bg-ink-900 px-3 py-2.5 text-sm">
-                  <div><p className="font-medium">{f.concept} {monthName(f.period)}</p><p className="text-xs text-muted">Vence {date(f.due_date)}</p></div>
+                  <div>
+                    <p className="font-medium">{f.concept} {monthName(f.period)}</p>
+                    <p className="text-xs text-muted">Pagar a más tardar el {date(f.due_date)}</p>
+                    {Number(f.late_fee) > 0 && <p className="text-xs text-bad">Incluye recargo {money(f.late_fee)} ({f.late_days} días × {money(Number(f.late_fee) / Math.max(1, f.late_days))})</p>}
+                  </div>
                   <div className="text-right"><p className="font-semibold">{money(f.balance)}</p><Badge tone={feeTone(f.status)}>{FEE_LABEL[f.status]}</Badge></div>
                 </li>
               ))}
             </ul>
+          )}
+          {Number(d.academy.late_fee_per_day) > 0 && (
+            <p className="mt-3 text-xs text-muted">La mensualidad se paga del día 1 al {d.academy.due_day} de cada mes. A partir del día {d.academy.due_day + 1} se suman {money(d.academy.late_fee_per_day)} por cada día de retraso.</p>
           )}
           {d.academy.payment_instructions && balance > 0 && (
             <div className="mt-4 rounded-xl border border-brand/30 bg-brand-dim p-3 text-sm whitespace-pre-line"><p className="mb-1 font-semibold text-brand">Cómo pagar</p>{d.academy.payment_instructions}</div>

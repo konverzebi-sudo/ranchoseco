@@ -28,13 +28,15 @@ export function collectionMessage(template: string, studentName: string, fees: F
   const months = [...new Set(pending.map((f) => monthOnly(f.period)))]
   const monthText = months.length <= 1 ? (months[0] ?? '') : `${months.slice(0, -1).join(', ')} y ${months.at(-1)}`
   const total = pending.reduce((s, f) => s + Number(f.balance), 0)
+  const late = pending.reduce((s, f) => s + Number(f.late_fee ?? 0), 0)
   let msg = fillTemplate(template, {
     MES: monthText,
     'NOMBRE DEL ALUMNO': studentName,
     SALDO: plainAmount(total),
   })
+  if (late > 0) msg += `\n\nEl saldo incluye $${plainAmount(late)} MXN de recargo por pago tardío.`
   if (portalUrl) msg += `\n\nPuedes consultar su estado de cuenta aquí: ${portalUrl}`
-  return { text: msg, total, months }
+  return { text: msg, total, months, late }
 }
 
 export function reportMessage(template: string, studentName: string, period: string, portalUrl?: string) {

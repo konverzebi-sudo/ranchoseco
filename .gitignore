@@ -8,3 +8,4 @@ dist
 supabase/seed/seed_alumnos.sql
 supabase/INSTALAR_EN_SUPABASE.sql
 *.xlsx
+supabase/ACTUALIZAR_*.sql

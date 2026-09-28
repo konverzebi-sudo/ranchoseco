@@ -11,14 +11,14 @@ export default function SettingsPage() {
   const settings = useSettings()
   const qc = useQueryClient()
   const toast = useToast()
-  const [f, setF] = useState({ academy_name: '', default_country_code: '52', default_monthly_fee: '', due_day: '10', payment_instructions: '', collection_template: '', report_template: '' })
+  const [f, setF] = useState({ academy_name: '', default_country_code: '52', default_monthly_fee: '', due_day: '10', late_fee_per_day: '', payment_instructions: '', collection_template: '', report_template: '' })
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     const s = settings.data
     if (s) setF({
       academy_name: s.academy_name, default_country_code: s.default_country_code, default_monthly_fee: String(s.default_monthly_fee ?? ''),
-      due_day: String(s.due_day), payment_instructions: s.payment_instructions, collection_template: s.collection_template, report_template: s.report_template,
+      due_day: String(s.due_day), late_fee_per_day: String(s.late_fee_per_day ?? 0), payment_instructions: s.payment_instructions, collection_template: s.collection_template, report_template: s.report_template,
     })
   }, [settings.data])
 
@@ -31,7 +31,7 @@ export default function SettingsPage() {
     try {
       unwrap(await supabase.from('settings').update({
         academy_name: f.academy_name.trim(), default_country_code: f.default_country_code, default_monthly_fee: Number(f.default_monthly_fee) || 0,
-        due_day: due, payment_instructions: f.payment_instructions.trim(), collection_template: f.collection_template, report_template: f.report_template,
+        due_day: due, late_fee_per_day: Number(f.late_fee_per_day) || 0, payment_instructions: f.payment_instructions.trim(), collection_template: f.collection_template, report_template: f.report_template,
         updated_at: new Date().toISOString(),
       }).eq('id', 1))
       await qc.invalidateQueries({ queryKey: ['settings'] })
@@ -50,9 +50,12 @@ export default function SettingsPage() {
         <Card className="space-y-4 p-5">
           <h3 className="font-display text-lg font-bold uppercase tracking-wide text-brand">Academia y cobranza</h3>
           <Field label="Nombre de la academia"><Input value={f.academy_name} onChange={(e) => setF({ ...f, academy_name: e.target.value })} /></Field>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Mensualidad general" hint="Si la categoría no define otra"><Input type="number" min="0" inputMode="decimal" value={f.default_monthly_fee} onChange={(e) => setF({ ...f, default_monthly_fee: e.target.value })} /></Field>
-            <Field label="Día de vencimiento"><Input type="number" min="1" max="28" value={f.due_day} onChange={(e) => setF({ ...f, due_day: e.target.value })} /></Field>
+            <Field label="Último día para pagar sin recargo"><Input type="number" min="1" max="28" value={f.due_day} onChange={(e) => setF({ ...f, due_day: e.target.value })} /></Field>
+            <Field label="Recargo por día de retraso" hint={Number(f.late_fee_per_day) > 0 ? `Desde el día ${Number(f.due_day) + 1} se suman $${f.late_fee_per_day} por día` : 'Déjalo en 0 si no se cobra recargo'}>
+              <Input type="number" min="0" inputMode="decimal" value={f.late_fee_per_day} onChange={(e) => setF({ ...f, late_fee_per_day: e.target.value })} />
+            </Field>
             <Field label="Lada del país"><Input value={f.default_country_code} onChange={(e) => setF({ ...f, default_country_code: e.target.value })} inputMode="numeric" /></Field>
           </div>
           <Field label="Datos para pagar" hint="Se muestran a los papás en su link (cuenta, CLABE, horario de caja…)">

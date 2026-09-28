@@ -11,6 +11,7 @@ export interface Settings {
   default_country_code: string
   default_monthly_fee: number
   due_day: number
+  late_fee_per_day: number
   payment_instructions: string
   collection_template: string
   report_template: string
@@ -76,6 +77,11 @@ export interface FeeBalance {
   amount: number
   due_date: string
   notes: string | null
+  late_fee_per_day: number
+  late_fee_waived: number
+  late_days: number
+  late_fee: number
+  total_due: number
   paid: number
   balance: number
   last_paid_at: string | null
@@ -98,6 +104,7 @@ export interface StudentAccount {
   student_id: string
   balance: number
   overdue: number
+  late_fees: number
   overdue_count: number
   pending_count: number
   next_due: string | null

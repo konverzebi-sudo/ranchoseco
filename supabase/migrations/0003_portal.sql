@@ -90,7 +90,8 @@ begin
         join academia.coaches p on p.id = cc.coach_id where cc.category_id = s.category_id and p.active)),
       'enrolled_at', s.enrolled_at, 'status', s.status, 'has_photo', s.photo_path is not null
     ),
-    'academy', (select jsonb_build_object('name', academy_name, 'payment_instructions', payment_instructions)
+    'academy', (select jsonb_build_object('name', academy_name, 'payment_instructions', payment_instructions,
+                'due_day', due_day, 'late_fee_per_day', late_fee_per_day)
                 from academia.settings where id = 1),
     'upcoming_trainings', coalesce((
       select jsonb_agg(jsonb_build_object('date', t.date, 'start_time', t.start_time, 'end_time', t.end_time,
@@ -109,7 +110,8 @@ begin
     'fees', coalesce((
       select jsonb_agg(jsonb_build_object('id', fb.id, 'concept', fb.concept, 'period', fb.period,
              'amount', fb.amount, 'paid', fb.paid, 'balance', fb.balance, 'due_date', fb.due_date,
-             'status', fb.status) order by fb.period desc)
+             'status', fb.status, 'late_fee', fb.late_fee, 'late_days', fb.late_days,
+             'total_due', fb.total_due) order by fb.period desc)
       from academia.fee_balances fb where fb.student_id = sid), '[]'::jsonb),
     'payments', coalesce((
       select jsonb_agg(jsonb_build_object('amount', p.amount, 'paid_at', p.paid_at, 'method', p.method,
