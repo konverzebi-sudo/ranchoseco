@@ -39,6 +39,7 @@ describe('casos especiales y candado de inscripción', () => {
   it('si un hermano se da de baja la promo deja de ser válida', () => {
     const ok = promoStatus([{ id: 'a', status: 'activo' }, { id: 'b', status: 'activo' }], new Set())
     expect(ok.valid).toBe(true)
+    expect(promoStatus([{ id: 'a', status: 'activo' }, { id: 'b', status: 'suspendido' }], new Set()).valid).toBe(true) // inactivo temporal no rompe
     const baja = promoStatus([{ id: 'a', status: 'activo' }, { id: 'b', status: 'baja' }], new Set())
     expect(baja.valid).toBe(false)
     expect(baja.notEnrolled.map((m) => m.id)).toEqual(['b'])

@@ -3,7 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Pencil, User, ClipboardCheck, Wallet, TrendingUp, Trophy, FileText, Plus, HeartPulse, Link2, Copy,
-  MessageCircle, RefreshCw, UserX, Receipt, Phone,
+  MessageCircle, RefreshCw, UserX, Receipt, Phone, PauseCircle, PlayCircle,
 } from 'lucide-react'
 import {
   Avatar, Badge, Button, Card, ConfirmDialog, Empty, ErrorState, Field, Input, Modal, Spinner, Tabs, Textarea, feeTone,
@@ -14,6 +14,7 @@ import { PaymentModal, FeeModal } from '@/components/PaymentForms'
 import { EvaluationModal, EvolutionChart, GroupSummary, SkillRadar } from '@/components/Evaluation'
 import ReportPanel from '@/components/ReportPanel'
 import { ScholarshipReviewModal } from '@/components/ScholarshipReview'
+import { PauseModal, ReactivateModal } from '@/components/InactiveModals'
 import { useToast } from '@/components/toast'
 import {
   useAccounts, useAttendanceDetail, useCategories, useCoaches, useCoachCategories, useEvaluations, useFees, useMatches, useMatchPlayers,
@@ -106,6 +107,7 @@ function GeneralTab({ s }: { s: StudentRow }) {
   const qc = useQueryClient()
   const toast = useToast()
   const [confirmBaja, setConfirmBaja] = useState(false)
+  const [pause, setPause] = useState<'pause' | 'back' | null>(null)
   const [saving, setSaving] = useState(false)
   const g = primaryGuardian(s)
   const coachIds = s.coach_id ? [s.coach_id] : (cc ?? []).filter((x) => x.category_id === s.category_id).map((x) => x.coach_id)
@@ -130,10 +132,22 @@ function GeneralTab({ s }: { s: StudentRow }) {
         <InfoRow label="Profesor">{coachNames || '—'}</InfoRow>
         <InfoRow label="Inscripción">{date(s.enrolled_at)}</InfoRow>
         <InfoRow label="Estatus">{STATUS_LABEL[s.status]}</InfoRow>
+        {s.status === 'suspendido' && (
+          <div className="mt-3 rounded-xl border border-warn/40 bg-warn/10 p-3 text-sm">
+            <p className="font-semibold text-warn">Inactivo temporal{s.inactive_reason ? ` · ${s.inactive_reason}` : ''}</p>
+            <p className="text-muted">Desde {date(s.inactive_since)}{s.inactive_until ? ` · regreso estimado ${date(s.inactive_until)}` : ''}. No se le generan mensualidades.</p>
+          </div>
+        )}
         {s.notes && <p className="mt-3 rounded-xl bg-ink-900 p-3 text-sm text-muted whitespace-pre-line">{s.notes}</p>}
-        <Button variant={s.status === 'baja' ? 'secondary' : 'danger'} size="sm" icon={UserX} className="mt-4" onClick={() => setConfirmBaja(true)}>
-          {s.status === 'baja' ? 'Reactivar alumno' : 'Dar de baja'}
-        </Button>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {s.status === 'activo' && <Button variant="secondary" size="sm" icon={PauseCircle} onClick={() => setPause('pause')}>Inactivo temporal</Button>}
+          {s.status === 'suspendido' && <Button size="sm" icon={PlayCircle} onClick={() => setPause('back')}>Reactivar</Button>}
+          <Button variant={s.status === 'baja' ? 'secondary' : 'danger'} size="sm" icon={UserX} onClick={() => setConfirmBaja(true)}>
+            {s.status === 'baja' ? 'Reactivar alumno' : 'Dar de baja'}
+          </Button>
+        </div>
+        {pause === 'pause' && <PauseModal student={s} onClose={() => setPause(null)} />}
+        {pause === 'back' && <ReactivateModal student={s} onClose={() => setPause(null)} />}
       </Card>
 
       <div className="space-y-5">

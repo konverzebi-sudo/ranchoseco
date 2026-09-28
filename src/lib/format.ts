@@ -88,6 +88,6 @@ export const METHOD_LABEL: Record<PaymentMethod, string> = {
 }
 export const STATUS_LABEL: Record<StudentStatus, string> = {
   activo: 'Activo',
-  suspendido: 'Suspendido',
+  suspendido: 'Inactivo temporal',
   baja: 'Baja',
 }

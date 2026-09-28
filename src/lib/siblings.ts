@@ -43,13 +43,14 @@ export function memberPrice(m: { sibling_price?: number | null; sibling_order?: 
 
 /**
  * Estado de la promo de un grupo:
- * - candado: todos los hermanos deben seguir inscritos (activos); si no, la promo NO aplica.
+ * - candado: todos los hermanos deben seguir inscritos; si uno se da de BAJA, la promo NO aplica
+ *   (un hermano en "inactivo temporal" no la rompe).
  * - alerta: hermanos con pagos vencidos.
  */
 export function promoStatus<T extends { id: string; status: string }>(members: T[], overdueIds: Set<string>) {
-  const notEnrolled = members.filter((m) => m.status !== 'activo')
+  const notEnrolled = members.filter((m) => m.status === 'baja')
   const overdue = members.filter((m) => m.status === 'activo' && overdueIds.has(m.id))
-  return { valid: notEnrolled.length === 0 && members.length >= 2, notEnrolled, overdue }
+  return { valid: notEnrolled.length === 0 && members.length >= 2, notEnrolled, overdue, paused: members.filter((m) => m.status === 'suspendido') }
 }
 
 /** Hermanos con pagos vencidos (compatibilidad). */

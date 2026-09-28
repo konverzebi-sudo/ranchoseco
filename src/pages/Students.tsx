@@ -6,6 +6,7 @@ import { Avatar, Badge, Button, Card, Empty, ErrorState, PageHeader, SearchInput
 import { CollectButton } from '@/components/WhatsAppButtons'
 import StudentForm from '@/components/StudentForm'
 import { ScholarshipReviewModal } from '@/components/ScholarshipReview'
+import { PauseModal, ReactivateModal } from '@/components/InactiveModals'
 import { useToast } from '@/components/toast'
 import { useAccounts, useCategories, useFees, useStudents, primaryGuardian } from '@/lib/api'
 import { ACCOUNT_LABEL, STATUS_LABEL, age, money, prettyPhone } from '@/lib/format'
@@ -25,6 +26,7 @@ export default function Students() {
   const accounts = useAccounts()
   const fees = useFees()
   const [reviewing, setReviewing] = useState<{ fee: FeeBalance; name: string } | null>(null)
+  const [pausing, setPausing] = useState<{ s: (typeof rows)[number]; mode: 'pause' | 'back' } | null>(null)
   const reviewFee = (studentId: string) => (fees.data ?? []).find((f) => f.student_id === studentId && f.status === 'por_confirmar')
   const openReview = (studentId: string, name: string) => { const f = reviewFee(studentId); if (f) setReviewing({ fee: f, name }) }
   const q = params.get('q') ?? ''
@@ -99,7 +101,7 @@ export default function Students() {
         </Select>
         <Select value={status} onChange={(e) => setParam('st', e.target.value === 'activo' ? '' : e.target.value || 'todos')} aria-label="Filtrar por estatus">
           <option value="activo">Activos</option>
-          <option value="suspendido">Suspendidos</option>
+          <option value="suspendido">Inactivos temporales</option>
           <option value="baja">Bajas</option>
           <option value="">Todos</option>
         </Select>
@@ -147,9 +149,14 @@ export default function Students() {
                         </td>
                         <td>{g ? <><p>{g.full_name}</p><p className="text-xs text-muted">{prettyPhone(g.phone)}</p></> : <span className="text-muted">Sin capturar</span>}</td>
                         <td>
-                          <Select value={s.status} onChange={(e) => inlineUpdate(s.id, { status: e.target.value as StudentStatus })}
+                          <Select value={s.status} onChange={(e) => {
+                              const v = e.target.value as StudentStatus
+                              if (v === 'suspendido') return setPausing({ s, mode: 'pause' })
+                              if (s.status === 'suspendido' && v === 'activo') return setPausing({ s, mode: 'back' })
+                              inlineUpdate(s.id, { status: v })
+                            }}
                             className="h-9 w-32 text-sm" aria-label={`Estatus de ${s.full_name}`}>
-                            <option value="activo">Activo</option><option value="suspendido">Suspendido</option><option value="baja">Baja</option>
+                            <option value="activo">Activo</option><option value="suspendido">Inactivo temporal</option><option value="baja">Baja</option>
                           </Select>
                         </td>
                         <td>
@@ -203,6 +210,8 @@ export default function Students() {
           </>
         )}
 
+      {pausing?.mode === 'pause' && <PauseModal student={pausing.s} onClose={() => setPausing(null)} />}
+      {pausing?.mode === 'back' && <ReactivateModal student={pausing.s} onClose={() => setPausing(null)} />}
       {reviewing && <ScholarshipReviewModal fee={reviewing.fee} studentName={reviewing.name} onClose={() => setReviewing(null)} />}
       {creating && <StudentForm defaultCategory={cat && cat !== 'none' ? cat : undefined} onClose={() => setCreating(false)} onSaved={(id) => nav(`/alumnos/${id}`)} />}
     </>

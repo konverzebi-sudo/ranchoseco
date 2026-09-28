@@ -82,6 +82,9 @@ export interface Student {
   sibling_group_id: string | null
   sibling_order: number | null
   sibling_price: number | null
+  inactive_since: string | null
+  inactive_until: string | null
+  inactive_reason: string | null
   created_at: string
 }
 

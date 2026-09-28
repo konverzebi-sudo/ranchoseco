@@ -156,7 +156,7 @@ export default function StudentForm({ student, defaultCategory, onClose, onSaved
           <Field label="Estatus">
             <Select value={f.status} onChange={set('status')}>
               <option value="activo">Activo</option>
-              <option value="suspendido">Suspendido</option>
+              <option value="suspendido">Inactivo temporal</option>
               <option value="baja">Baja</option>
             </Select>
           </Field>

@@ -9,6 +9,7 @@ import { supabase, unwrap, BUCKETS } from '@/lib/supabase'
 import { METHOD_LABEL, date, money, monthName, toISODate, today } from '@/lib/format'
 import { TIER_LABEL, joinTier, tierAmount, tierNote, type JoinTier } from '@/lib/prorate'
 import { PROMO_REASON, memberPrice } from '@/lib/siblings'
+import { REINSCRIPTION_FEE } from '@/lib/inactive'
 import type { PaymentMethod } from '@/lib/types'
 
 const PAY_KEYS = [['fees'], ['accounts'], ['payments']]
@@ -138,7 +139,8 @@ export function FeeModal({ student, onClose }: { student: StudentRow; onClose: (
   const autoTier = joinTier(student.enrolled_at, periodDate) ?? 'completo'
   const [tierPick, setTierPick] = useState<JoinTier | null>(null)
   const tier: JoinTier = isMonthly ? (tierPick ?? autoTier) : 'completo'
-  const suggestedFor = isInscription ? INSCRIPTION_FEE : tierAmount(suggested, tier)
+  const isReinscription = norm(concept.trim()) === 'reinscripcion'
+  const suggestedFor = isInscription ? INSCRIPTION_FEE : isReinscription ? REINSCRIPTION_FEE : tierAmount(suggested, tier)
   const value = amount === '' ? suggestedFor : Number(amount)
 
   const submit = async (e: FormEvent) => {
@@ -168,7 +170,7 @@ export function FeeModal({ student, onClose }: { student: StudentRow; onClose: (
         <p className="text-sm text-muted">Alumno: <span className="font-medium text-white">{student.full_name}</span></p>
         <Field label="Concepto">
           <Input value={concept} onChange={(e) => setConcept(e.target.value)} list="concepts" />
-          <datalist id="concepts">{['Mensualidad', 'Inscripción', 'Uniforme', 'Torneo', 'Arbitraje'].map((c) => <option key={c} value={c} />)}</datalist>
+          <datalist id="concepts">{['Mensualidad', 'Inscripción', 'Reinscripción', 'Uniforme', 'Torneo', 'Arbitraje'].map((c) => <option key={c} value={c} />)}</datalist>
         </Field>
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Mes"><Input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} /></Field>
@@ -222,7 +224,7 @@ export function GenerateMonthModal({ students, onClose }: { students: StudentRow
       // Promo hermanos (en mes completo) o cuota especial / beca individual
       // Candado: la promo sólo aplica si todos los hermanos del grupo siguen inscritos
       const group = s.sibling_group_id ? students.filter((x) => x.sibling_group_id === s.sibling_group_id) : []
-      const promoValid = group.length >= 2 && group.every((x) => x.status === 'activo')
+      const promoValid = group.length >= 2 && group.every((x) => x.status !== 'baja')
       const promo = promoValid ? memberPrice(s, s.sibling_order ?? 1, settings?.sibling_prices?.map(Number)) : null
       const reason = promo != null ? PROMO_REASON : 'Beca'
       const target = promo ?? (s.monthly_fee != null ? Number(s.monthly_fee) : null)
