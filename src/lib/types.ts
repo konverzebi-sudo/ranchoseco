@@ -42,6 +42,18 @@ export interface CoachPay {
   frequency: 'semanal' | 'quincenal' | 'mensual'
 }
 
+export interface Expense {
+  id: string
+  name: string
+  amount: number
+  frequency: 'semanal' | 'quincenal' | 'mensual' | 'anual' | 'unico'
+  paid_month: number | null
+  paid_year: number | null
+  notes: string | null
+  active: boolean
+  sort_order: number
+}
+
 export interface Guardian {
   id: string
   full_name: string

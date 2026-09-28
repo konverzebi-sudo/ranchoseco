@@ -6,6 +6,7 @@ import type {
   Category,
   Coach,
   CoachPay,
+  Expense,
   Evaluation,
   FeeBalance,
   Guardian,
@@ -49,6 +50,13 @@ export function useCoaches() {
     queryKey: ['coaches'],
     queryFn: async () => unwrap(await supabase.from('coaches').select('*').order('full_name')) as Coach[],
     staleTime: 60_000,
+  })
+}
+
+export function useExpenses() {
+  return useQuery({
+    queryKey: ['expenses'],
+    queryFn: async () => unwrap(await supabase.from('expenses').select('*').order('sort_order').order('created_at')) as Expense[],
   })
 }
 

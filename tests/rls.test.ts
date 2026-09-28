@@ -53,6 +53,7 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase/migrations/0006_late_fees.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0007_becas.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0008_sueldos.sql', 'utf8'))
+  await db.exec(readFileSync('supabase/migrations/0009_gastos.sql', 'utf8'))
   await db.exec('update academia.settings set open_mode = false') // las pruebas por rol corren con el sitio cerrado
 
   const users: [string, string, string][] = [
@@ -364,5 +365,15 @@ describe('sueldos de profesores', () => {
   })
   it('frecuencia inválida se rechaza', async () => {
     await expect(as(ADMIN, `update academia.coach_pay set frequency = 'diario' where coach_id = $1`, [COACH_A])).rejects.toThrow()
+  })
+})
+
+describe('gastos generales', () => {
+  it('sólo administración ve y edita los gastos', async () => {
+    await db.query(`insert into academia.expenses (name, amount, frequency) values ('Renta', 5000, 'mensual')`)
+    expect(await count(ADMIN, 'academia.expenses')).toBe(1)
+    expect(await count(COACH_A, 'academia.expenses')).toBe(0)
+    const r = await as(COACH_A, `update academia.expenses set amount = 1`)
+    expect(r.affectedRows).toBe(0)
   })
 })

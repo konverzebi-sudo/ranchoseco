@@ -46,11 +46,44 @@ describe('resultados por categoría', () => {
   it('reparte el sueldo del profesor entre sus categorías', () => {
     expect(A.salaries).toBe(600)
     expect(B.salaries).toBe(600)
-    expect(A.result).toBe(250)
-    expect(B.result).toBe(-50)
+    // Mili (sin categoría, $1,700) se reparte por alumnos: 2/3 a A y 1/3 a B
+    expect(A.result).toBeCloseTo(850 - 600 - (1700 * 2) / 3)
+    expect(B.result).toBeCloseTo(550 - 600 - 1700 / 3)
   })
-  it('los sueldos sin categoría también se restan del total', () => {
+  it('los sueldos sin categoría se reparten como gasto general', () => {
     expect(r.unassignedSalaries).toBe(1700)
     expect(r.totals.result).toBe(1400 - 1200 - 1700)
+  })
+})
+
+describe('gastos generales repartidos por alumno', () => {
+  const base = {
+    categories: [cat('A', '2014'), cat('B', '2012')],
+    students: [
+      { id: 's1', category_id: 'A', status: 'activo' }, { id: 's2', category_id: 'A', status: 'activo' },
+      { id: 's3', category_id: 'A', status: 'activo' }, { id: 's4', category_id: 'B', status: 'activo' },
+      { id: 's5', category_id: 'B', status: 'baja' },
+    ],
+    payments: [pay('s1', '2026-09-05', 550), pay('s4', '2026-09-05', 550)],
+    fees: [], coaches: [], coachCategories: [], coachPay: [],
+  }
+  const exp = (name: string, amount: number, frequency: any, paid_month: number | null = null) =>
+    ({ id: name, name, amount, frequency, paid_month, paid_year: null, notes: null, active: true, sort_order: 0 })
+  const r = categoryResults({
+    ...base, month: '2026-09',
+    expenses: [exp('Regalías', 7500, 'mensual'), exp('Seguro', 12000, 'anual', 9), exp('Única', 400, 'unico', 10)],
+  })
+  it('suma el equivalente mensual (anual ÷ 12, único sólo en su mes)', () => {
+    expect(r.generalTotal).toBe(7500 + 1000)
+  })
+  it('reparte según alumnos activos de cada categoría (bajas no cuentan)', () => {
+    expect(r.activeTotal).toBe(4)
+    expect(r.perStudent).toBe(8500 / 4)
+    expect(r.list.find((x) => x.id === 'A')!.generalExpenses).toBe((8500 / 4) * 3)
+    expect(r.list.find((x) => x.id === 'B')!.result).toBe(550 - 8500 / 4)
+  })
+  it('un gasto único cuenta completo en su mes', () => {
+    const oct = categoryResults({ ...base, month: '2026-10', expenses: [exp('Única', 400, 'unico', 10)] })
+    expect(oct.generalTotal).toBe(400)
   })
 })
