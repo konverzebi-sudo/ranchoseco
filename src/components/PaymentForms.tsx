@@ -184,7 +184,9 @@ export function GenerateMonthModal({ students, onClose }: { students: StudentRow
     const active = students.filter((s) => s.status === 'activo')
     const rows = active.filter((s) => !existing.has(s.id)).map((s) => {
       const cat = categories?.find((c) => c.id === s.category_id)
-      return { s, amount: Number(cat?.monthly_fee ?? settings?.default_monthly_fee ?? 0) }
+      const regular = Number(cat?.monthly_fee ?? settings?.default_monthly_fee ?? 0)
+      const discount = s.monthly_fee != null ? Math.max(0, regular - Number(s.monthly_fee)) : 0
+      return { s, amount: regular, discount }
     })
     return { toCreate: rows.filter((r) => r.amount > 0), noAmount: rows.filter((r) => !(r.amount > 0)), already: existing.size }
   }, [fees, students, categories, settings, periodDate])
@@ -193,7 +195,10 @@ export function GenerateMonthModal({ students, onClose }: { students: StudentRow
     setSaving(true)
     try {
       const due = dueDateFor(periodDate, settings?.due_day ?? 10)
-      const payload = plan.toCreate.map(({ s, amount }) => ({ student_id: s.id, concept: 'Mensualidad', period: periodDate, amount, due_date: due }))
+      const payload = plan.toCreate.map(({ s, amount, discount }) => ({
+        student_id: s.id, concept: 'Mensualidad', period: periodDate, amount, due_date: due,
+        discount, discount_reason: discount > 0 ? 'Beca' : null,
+      }))
       for (let i = 0; i < payload.length; i += 200) {
         unwrap(await supabase.from('fees').upsert(payload.slice(i, i + 200), { onConflict: 'student_id,concept,period', ignoreDuplicates: true }))
       }
@@ -207,7 +212,8 @@ export function GenerateMonthModal({ students, onClose }: { students: StudentRow
     }
   }
 
-  const total = plan.toCreate.reduce((s, r) => s + r.amount, 0)
+  const total = plan.toCreate.reduce((s, r) => s + r.amount - r.discount, 0)
+  const becado = plan.toCreate.reduce((s, r) => s + r.discount, 0)
   return (
     <Modal open onClose={onClose} title="Generar mensualidades"
       footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button>
@@ -216,6 +222,7 @@ export function GenerateMonthModal({ students, onClose }: { students: StudentRow
         <Field label="Mes"><Input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} /></Field>
         <div className="rounded-xl bg-ink-900 p-4">
           <p>Se crearán <b className="text-brand">{plan.toCreate.length}</b> mensualidades por <b>{money(total)}</b>, con vencimiento el día {settings?.due_day ?? 10}.</p>
+          {becado > 0 && <p className="mt-1 text-ok">Incluye {money(becado)} en becas (alumnos con cuota especial).</p>}
           {plan.already > 0 && <p className="mt-1 text-muted">{plan.already} alumnos ya tienen la mensualidad de este mes (no se duplican).</p>}
           {plan.noAmount.length > 0 && (
             <p className="mt-2 text-warn">{plan.noAmount.length} alumnos no tienen importe definido. Configura la mensualidad en Categorías o en Configuración.</p>

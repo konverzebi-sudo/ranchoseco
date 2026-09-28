@@ -70,12 +70,14 @@ export const FEE_LABEL: Record<FeeStatus, string> = {
   pendiente: 'Pendiente',
   vencido: 'Vencido',
   parcial: 'Pago parcial',
+  por_confirmar: 'Por confirmar',
 }
 export const ACCOUNT_LABEL: Record<AccountStatus, string> = {
   al_corriente: 'Al corriente',
   pendiente: 'Pendiente',
   parcial: 'Pago parcial',
   vencido: 'Vencido',
+  por_confirmar: '¿Beca? Por confirmar',
 }
 export const METHOD_LABEL: Record<PaymentMethod, string> = {
   efectivo: 'Efectivo',

@@ -111,7 +111,8 @@ begin
       select jsonb_agg(jsonb_build_object('id', fb.id, 'concept', fb.concept, 'period', fb.period,
              'amount', fb.amount, 'paid', fb.paid, 'balance', fb.balance, 'due_date', fb.due_date,
              'status', fb.status, 'late_fee', fb.late_fee, 'late_days', fb.late_days,
-             'total_due', fb.total_due) order by fb.period desc)
+             'total_due', fb.total_due, 'discount', fb.discount, 'discount_reason', fb.discount_reason)
+             order by fb.period desc)
       from academia.fee_balances fb where fb.student_id = sid), '[]'::jsonb),
     'payments', coalesce((
       select jsonb_agg(jsonb_build_object('amount', p.amount, 'paid_at', p.paid_at, 'method', p.method,

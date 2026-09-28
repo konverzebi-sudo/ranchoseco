@@ -1,8 +1,8 @@
 export type StudentStatus = 'activo' | 'suspendido' | 'baja'
 export type AttendanceStatus = 'presente' | 'falta' | 'justificada' | 'retardo'
 export type PaymentMethod = 'efectivo' | 'transferencia' | 'tarjeta' | 'deposito' | 'otro'
-export type FeeStatus = 'pagado' | 'pendiente' | 'vencido' | 'parcial'
-export type AccountStatus = 'al_corriente' | 'pendiente' | 'parcial' | 'vencido'
+export type FeeStatus = 'pagado' | 'pendiente' | 'vencido' | 'parcial' | 'por_confirmar'
+export type AccountStatus = 'al_corriente' | 'pendiente' | 'parcial' | 'vencido' | 'por_confirmar'
 export type MatchStatus = 'programado' | 'jugado' | 'cancelado'
 
 export interface Settings {
@@ -56,6 +56,7 @@ export interface Student {
   emergency_contact_name: string | null
   emergency_contact_phone: string | null
   notes: string | null
+  monthly_fee: number | null
   created_at: string
 }
 
@@ -77,6 +78,9 @@ export interface FeeBalance {
   amount: number
   due_date: string
   notes: string | null
+  discount: number
+  discount_reason: string | null
+  review: string | null
   late_fee_per_day: number
   late_fee_waived: number
   late_days: number
@@ -105,6 +109,8 @@ export interface StudentAccount {
   balance: number
   overdue: number
   late_fees: number
+  scholarships: number
+  review_count: number
   overdue_count: number
   pending_count: number
   next_due: string | null

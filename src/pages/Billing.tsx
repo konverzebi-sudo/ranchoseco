@@ -1,16 +1,20 @@
 import { useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { startOfMonth, addDays } from 'date-fns'
-import { Wallet, Download, CalendarPlus, AlertTriangle, TrendingUp, Clock, CheckCircle2, Receipt } from 'lucide-react'
-import { Avatar, Badge, Button, Card, Empty, ErrorState, PageHeader, SearchInput, Segmented, Select, Spinner, StatCard, feeTone } from '@/components/ui'
+import { Wallet, Download, CalendarPlus, AlertTriangle, TrendingUp, CheckCircle2, Receipt, GraduationCap, HelpCircle, Eraser } from 'lucide-react'
+import { Avatar, Badge, Button, Card, ConfirmDialog, Empty, ErrorState, PageHeader, SearchInput, Segmented, Select, Spinner, StatCard, feeTone } from '@/components/ui'
 import { CollectButton } from '@/components/WhatsAppButtons'
 import { PaymentModal, GenerateMonthModal } from '@/components/PaymentForms'
+import { ScholarshipReviewModal } from '@/components/ScholarshipReview'
+import { useToast } from '@/components/toast'
+import { supabase, unwrap } from '@/lib/supabase'
 import { useCategories, useFees, usePayments, useStudents, primaryGuardian, type StudentRow } from '@/lib/api'
 import { ACCOUNT_LABEL, METHOD_LABEL, date, money, monthName, prettyPhone, shortDate, toISODate, today } from '@/lib/format'
 import { exportCsv } from '@/lib/csv'
-import type { FeeBalance } from '@/lib/types'
+import type { AccountStatus, FeeBalance } from '@/lib/types'
 
-type Filter = 'vencido' | 'por_vencer' | 'pendiente' | 'al_corriente' | 'todos'
+type Filter = 'vencido' | 'por_confirmar' | 'por_vencer' | 'pendiente' | 'al_corriente' | 'todos'
 const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
 export default function Billing() {
@@ -22,6 +26,11 @@ export default function Billing() {
   const [view, setView] = useState<'alumnos' | 'resumen' | 'pagos'>('alumnos')
   const [paying, setPaying] = useState<StudentRow | null>(null)
   const [generating, setGenerating] = useState(false)
+  const [reviewing, setReviewing] = useState<{ fee: FeeBalance; name: string } | null>(null)
+  const [waiveAll, setWaiveAll] = useState(false)
+  const [waiving, setWaiving] = useState(false)
+  const qc = useQueryClient()
+  const toast = useToast()
   const students = useStudents()
   const categories = useCategories()
   const fees = useFees()
@@ -49,13 +58,16 @@ export default function Billing() {
         const balance = open.reduce((a, f) => a + Number(f.balance), 0)
         const late = open.reduce((a, f) => a + Number(f.late_fee), 0)
         const overdue = open.some((f) => f.status === 'vencido')
-        const dueSoon = open.some((f) => f.status !== 'vencido' && f.due_date <= soon && f.due_date >= t)
-        const status = overdue ? 'vencido' : open.some((f) => f.status === 'parcial') ? 'parcial' : open.length ? 'pendiente' : 'al_corriente'
-        return { s, open, balance, late, overdue, dueSoon, status: status as 'vencido' | 'parcial' | 'pendiente' | 'al_corriente', hasFees: list.length > 0 }
+        const toReview = open.filter((f) => f.status === 'por_confirmar')
+        const collectible = open.filter((f) => f.status !== 'por_confirmar').reduce((a, f) => a + Number(f.balance), 0)
+        const dueSoon = open.some((f) => f.status !== 'vencido' && f.status !== 'por_confirmar' && f.due_date <= soon && f.due_date >= t)
+        const status = overdue ? 'vencido' : toReview.length ? 'por_confirmar' : open.some((f) => f.status === 'parcial') ? 'parcial' : open.length ? 'pendiente' : 'al_corriente'
+        return { s, open, balance, late, overdue, toReview, collectible, dueSoon, status: status as AccountStatus, hasFees: list.length > 0 }
       })
       .filter((r) =>
         filter === 'todos' ? true :
         filter === 'vencido' ? r.overdue :
+        filter === 'por_confirmar' ? r.toReview.length > 0 :
         filter === 'por_vencer' ? r.dueSoon :
         filter === 'pendiente' ? r.balance > 0 :
         r.balance === 0 && r.hasFees)
@@ -66,13 +78,30 @@ export default function Billing() {
     const active = new Set((students.data ?? []).filter((s) => s.status === 'activo').map((s) => s.id))
     const open = (fees.data ?? []).filter((f) => Number(f.balance) > 0 && active.has(f.student_id))
     return {
+      review: open.filter((f) => f.status === 'por_confirmar').reduce((a, f) => a + Number(f.balance), 0),
+      reviewCount: open.filter((f) => f.status === 'por_confirmar').length,
+      scholarshipMonth: (fees.data ?? []).filter((f) => f.period === monthStart).reduce((a, f) => a + Number(f.discount), 0),
+      scholarshipAll: (fees.data ?? []).reduce((a, f) => a + Number(f.discount), 0),
+      lateFees: open.filter((f) => Number(f.late_fee) > 0),
       pending: open.reduce((a, f) => a + Number(f.balance), 0),
       overdue: open.filter((f) => f.status === 'vencido').reduce((a, f) => a + Number(f.balance), 0),
-      soon: open.filter((f) => f.status !== 'vencido' && f.due_date <= soon).reduce((a, f) => a + Number(f.balance), 0),
       collected: (payments.data ?? []).filter((p) => p.paid_at >= monthStart).reduce((a, p) => a + Number(p.amount), 0),
       open,
     }
   }, [fees.data, students.data, payments.data, soon, monthStart])
+
+  const lateTotal = totals.lateFees.reduce((a, f) => a + Number(f.late_fee), 0)
+  const doWaiveAll = async () => {
+    setWaiving(true)
+    try {
+      for (const f of totals.lateFees) {
+        unwrap(await supabase.from('fees').update({ late_fee_waived: Number(f.late_fee_waived) + Number(f.late_fee) }).eq('id', f.id))
+      }
+      await Promise.all(['fees', 'accounts'].map((k) => qc.invalidateQueries({ queryKey: [k] })))
+      toast.ok(`Se perdonaron ${money(lateTotal)} de recargos`)
+      setWaiveAll(false)
+    } catch (e) { toast.error(e) } finally { setWaiving(false) }
+  }
 
   const setFilter = (f: Filter) => setParams({ f }, { replace: true })
   const doExport = () =>
@@ -87,14 +116,16 @@ export default function Billing() {
     <>
       <PageHeader title="Mensualidades y pagos"
         actions={<>
+          {lateTotal > 0 && <Button variant="secondary" icon={Eraser} onClick={() => setWaiveAll(true)}>Perdonar recargos</Button>}
           <Button variant="secondary" icon={CalendarPlus} onClick={() => setGenerating(true)}>Generar mensualidades</Button>
           <Button variant="secondary" icon={Download} onClick={doExport} disabled={!rows.length}>Exportar</Button>
         </>} />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
         <StatCard label="Cobrado este mes" value={money(totals.collected)} icon={TrendingUp} tone="ok" onClick={() => setView('pagos')} />
-        <StatCard label="Vencido" value={money(totals.overdue)} icon={AlertTriangle} tone={totals.overdue ? 'bad' : undefined} onClick={() => { setView('alumnos'); setFilter('vencido') }} />
-        <StatCard label="Vence en 7 días" value={money(totals.soon)} icon={Clock} onClick={() => { setView('alumnos'); setFilter('por_vencer') }} />
+        <StatCard label="Vencido" value={money(totals.overdue)} icon={AlertTriangle} tone={totals.overdue ? 'bad' : undefined} hint={lateTotal > 0 ? `Incluye ${money(lateTotal)} de recargos` : undefined} onClick={() => { setView('alumnos'); setFilter('vencido') }} />
+        <StatCard label="¿Beca? Por confirmar" value={money(totals.review)} icon={HelpCircle} hint={`${totals.reviewCount} cargos por revisar`} onClick={() => { setView('alumnos'); setFilter('por_confirmar') }} />
+        <StatCard label="Becado este mes" value={money(totals.scholarshipMonth)} icon={GraduationCap} hint={`Temporada: ${money(totals.scholarshipAll)}`} onClick={() => setView('resumen')} />
         <StatCard label="Total pendiente" value={money(totals.pending)} icon={Wallet} onClick={() => { setView('alumnos'); setFilter('pendiente') }} />
       </div>
 
@@ -105,7 +136,7 @@ export default function Billing() {
         view === 'alumnos' ? (
           <>
             <div className="mb-3 flex flex-wrap gap-2">
-              {([['vencido', 'Vencidos'], ['por_vencer', 'Por vencer'], ['pendiente', 'Con saldo'], ['al_corriente', 'Al corriente'], ['todos', 'Todos']] as [Filter, string][]).map(([id, label]) => (
+              {([['vencido', 'Vencidos'], ['por_confirmar', '¿Beca? Por confirmar'], ['por_vencer', 'Por vencer'], ['pendiente', 'Con saldo'], ['al_corriente', 'Al corriente'], ['todos', 'Todos']] as [Filter, string][]).map(([id, label]) => (
                 <button key={id} onClick={() => setFilter(id)}
                   className={`rounded-full border px-4 py-2 text-sm font-medium ${filter === id ? 'border-brand bg-brand text-ink' : 'border-ink-600 text-muted hover:text-white'}`}>{label}</button>
               ))}
@@ -150,7 +181,8 @@ export default function Billing() {
                           </div>
                           {r.balance > 0 && (
                             <div className="flex gap-2">
-                              <CollectButton student={r.s} size="md" />
+                              {r.toReview.length > 0 && <Button icon={HelpCircle} onClick={() => setReviewing({ fee: r.toReview[0], name: r.s.full_name })}>¿Beca?</Button>}
+                              {r.collectible > 0 && <CollectButton student={r.s} size="md" />}
                               <Button variant="secondary" icon={Receipt} onClick={() => setPaying(r.s)}>Pago</Button>
                             </div>
                           )}
@@ -162,17 +194,20 @@ export default function Billing() {
               </ul>
             )}
           </>
-        ) : view === 'resumen' ? <Summary open={totals.open} students={students.data ?? []} catName={catName} /> : (
+        ) : view === 'resumen' ? <Summary open={totals.open} all={fees.data ?? []} students={students.data ?? []} catName={catName} /> : (
           <PaymentsList students={students.data ?? []} fees={fees.data ?? []} />
         )}
 
       {paying && <PaymentModal student={paying} onClose={() => setPaying(null)} />}
+      {reviewing && <ScholarshipReviewModal fee={reviewing.fee} studentName={reviewing.name} onClose={() => setReviewing(null)} />}
+      <ConfirmDialog open={waiveAll} onClose={() => setWaiveAll(false)} onConfirm={doWaiveAll} loading={waiving} title="Perdonar recargos" confirmLabel={`Perdonar ${money(lateTotal)}`}
+        text={<>Se perdonarán <b className="text-white">{money(lateTotal)}</b> de recargos acumulados en {totals.lateFees.length} mensualidades. El precio de la mensualidad sigue pendiente, y si no se paga, a partir de mañana el recargo vuelve a correr. También puedes perdonarlos uno por uno desde el expediente de cada alumno.</>} />
       {generating && <GenerateMonthModal students={students.data ?? []} onClose={() => setGenerating(false)} />}
     </>
   )
 }
 
-function Summary({ open, students, catName }: { open: FeeBalance[]; students: StudentRow[]; catName: (id: string | null) => string }) {
+function Summary({ open, all, students, catName }: { open: FeeBalance[]; all: FeeBalance[]; students: StudentRow[]; catName: (id: string | null) => string }) {
   const catOf = new Map(students.map((s) => [s.id, s.category_id]))
   const byCat = new Map<string, { n: Set<string>; total: number; overdue: number }>()
   const byPeriod = new Map<string, { n: number; total: number }>()
@@ -185,8 +220,31 @@ function Summary({ open, students, catName }: { open: FeeBalance[]; students: St
     p.n++; p.total += Number(f.balance)
     byPeriod.set(f.period, p)
   }
+  const becas = new Map<string, { n: Set<string>; months: Map<string, number>; total: number }>()
+  const becaMonths = [...new Set(all.filter((f) => Number(f.discount) > 0).map((f) => f.period))].sort()
+  for (const f of all) {
+    if (!(Number(f.discount) > 0)) continue
+    const k = catOf.get(f.student_id) ?? ''
+    const b = becas.get(k) ?? { n: new Set(), months: new Map(), total: 0 }
+    b.n.add(f.student_id); b.total += Number(f.discount)
+    b.months.set(f.period, (b.months.get(f.period) ?? 0) + Number(f.discount))
+    becas.set(k, b)
+  }
+  const becaTotal = [...becas.values()].reduce((a, b) => a + b.total, 0)
   return (
     <div className="grid gap-5 lg:grid-cols-2">
+      <Card className="overflow-x-auto lg:col-span-2">
+        <h3 className="border-b border-ink-600 px-5 py-4 font-display text-lg font-bold uppercase tracking-wide">Becas · total {money(becaTotal)}</h3>
+        <table className="table-base">
+          <thead><tr><th>Categoría</th><th>Becados</th>{becaMonths.map((m) => <th key={m}>{monthName(m)}</th>)}<th>Total</th></tr></thead>
+          <tbody>
+            {[...becas.entries()].sort((a, b) => b[1].total - a[1].total).map(([k, v]) => (
+              <tr key={k}><td>{catName(k || null)}</td><td>{v.n.size}</td>{becaMonths.map((m) => <td key={m}>{money(v.months.get(m) ?? 0)}</td>)}<td className="font-semibold text-ok">{money(v.total)}</td></tr>
+            ))}
+            {becas.size === 0 && <tr><td colSpan={3 + becaMonths.length} className="py-8 text-center text-muted">Aún no hay becas confirmadas. Revisa los cargos "¿Beca? Por confirmar".</td></tr>}
+          </tbody>
+        </table>
+      </Card>
       <Card className="overflow-x-auto">
         <h3 className="border-b border-ink-600 px-5 py-4 font-display text-lg font-bold uppercase tracking-wide">Adeudos por categoría</h3>
         <table className="table-base">

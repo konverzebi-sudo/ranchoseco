@@ -76,7 +76,7 @@ function CollectModal({ student, onClose }: { student: StudentRow; onClose: () =
   const { data: fees } = useFees()
   const { data: token } = usePortalToken(student.id)
   const guardian = primaryGuardian(student)
-  const studentFees = useMemo(() => (fees ?? []).filter((f) => f.student_id === student.id && Number(f.balance) > 0), [fees, student.id])
+  const studentFees = useMemo(() => (fees ?? []).filter((f) => f.student_id === student.id && Number(f.balance) > 0 && f.status !== 'por_confirmar'), [fees, student.id])
   const built = useMemo(
     () => settings && collectionMessage(settings.collection_template, student.full_name, studentFees, token ? portalUrl(token) : undefined),
     [settings, student.full_name, studentFees, token],

@@ -51,6 +51,7 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase/migrations/0003_portal.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0004_open_mode.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0006_late_fees.sql', 'utf8'))
+  await db.exec(readFileSync('supabase/migrations/0007_becas.sql', 'utf8'))
   await db.exec('update academia.settings set open_mode = false') // las pruebas por rol corren con el sitio cerrado
 
   const users: [string, string, string][] = [
@@ -321,5 +322,28 @@ describe('recargos por pago tardío ($550 del 1 al 5, $50 por día desde el 6)',
     const f = p.fees.find((x: any) => x.id === old)
     expect(f).toMatchObject({ late_fee: 0, total_due: 550 })
     expect(p.academy.late_fee_per_day).toBe(50)
+  })
+})
+
+describe('becas y montos por confirmar', () => {
+  const bal = async (id: string) =>
+    (await as<any>(ADMIN, 'select discount::float, late_fee::float, total_due::float, balance::float, status from academia.fee_balances where id = $1', [id])).rows[0]
+  let fee: string
+  beforeAll(async () => {
+    fee = (await db.query<{ id: string }>(`insert into academia.fees (student_id, concept, period, amount, due_date, review, late_fee_per_day)
+      values ($1, 'Mensualidad', '2026-07-01', 550, current_date - 10, 'confirmar_beca', 50) returning id`, [STU_2])).rows[0].id
+    await db.query(`insert into academia.payments (fee_id, student_id, amount, paid_at) values ($1, $2, 300, current_date - 12)`, [fee, STU_2])
+  })
+  it('por confirmar: no corre recargo ni se marca vencido', async () => {
+    expect(await bal(fee)).toMatchObject({ late_fee: 0, balance: 250, status: 'por_confirmar' })
+  })
+  it('confirmar beca: el descuento cubre la diferencia y queda pagado', async () => {
+    await as(ADMIN, `update academia.fees set discount = 250, discount_reason = 'Beca', review = null where id = $1`, [fee])
+    expect(await bal(fee)).toMatchObject({ discount: 250, total_due: 300, balance: 0, status: 'pagado' })
+    const acc = (await as<any>(ADMIN, 'select scholarships::float from academia.student_accounts where student_id = $1', [STU_2])).rows[0]
+    expect(acc.scholarships).toBe(250)
+  })
+  it('el descuento no puede ser mayor al precio', async () => {
+    await expect(as(ADMIN, `update academia.fees set discount = 600 where id = $1`, [fee])).rejects.toThrow()
   })
 })

@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { startOfMonth } from 'date-fns'
-import { Users, UserCog, ClipboardCheck, AlertTriangle, Wallet, TrendingUp, Clock, Plus, ChevronRight, Trophy, Dumbbell } from 'lucide-react'
+import { Users, UserCog, ClipboardCheck, AlertTriangle, Wallet, TrendingUp, Clock, Plus, ChevronRight, Trophy, Dumbbell, HelpCircle } from 'lucide-react'
 import { Avatar, Button, Card, ErrorState, PageHeader, Spinner, StatCard, Badge } from '@/components/ui'
 import { CollectButton } from '@/components/WhatsAppButtons'
 import { useAccounts, useCategories, useCoaches, useFees, useMatches, usePayments, useStudents, useTrainings, useAttendanceDetail } from '@/lib/api'
@@ -72,7 +72,7 @@ export default function Dashboard() {
             <StatCard label="Alumnos activos" value={data.active.length} icon={Users} onClick={() => nav('/alumnos')} />
             <StatCard label="Profesores" value={(coaches.data ?? []).filter((c) => c.active).length} icon={UserCog} onClick={() => nav('/profesores')} />
             <StatCard label="Mensualidades pendientes" value={data.openFees.length} icon={Clock} onClick={() => nav('/cobranza?f=pendiente')} />
-            <StatCard label="Categorías" value={categories.data?.length ?? 0} icon={Trophy} onClick={() => nav('/categorias')} />
+            <StatCard label="¿Beca? Por confirmar" value={data.openFees.filter((f) => f.status === 'por_confirmar').length} icon={HelpCircle} hint="Pagos menores a la cuota" onClick={() => nav('/cobranza?f=por_confirmar')} />
           </div>
 
           <div className="grid gap-6 lg:grid-cols-3">

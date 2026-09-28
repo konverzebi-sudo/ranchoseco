@@ -24,7 +24,7 @@ export function fillTemplate(template: string, vars: Record<string, string>) {
 
 /** Mensaje de cobranza con el saldo real de los cargos pendientes. */
 export function collectionMessage(template: string, studentName: string, fees: FeeBalance[], portalUrl?: string) {
-  const pending = fees.filter((f) => Number(f.balance) > 0).sort((a, b) => a.period.localeCompare(b.period))
+  const pending = fees.filter((f) => Number(f.balance) > 0 && f.status !== 'por_confirmar').sort((a, b) => a.period.localeCompare(b.period))
   const months = [...new Set(pending.map((f) => monthOnly(f.period)))]
   const monthText = months.length <= 1 ? (months[0] ?? '') : `${months.slice(0, -1).join(', ')} y ${months.at(-1)}`
   const total = pending.reduce((s, f) => s + Number(f.balance), 0)

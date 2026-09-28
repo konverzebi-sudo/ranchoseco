@@ -51,6 +51,7 @@ export default function StudentForm({ student, defaultCategory, onClose, onSaved
     emergency_contact_name: student?.emergency_contact_name ?? '',
     emergency_contact_phone: student?.emergency_contact_phone ?? '',
     notes: student?.notes ?? '',
+    monthly_fee: student?.monthly_fee != null ? String(student.monthly_fee) : '',
     g_name: g?.full_name ?? '',
     g_phone: g?.phone ?? '',
     g_email: g?.email ?? '',
@@ -85,6 +86,7 @@ export default function StudentForm({ student, defaultCategory, onClose, onSaved
         emergency_contact_name: f.emergency_contact_name.trim() || null,
         emergency_contact_phone: f.emergency_contact_phone.trim() || null,
         notes: f.notes.trim() || null,
+        monthly_fee: f.monthly_fee === '' ? null : Number(f.monthly_fee),
       }
       let id = student?.id
       if (id) unwrap(await supabase.from('students').update(payload).eq('id', id))
@@ -147,6 +149,9 @@ export default function StudentForm({ student, defaultCategory, onClose, onSaved
           </Field>
           <Field label="Fecha de inscripción">
             <Input type="date" value={f.enrolled_at} onChange={set('enrolled_at')} />
+          </Field>
+          <Field label="Cuota especial (beca)" hint="Vacío = cuota normal de su categoría. Ej. 300 si tiene beca parcial; 0 si es beca completa.">
+            <Input type="number" min="0" inputMode="decimal" value={f.monthly_fee} onChange={set('monthly_fee')} placeholder="Cuota normal" />
           </Field>
           <Field label="Estatus">
             <Select value={f.status} onChange={set('status')}>

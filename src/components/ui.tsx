@@ -142,7 +142,7 @@ export function Badge({ tone = 'neutral', children, className }: { tone?: Tone; 
 }
 
 export const feeTone = (s: string): Tone =>
-  s === 'pagado' || s === 'al_corriente' ? 'ok' : s === 'vencido' ? 'bad' : s === 'parcial' ? 'warn' : 'info'
+  s === 'pagado' || s === 'al_corriente' ? 'ok' : s === 'vencido' ? 'bad' : s === 'parcial' || s === 'por_confirmar' ? 'warn' : 'info'
 
 export function Spinner({ label = 'Cargando…' }: { label?: string }) {
   return (

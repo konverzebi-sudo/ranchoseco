@@ -13,6 +13,7 @@ import { CollectButton } from '@/components/WhatsAppButtons'
 import { PaymentModal, FeeModal } from '@/components/PaymentForms'
 import { EvaluationModal, EvolutionChart, GroupSummary, SkillRadar } from '@/components/Evaluation'
 import ReportPanel from '@/components/ReportPanel'
+import { ScholarshipReviewModal } from '@/components/ScholarshipReview'
 import { useToast } from '@/components/toast'
 import {
   useAccounts, useAttendanceDetail, useCategories, useCoaches, useCoachCategories, useEvaluations, useFees, useMatches, useMatchPlayers,
@@ -311,6 +312,7 @@ function PaymentsTab({ s }: { s: StudentRow }) {
   const [pay, setPay] = useState<string | null | undefined>(undefined)
   const [newFee, setNewFee] = useState(false)
   const [waive, setWaive] = useState<FeeBalance | null>(null)
+  const [review, setReview] = useState<FeeBalance | null>(null)
   const [waiving, setWaiving] = useState(false)
   const qc = useQueryClient()
   const doWaive = async () => {
@@ -324,6 +326,7 @@ function PaymentsTab({ s }: { s: StudentRow }) {
     } catch (e) { toast.error(e) } finally { setWaiving(false) }
   }
   const balance = (fees.data ?? []).reduce((t, f) => t + Number(f.balance), 0)
+  const scholarship = (fees.data ?? []).reduce((t, f) => t + Number(f.discount), 0)
   const openReceipt = async (path: string) => {
     const url = await signedUrl(BUCKETS.receipts, path, 300)
     if (url) window.open(url, '_blank', 'noopener'); else toast.error('No se encontró el comprobante.')
@@ -335,6 +338,12 @@ function PaymentsTab({ s }: { s: StudentRow }) {
         <Card className="flex-1 p-4">
           <p className="text-xs uppercase tracking-wider text-muted">Saldo pendiente</p>
           <p className={`font-display text-3xl font-bold ${balance > 0 ? 'text-brand' : 'text-ok'}`}>{money(balance)}</p>
+          {(scholarship > 0 || s.monthly_fee != null) && (
+            <p className="mt-1 text-xs text-muted">
+              {s.monthly_fee != null && <>Cuota especial: <span className="text-white">{money(s.monthly_fee)}</span> · </>}
+              Becado a la fecha: <span className="text-ok">{money(scholarship)}</span>
+            </p>
+          )}
         </Card>
         <div className="flex flex-wrap gap-2">
           <Button icon={Wallet} onClick={() => setPay(null)} disabled={balance <= 0}>Registrar pago</Button>
@@ -343,16 +352,17 @@ function PaymentsTab({ s }: { s: StudentRow }) {
         </div>
       </div>
       <Card className="overflow-x-auto">
-        <table className="table-base min-w-[760px]">
-          <thead><tr><th>Concepto</th><th>Vence</th><th>Importe</th><th>Recargo</th><th>Pagado</th><th>Saldo</th><th>Estado</th><th /></tr></thead>
+        <table className="table-base min-w-[860px]">
+          <thead><tr><th>Concepto</th><th>Vence</th><th>Precio</th><th>Beca</th><th>Recargo</th><th>Pagado</th><th>Saldo</th><th>Estado</th><th /></tr></thead>
           <tbody>
-            {fees.isLoading ? <tr><td colSpan={8}><Spinner /></td></tr> :
-              !fees.data?.length ? <tr><td colSpan={8} className="py-8 text-center text-muted">Sin cargos registrados.</td></tr> :
+            {fees.isLoading ? <tr><td colSpan={9}><Spinner /></td></tr> :
+              !fees.data?.length ? <tr><td colSpan={9} className="py-8 text-center text-muted">Sin cargos registrados.</td></tr> :
               fees.data.map((f) => (
                 <tr key={f.id}>
                   <td className="font-medium">{f.concept} {monthName(f.period)}</td>
                   <td>{shortDate(f.due_date)}</td>
                   <td>{money(f.amount)}</td>
+                  <td>{Number(f.discount) > 0 ? <span className="text-ok">−{money(f.discount)}<span className="block text-xs text-muted">{f.discount_reason ?? 'Descuento'}</span></span> : <span className="text-muted">—</span>}</td>
                   <td>
                     {Number(f.late_fee) > 0 ? (
                       <span className="text-bad">{money(f.late_fee)}<span className="block text-xs text-muted">{f.late_days} días × {money(f.late_fee_per_day)}</span></span>
@@ -363,7 +373,8 @@ function PaymentsTab({ s }: { s: StudentRow }) {
                   <td><Badge tone={feeTone(f.status)}>{FEE_LABEL[f.status]}</Badge></td>
                   <td className="text-right">
                     <div className="flex justify-end gap-1">
-                      {Number(f.late_fee) > 0 && <Button size="sm" variant="ghost" onClick={() => setWaive(f)}>Condonar recargo</Button>}
+                      {f.status === 'por_confirmar' && <Button size="sm" onClick={() => setReview(f)}>¿Beca o adeudo?</Button>}
+                      {Number(f.late_fee) > 0 && <Button size="sm" variant="ghost" onClick={() => setWaive(f)}>Perdonar recargo</Button>}
                       {Number(f.balance) > 0 && <Button size="sm" variant="secondary" onClick={() => setPay(f.id)}>Pagar</Button>}
                     </div>
                   </td>
@@ -394,7 +405,8 @@ function PaymentsTab({ s }: { s: StudentRow }) {
       </Card>
       {pay !== undefined && <PaymentModal student={s} feeId={pay ?? undefined} onClose={() => setPay(undefined)} />}
       {newFee && <FeeModal student={s} onClose={() => setNewFee(false)} />}
-      <ConfirmDialog open={!!waive} onClose={() => setWaive(null)} onConfirm={doWaive} loading={waiving} title="Condonar recargo" confirmLabel="Condonar"
+      {review && <ScholarshipReviewModal fee={review} onClose={() => setReview(null)} />}
+      <ConfirmDialog open={!!waive} onClose={() => setWaive(null)} onConfirm={doWaive} loading={waiving} title="Perdonar recargo" confirmLabel="Perdonar"
         text={waive ? <>Se perdonan <b className="text-white">{money(waive.late_fee)}</b> de recargo de {waive.concept} {monthName(waive.period)}. Si el pago sigue pendiente, a partir de mañana el recargo vuelve a correr.</> : null} />
     </div>
   )
