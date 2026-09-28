@@ -393,7 +393,7 @@ function PaymentsTab({ s }: { s: StudentRow }) {
           )}
         </Card>
         <div className="flex flex-wrap gap-2">
-          <Button icon={Wallet} onClick={() => setPay(null)} disabled={balance <= 0}>Registrar pago</Button>
+          <Button icon={Wallet} onClick={() => setPay(null)}>{balance > 0 ? 'Registrar pago' : 'Pagar por adelantado'}</Button>
           <Button variant="secondary" icon={Plus} onClick={() => setNewFee(true)}>Nuevo cargo</Button>
           {balance > 0 && <CollectButton student={s} size="md" label="WhatsApp" />}
         </div>

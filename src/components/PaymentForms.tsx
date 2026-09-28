@@ -4,7 +4,7 @@ import { Save, Paperclip } from 'lucide-react'
 import { addMonths, startOfMonth, setDate } from 'date-fns'
 import { Button, Field, Input, Modal, Select, Textarea } from './ui'
 import { useToast } from './toast'
-import { useCategories, useFees, useSettings, type StudentRow } from '@/lib/api'
+import { useCategories, useFees, useSettings, useStudents, type StudentRow } from '@/lib/api'
 import { supabase, unwrap, BUCKETS } from '@/lib/supabase'
 import { METHOD_LABEL, date, money, monthName, toISODate, today } from '@/lib/format'
 import { TIER_LABEL, joinTier, tierAmount, tierNote, type JoinTier } from '@/lib/prorate'
@@ -17,14 +17,48 @@ async function refresh(qc: ReturnType<typeof useQueryClient>) {
   await Promise.all(PAY_KEYS.map((k) => qc.invalidateQueries({ queryKey: k })))
 }
 
-/** Registrar pago completo o parcial sobre un cargo pendiente. */
+/**
+ * Precio de la mensualidad de un alumno: normal de su categoría y, si aplica,
+ * el descuento por promo de hermanos (vigente) o por su cuota especial / beca.
+ */
+export function useMonthlyPrice(student: StudentRow) {
+  const { data: settings } = useSettings()
+  const { data: categories } = useCategories()
+  const { data: students } = useStudents()
+  const cat = categories?.find((c) => c.id === student.category_id)
+  const regular = Number(cat?.monthly_fee ?? settings?.default_monthly_fee ?? 0)
+  const group = student.sibling_group_id ? (students ?? []).filter((x) => x.sibling_group_id === student.sibling_group_id) : []
+  const promoValid = group.length >= 2 && group.every((x) => x.status !== 'baja')
+  const promo = promoValid ? memberPrice(student, student.sibling_order ?? 1, settings?.sibling_prices?.map(Number)) : null
+  const target = promo ?? (student.monthly_fee != null ? Number(student.monthly_fee) : null)
+  const discount = target != null ? Math.max(0, regular - target) : 0
+  return { regular, discount, toPay: regular - discount, reason: promo != null ? PROMO_REASON : discount > 0 ? 'Beca' : null, dueDay: settings?.due_day ?? 8 }
+}
+
+const ADV = 'adv:'
+
+/** Registrar pago completo o parcial sobre un cargo pendiente, o pagar meses por adelantado. */
 export function PaymentModal({ student, feeId, onClose }: { student: StudentRow; feeId?: string; onClose: () => void }) {
   const fees = useFees(student.id)
+  const price = useMonthlyPrice(student)
   const qc = useQueryClient()
   const toast = useToast()
   const open = useMemo(() => (fees.data ?? []).filter((f) => Number(f.balance) > 0).sort((a, b) => a.period.localeCompare(b.period)), [fees.data])
+  // Próximos 3 meses que aún no tienen mensualidad: se pueden pagar por adelantado
+  const advance = useMemo(() => {
+    const taken = new Set((fees.data ?? []).filter((f) => f.concept === 'Mensualidad').map((f) => f.period.slice(0, 10)))
+    const out: string[] = []
+    for (let i = 0; out.length < 3 && i < 12; i++) {
+      const p = toISODate(startOfMonth(addMonths(new Date(), i)))
+      if (!taken.has(p)) out.push(p)
+    }
+    return out
+  }, [fees.data])
   const [selected, setSelected] = useState(feeId ?? '')
-  const fee = open.find((f) => f.id === (selected || open[0]?.id))
+  const current = selected || (open[0]?.id ?? (advance[0] ? ADV + advance[0] : ''))
+  const advPeriod = current.startsWith(ADV) ? current.slice(ADV.length) : null
+  const existing = open.find((f) => f.id === current)
+  const fee = existing ?? (advPeriod ? { id: '', concept: 'Mensualidad', period: advPeriod, balance: price.toPay, late_fee: 0 } : undefined)
   const [amount, setAmount] = useState('')
   const [method, setMethod] = useState<PaymentMethod>('efectivo')
   const [paidAt, setPaidAt] = useState(today())
@@ -36,6 +70,7 @@ export function PaymentModal({ student, feeId, onClose }: { student: StudentRow;
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     if (!fee) return
+    if (advPeriod && !(price.regular > 0)) return toast.error('Configura la mensualidad en Categorías o Configuración.')
     if (!(value > 0)) return toast.error('El importe debe ser mayor a cero.')
     if (value > Number(fee.balance)) return toast.error(`El importe excede el saldo de ${money(fee.balance)}.`)
     setSaving(true)
@@ -47,8 +82,18 @@ export function PaymentModal({ student, feeId, onClose }: { student: StudentRow;
         const { error } = await supabase.storage.from(BUCKETS.receipts).upload(receipt_path, file, { contentType: file.type })
         if (error) throw new Error('No se pudo subir el comprobante: ' + error.message)
       }
+      let feeIdToPay = fee.id
+      if (advPeriod) {
+        // Pago adelantado: se crea la mensualidad de ese mes con su precio y luego se paga
+        const created = unwrap(await supabase.from('fees').insert({
+          student_id: student.id, concept: 'Mensualidad', period: advPeriod, amount: price.regular,
+          due_date: dueDateFor(advPeriod, price.dueDay), discount: price.discount, discount_reason: price.reason,
+          notes: 'Pagada por adelantado',
+        }).select('id').single()) as { id: string }
+        feeIdToPay = created.id
+      }
       unwrap(await supabase.from('payments').insert({
-        fee_id: fee.id, student_id: student.id, amount: value, paid_at: paidAt, method, notes: notes.trim() || null, receipt_path,
+        fee_id: feeIdToPay, student_id: student.id, amount: value, paid_at: paidAt, method, notes: notes.trim() || null, receipt_path,
       }))
       await refresh(qc)
       toast.ok(value >= Number(fee.balance) ? `Pago registrado. ${fee.concept} liquidada.` : `Pago parcial registrado. Resta ${money(Number(fee.balance) - value)}.`)
@@ -62,20 +107,33 @@ export function PaymentModal({ student, feeId, onClose }: { student: StudentRow;
 
   return (
     <Modal open onClose={onClose} title="Registrar pago"
-      footer={open.length ? <>
+      footer={open.length || advance.length ? <>
         <Button variant="secondary" onClick={onClose}>Cancelar</Button>
         <Button type="submit" form="pay-form" icon={Save} loading={saving}>Registrar {money(value)}</Button>
       </> : undefined}>
-      {fees.isLoading ? null : open.length === 0 ? (
-        <p className="text-sm text-muted">{student.full_name} no tiene mensualidades pendientes. Crea primero un cargo.</p>
+      {fees.isLoading ? null : open.length === 0 && advance.length === 0 ? (
+        <p className="text-sm text-muted">{student.full_name} no tiene pagos pendientes ni meses por adelantar.</p>
       ) : (
         <form id="pay-form" onSubmit={submit} className="space-y-4">
           <p className="text-sm text-muted">Alumno: <span className="font-medium text-white">{student.full_name}</span></p>
           <Field label="Concepto a pagar">
-            <Select value={fee?.id} onChange={(e) => { setSelected(e.target.value); setAmount('') }}>
-              {open.map((f) => <option key={f.id} value={f.id}>{f.concept} {monthName(f.period)} — saldo {money(f.balance)}</option>)}
+            <Select value={current} onChange={(e) => { setSelected(e.target.value); setAmount('') }}>
+              {open.length > 0 && (
+                <optgroup label="Pendientes">
+                  {open.map((f) => <option key={f.id} value={f.id}>{f.concept} {monthName(f.period)} — saldo {money(f.balance)}</option>)}
+                </optgroup>
+              )}
+              {advance.length > 0 && (
+                <optgroup label="Pagar por adelantado">
+                  {advance.map((p) => <option key={p} value={ADV + p}>Mensualidad {monthName(p)} — {money(price.toPay)}</option>)}
+                </optgroup>
+              )}
             </Select>
           </Field>
+          {open.length === 0 && <p className="-mt-2 text-xs text-ok">Está al corriente. Puedes registrar un pago adelantado.</p>}
+          {advPeriod && price.discount > 0 && (
+            <p className="-mt-2 text-xs text-muted">Precio normal {money(price.regular)} − {price.reason} {money(price.discount)} = {money(price.toPay)}</p>
+          )}
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Importe" hint={`Saldo: ${money(fee?.balance)}${Number(fee?.late_fee) > 0 ? ` (incluye ${money(fee?.late_fee)} de recargo)` : ''}. Déjalo así para liquidar o escribe un pago parcial.`}>
               <Input type="number" inputMode="decimal" min="0.01" step="0.01" max={fee?.balance} placeholder={String(fee?.balance ?? '')} value={amount} onChange={(e) => setAmount(e.target.value)} />
