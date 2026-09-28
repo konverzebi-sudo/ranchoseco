@@ -116,16 +116,28 @@ export function categoryResults(opts: {
     if (r) r.students++
   }
   let unassignedIncome = 0
+  // Un alumno en clase extra (p. ej. Porteros) reparte su pago en partes iguales entre
+  // su categoría y cada clase extra; los gastos generales sólo se cargan en su categoría.
+  const extrasOf = new Map<string, string[]>()
+  for (const x of extraClasses) {
+    if (!extraIds.has(x.category_id) || !rows.has(x.category_id)) continue
+    extrasOf.set(x.student_id, [...(extrasOf.get(x.student_id) ?? []), x.category_id])
+  }
+  const shareOf = (studentId: string) => {
+    const base = catOf.get(studentId)
+    const cats = [...(base && rows.has(base) ? [base] : []), ...(extrasOf.get(studentId) ?? [])]
+    return cats
+  }
   for (const p of payments) {
     if (!p.paid_at.startsWith(month)) continue
-    const r = rows.get(catOf.get(p.student_id) ?? '')
-    if (r) r.income += Number(p.amount)
-    else unassignedIncome += Number(p.amount)
+    const cats = shareOf(p.student_id)
+    if (!cats.length) { unassignedIncome += Number(p.amount); continue }
+    for (const c of cats) rows.get(c)!.income += Number(p.amount) / cats.length
   }
   for (const f of fees) {
     if (!f.period.startsWith(month)) continue
-    const r = rows.get(catOf.get(f.student_id) ?? '')
-    if (r) r.scholarships += Number(f.discount)
+    const cats = shareOf(f.student_id)
+    for (const c of cats) rows.get(c)!.scholarships += Number(f.discount) / cats.length
   }
 
   // Sueldos: a sus categorías; los que no tienen categoría pasan a gastos generales

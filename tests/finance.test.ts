@@ -131,9 +131,13 @@ describe('clase extra (porteros) en el reporte', () => {
     expect(P.students).toBe(1)
     expect(P.generalExpenses).toBe(0)
   })
-  it('a porteros sólo se le resta el sueldo de su profe', () => {
-    expect(P.income).toBe(0)
+  it('el pago del portero se divide en 2: mitad a su categoría y mitad a Porteros', () => {
+    expect(A.income).toBe(550 + 275)
+    expect(P.income).toBe(275)
+    expect(r.totals.income).toBe(1100) // el total no se duplica
+  })
+  it('a porteros se le resta el sueldo de su profe, no gastos generales', () => {
     expect(P.salaries).toBe(1200)
-    expect(P.result).toBe(-1200)
+    expect(P.result).toBe(275 - 1200)
   })
 })

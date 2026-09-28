@@ -103,7 +103,7 @@ export default function CategoryResults() {
             <p className="flex items-start gap-2">
               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               <span>
-                <b className="text-white">Ingreso real</b>: pagos recibidos en el mes. <b className="text-white">No recibido (becas)</b>: dinero que se dejó de cobrar por becas; ya no está en el ingreso, por eso no se resta otra vez.
+                <b className="text-white">Ingreso real</b>: pagos recibidos en el mes (el pago de un alumno en clase extra, como Porteros, se divide en partes iguales entre su categoría y la clase extra). <b className="text-white">No recibido (becas)</b>: dinero que se dejó de cobrar por becas; ya no está en el ingreso, por eso no se resta otra vez.
                 {' '}<b className="text-white">Gastos generales</b>: todo lo de <Link to="/gastos" className="text-brand hover:underline">Gastos</Link> ({money(r0(data.generalTotal))} al mes ÷ {data.activeTotal} alumnos = {money(Math.round(data.perStudent * 100) / 100)} por alumno) × alumnos de la categoría.
               </span>
             </p>
