@@ -82,6 +82,22 @@ export default function Expenses() {
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              {(() => {
+                const freqs = new Set(coachRows.map((r) => r.p!.frequency))
+                const sameFreq = freqs.size === 1 ? [...freqs][0] : null
+                const totalAmount = coachRows.reduce((a, r) => a + Number(r.p!.amount), 0)
+                return (
+                  <tr className="bg-ink-900">
+                    <td className="font-display text-lg font-bold uppercase">Total sueldos</td>
+                    <td className="text-sm text-muted">{coachRows.length} profesores</td>
+                    <td className="font-semibold">{sameFreq ? <>{money(totalAmount)} <span className="text-xs font-normal text-muted">{FREQUENCY_LABEL[sameFreq]}</span></> : <span className="text-muted">—</span>}</td>
+                    <td className="font-display text-lg font-bold text-bad">{money(Math.round(salariesMonthly))}</td>
+                    <td>{activeCount ? <>{cents(salariesMonthly / activeCount)} <span className="text-xs text-muted">al mes por alumno (entre todos)</span></> : '—'}</td>
+                  </tr>
+                )
+              })()}
+            </tfoot>
           </table>
         </Card>
       )}
