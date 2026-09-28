@@ -110,3 +110,30 @@ describe('gastos en partes', () => {
     expect(expenseForMonth(e, '2027-02')).toBe(0)
   })
 })
+
+describe('clase extra (porteros) en el reporte', () => {
+  const r = categoryResults({
+    month: '2026-09',
+    categories: [cat('A', '2014'), { ...cat('P', 'Porteros'), is_extra: true }],
+    students: [{ id: 's1', category_id: 'A', status: 'activo' }, { id: 's2', category_id: 'A', status: 'activo' }],
+    payments: [pay('s1', '2026-09-05', 550), pay('s2', '2026-09-05', 550)],
+    fees: [], coaches: [{ id: 'jd', full_name: 'Juan de Dios', active: true }],
+    coachCategories: [{ coach_id: 'jd', category_id: 'P' }],
+    coachPay: [{ coach_id: 'jd', amount: 1200, frequency: 'mensual' }],
+    expenses: [{ id: 'r', name: 'Renta', amount: 1000, frequency: 'mensual', paid_month: null, paid_year: null, notes: null, active: true, sort_order: 0, down_payment: null, installments: null }],
+    extraClasses: [{ student_id: 's1', category_id: 'P' }],
+  })
+  const A = r.list.find((x) => x.id === 'A')!
+  const P = r.list.find((x) => x.id === 'P')!
+  it('el portero sigue contando en su categoría; los gastos generales no se duplican', () => {
+    expect(A.students).toBe(2)
+    expect(A.generalExpenses).toBe(1000)
+    expect(P.students).toBe(1)
+    expect(P.generalExpenses).toBe(0)
+  })
+  it('a porteros sólo se le resta el sueldo de su profe', () => {
+    expect(P.income).toBe(0)
+    expect(P.salaries).toBe(1200)
+    expect(P.result).toBe(-1200)
+  })
+})

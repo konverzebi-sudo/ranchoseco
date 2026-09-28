@@ -27,6 +27,12 @@ export interface Category {
   monthly_fee: number | null
   sort_order: number
   active: boolean
+  is_extra?: boolean
+}
+
+export interface ExtraClass {
+  student_id: string
+  category_id: string
 }
 
 export interface Coach {

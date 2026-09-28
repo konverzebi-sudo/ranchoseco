@@ -99,8 +99,11 @@ export function categoryResults(opts: {
   coachCategories: { coach_id: string; category_id: string }[]
   coachPay: CoachPay[]
   expenses?: Expense[]
+  extraClasses?: { student_id: string; category_id: string }[]
 }) {
-  const { month, categories, students, payments, fees, coaches, coachCategories, coachPay, expenses = [] } = opts
+  const { month, categories, students, payments, fees, coaches, coachCategories, coachPay, expenses = [], extraClasses = [] } = opts
+  const extraIds = new Set(categories.filter((c) => c.is_extra).map((c) => c.id))
+  const activeIds = new Set(students.filter((s) => s.status === 'activo').map((s) => s.id))
   const catOf = new Map(students.map((s) => [s.id, s.category_id]))
   const rows = new Map<string, CategoryResult>(
     categories.map((c) => [c.id, { id: c.id, name: c.name, students: 0, income: 0, scholarships: 0, generalExpenses: 0, salaries: 0, result: 0, coaches: [] }]),
@@ -143,9 +146,14 @@ export function categoryResults(opts: {
     }
   }
 
+  // Clases extra (p. ej. Porteros): cuentan a sus inscritos, pero no cargan gastos generales
+  for (const x of extraClasses) {
+    const r = rows.get(x.category_id)
+    if (r && extraIds.has(x.category_id) && activeIds.has(x.student_id)) r.students++
+  }
   const generalTotal = expenses.reduce((a, e) => a + expenseForMonth(e, month), 0) + unassignedSalaries
   const perStudent = activeTotal ? generalTotal / activeTotal : 0
-  for (const r of rows.values()) r.generalExpenses = perStudent * r.students
+  for (const r of rows.values()) r.generalExpenses = extraIds.has(r.id) ? 0 : perStudent * r.students
 
   const list = [...rows.values()].map((r) => ({ ...r, result: r.income - r.generalExpenses - r.salaries }))
   const sum = (k: 'students' | 'income' | 'scholarships' | 'generalExpenses' | 'salaries') => list.reduce((a, r) => a + r[k], 0)

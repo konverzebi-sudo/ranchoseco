@@ -5,7 +5,7 @@ import { startOfMonth } from 'date-fns'
 import { Check, X, Clock, FileCheck2, CheckCheck, ClipboardCheck, Download, Plus, Loader2 } from 'lucide-react'
 import { Avatar, Badge, Button, Card, Empty, ErrorState, Field, Input, PageHeader, Segmented, Select, Spinner, cx } from '@/components/ui'
 import { useToast } from '@/components/toast'
-import { useAttendanceDetail, useAttendanceFor, useCategories, useStudents, useTrainings } from '@/lib/api'
+import { useAttendanceDetail, useAttendanceFor, useCategories, useExtraClasses, useStudents, useTrainings } from '@/lib/api'
 import { supabase, unwrap } from '@/lib/supabase'
 import { ATTENDANCE_LABEL, date, time, toISODate, today } from '@/lib/format'
 import { attendanceRate, consecutiveAbsences } from '@/lib/stats'
@@ -51,7 +51,12 @@ function TakeAttendance() {
   useEffect(() => { if (!cat && categories.data?.length) setCat(categories.data[0].id) }, [cat, categories.data])
   useEffect(() => { setLocal({}); setTrainingId('') }, [cat, day])
 
-  const roster = useMemo(() => (students.data ?? []).filter((s) => s.category_id === cat && s.status === 'activo'), [students.data, cat])
+  const extras = useExtraClasses()
+  const isExtra = !!categories.data?.find((c) => c.id === cat)?.is_extra
+  const roster = useMemo(() => {
+    const members = new Set((extras.data ?? []).filter((x) => x.category_id === cat).map((x) => x.student_id))
+    return (students.data ?? []).filter((s) => s.status === 'activo' && (isExtra ? members.has(s.id) : s.category_id === cat))
+  }, [students.data, cat, isExtra, extras.data])
   const saved = useMemo(() => new Map((attendance.data ?? []).map((a) => [a.student_id, a.status])), [attendance.data])
   const statusOf = (id: string) => local[id] ?? saved.get(id)
   const marked = roster.filter((s) => statusOf(s.id)).length

@@ -7,6 +7,7 @@ import type {
   Coach,
   CoachPay,
   Expense,
+  ExtraClass,
   Evaluation,
   FeeBalance,
   Guardian,
@@ -58,6 +59,13 @@ export function useExpenses() {
   return useQuery({
     queryKey: ['expenses'],
     queryFn: async () => unwrap(await supabase.from('expenses').select('*').order('sort_order').order('created_at')) as Expense[],
+  })
+}
+
+export function useExtraClasses() {
+  return useQuery({
+    queryKey: ['extra_classes'],
+    queryFn: async () => unwrap(await supabase.from('student_extra_classes').select('student_id, category_id')) as ExtraClass[],
   })
 }
 

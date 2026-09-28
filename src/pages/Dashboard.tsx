@@ -4,7 +4,7 @@ import { startOfMonth } from 'date-fns'
 import { Users, UserCog, ClipboardCheck, AlertTriangle, Wallet, TrendingUp, Plus, ChevronRight, Trophy, Dumbbell, HelpCircle, GraduationCap } from 'lucide-react'
 import { Avatar, Button, Card, ErrorState, PageHeader, Spinner, StatCard, Badge } from '@/components/ui'
 import { CollectButton } from '@/components/WhatsAppButtons'
-import { useAccounts, useCategories, useCoaches, useFees, useMatches, usePayments, useSiblingGroups, useStudents, useTrainings, useAttendanceDetail } from '@/lib/api'
+import { useAccounts, useCategories, useCoaches, useFees, useMatches, usePayments, useSiblingGroups, useExtraClasses, useStudents, useTrainings, useAttendanceDetail } from '@/lib/api'
 import { promoStatus } from '@/lib/siblings'
 import { date, money, time, toISODate, today } from '@/lib/format'
 import { consecutiveAbsences } from '@/lib/stats'
@@ -22,12 +22,14 @@ export default function Dashboard() {
   const upcomingTr = useTrainings({ from: t })
   const upcomingMa = useMatches({ from: t })
   const siblingGroups = useSiblingGroups()
+  const extraClasses = useExtraClasses()
   const recentAtt = useAttendanceDetail({ from: toISODate(new Date(Date.now() - 60 * 86400_000)) })
 
   const data = useMemo(() => {
     const active = (students.data ?? []).filter((s) => s.status === 'activo')
     const activeIds = new Set(active.map((s) => s.id))
-    const byCategory = (categories.data ?? []).map((c) => ({ ...c, count: active.filter((s) => s.category_id === c.id).length }))
+    const extraMembers = (id: string) => new Set((extraClasses.data ?? []).filter((x) => x.category_id === id).map((x) => x.student_id))
+    const byCategory = (categories.data ?? []).map((c) => ({ ...c, count: c.is_extra ? active.filter((s) => extraMembers(c.id).has(s.id)).length : active.filter((s) => s.category_id === c.id).length }))
     const noCat = active.filter((s) => !s.category_id).length
     const todayAtt = (recentAtt.data ?? []).filter((a) => a.date === t)
     const present = todayAtt.filter((a) => a.status === 'presente' || a.status === 'retardo').length
@@ -53,7 +55,7 @@ export default function Dashboard() {
       return { g, ...promoStatus(members, overdueSet) }
     }).filter((r) => !r.valid || r.overdue.length)
     return { promoAlerts, active, byCategory, noCat, todayAtt, present, openFees, pendingTotal, lateFees, extras, becasMonth, becados, becasSeason, reviewTotal, collected, overdueStudents, absent }
-  }, [students.data, categories.data, recentAtt.data, fees.data, payments.data, accounts.data, t, monthStart, siblingGroups.data])
+  }, [students.data, categories.data, recentAtt.data, fees.data, payments.data, accounts.data, t, monthStart, siblingGroups.data, extraClasses.data])
 
   const loading = students.isLoading || accounts.isLoading || fees.isLoading
   const error = students.error || accounts.error || fees.error || categories.error

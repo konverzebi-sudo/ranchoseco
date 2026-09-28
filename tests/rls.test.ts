@@ -58,6 +58,7 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase/migrations/0011_gastos_en_partes.sql', 'utf8').replace(/notify pgrst[^;]*;/, ''))
   await db.exec(readFileSync('supabase/migrations/0012_hermanos.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0013_inactivo_temporal.sql', 'utf8'))
+  await db.exec(readFileSync('supabase/migrations/0014_clases_extra.sql', 'utf8'))
   await db.exec('update academia.settings set open_mode = false') // las pruebas por rol corren con el sitio cerrado
 
   const users: [string, string, string][] = [
@@ -402,5 +403,27 @@ describe('promoción de hermanos', () => {
   it('precios por defecto 500 / 450 / 400', async () => {
     const r = await db.query<{ p: string[] }>('select sibling_prices::text[] p from academia.settings')
     expect(r.rows[0].p.map(Number)).toEqual([500, 450, 400])
+  })
+})
+
+describe('clases extra (porteros)', () => {
+  let porteros: string, trP: string
+  beforeAll(async () => {
+    porteros = (await db.query<{ id: string }>(`insert into academia.categories (name, is_extra) values ('Porteros', true) returning id`)).rows[0].id
+    await db.query(`insert into academia.coach_categories values ($1, $2)`, [COACH_B, porteros])
+    trP = (await db.query<{ id: string }>(`insert into academia.trainings (category_id, date) values ($1, current_date) returning id`, [porteros])).rows[0].id
+    await db.query(`insert into academia.student_extra_classes (student_id, category_id) values ($1, $2)`, [STU_1, porteros])
+  })
+  it('el alumno sigue en su categoría y además en la clase extra', async () => {
+    const r = await db.query<{ category_id: string }>('select category_id from academia.students where id = $1', [STU_1])
+    expect(r.rows[0].category_id).toBe(CAT_A)
+  })
+  it('se puede pasar lista en la clase extra a sus inscritos, y a nadie más', async () => {
+    await as(COACH_B, `insert into academia.attendance (training_id, student_id, status) values ($1, $2, 'presente')`, [trP, STU_1])
+    await expect(as(ADMIN, `insert into academia.attendance (training_id, student_id, status) values ($1, $2, 'presente')`, [trP, STU_2])).rejects.toThrow(/no pertenece/)
+  })
+  it('el profe de la clase extra ve a sus porteros', async () => {
+    const ids = (await as<{ id: string }>(COACH_B, 'select id from academia.students')).rows.map((x) => x.id)
+    expect(ids).toContain(STU_1)
   })
 })

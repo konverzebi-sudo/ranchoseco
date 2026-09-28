@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Download, Info } from 'lucide-react'
 import { Button, Card, Input, Spinner, cx } from './ui'
-import { useCategories, useCoachCategories, useCoachPay, useCoaches, useExpenses, useFees, usePayments, useStudents } from '@/lib/api'
+import { useCategories, useCoachCategories, useCoachPay, useCoaches, useExpenses, useExtraClasses, useFees, usePayments, useStudents } from '@/lib/api'
 import { money, monthName, today } from '@/lib/format'
 import { categoryResults } from '@/lib/finance'
 import { exportCsv } from '@/lib/csv'
@@ -22,14 +22,15 @@ export default function CategoryResults() {
   const cc = useCoachCategories()
   const pay = useCoachPay()
   const expenses = useExpenses()
+  const extras = useExtraClasses()
 
   const data = useMemo(() => {
     if (!categories.data || !students.data || !payments.data || !fees.data || !coaches.data || !cc.data || !pay.data || !expenses.data) return null
     return categoryResults({
       month, categories: categories.data, students: students.data, payments: payments.data, fees: fees.data,
-      coaches: coaches.data, coachCategories: cc.data, coachPay: pay.data, expenses: expenses.data,
+      coaches: coaches.data, coachCategories: cc.data, coachPay: pay.data, expenses: expenses.data, extraClasses: extras.data ?? [],
     })
-  }, [month, categories.data, students.data, payments.data, fees.data, coaches.data, cc.data, pay.data, expenses.data])
+  }, [month, categories.data, students.data, payments.data, fees.data, coaches.data, cc.data, pay.data, expenses.data, extras.data])
 
   const r0 = (n: number) => Math.round(n)
   const doExport = () => data && exportCsv(`ganancia-por-categoria-${month}.csv`,
@@ -69,7 +70,7 @@ export default function CategoryResults() {
                 {data.list.map((r) => (
                   <tr key={r.id}>
                     <td>
-                      <p className="font-medium">{r.name}</p>
+                      <p className="font-medium">{r.name}{categories.data?.find((c) => c.id === r.id)?.is_extra && <span className="ml-2 rounded bg-info/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-info">Clase extra</span>}</p>
                       {r.coaches.length ? r.coaches.map((c) => (
                         <p key={c.name} className="text-xs text-muted">
                           {c.name} · {money(r0(c.monthly))}/mes{c.share > 1 && ` (entre ${c.share} categorías)`}
@@ -79,7 +80,9 @@ export default function CategoryResults() {
                     <td>{r.students}</td>
                     <td>{num(r.income, 'ok')}</td>
                     <td>{r.scholarships > 0 ? num(r.scholarships, 'warn') : <span className="text-muted">—</span>}</td>
-                    <td>{num(-r.generalExpenses, 'bad')}<span className="block text-xs text-muted">{r.students} × {money(Math.round(data.perStudent * 100) / 100)}</span></td>
+                    <td>{categories.data?.find((c) => c.id === r.id)?.is_extra
+                      ? <span className="text-xs text-muted">No aplica<span className="block">(ya cuentan en su categoría)</span></span>
+                      : <>{num(-r.generalExpenses, 'bad')}<span className="block text-xs text-muted">{r.students} × {money(Math.round(data.perStudent * 100) / 100)}</span></>}</td>
                     <td>{r.salaries > 0 ? num(-r.salaries, 'bad') : <span className="text-muted">—</span>}</td>
                     <td className="font-display text-lg font-bold">{num(r.result, r.result >= 0 ? 'ok' : 'bad')}</td>
                   </tr>
