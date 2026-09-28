@@ -11,6 +11,7 @@ export interface Settings {
   default_country_code: string
   default_monthly_fee: number
   due_day: number
+  sibling_prices: number[]
   late_fee_amount: number
   payment_instructions: string
   collection_template: string
@@ -78,7 +79,16 @@ export interface Student {
   emergency_contact_phone: string | null
   notes: string | null
   monthly_fee: number | null
+  sibling_group_id: string | null
+  sibling_order: number | null
+  sibling_price: number | null
   created_at: string
+}
+
+export interface SiblingGroup {
+  id: string
+  name: string
+  notes: string | null
 }
 
 export interface StudentMedical {

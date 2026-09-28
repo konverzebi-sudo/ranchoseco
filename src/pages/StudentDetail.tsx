@@ -17,7 +17,7 @@ import { ScholarshipReviewModal } from '@/components/ScholarshipReview'
 import { useToast } from '@/components/toast'
 import {
   useAccounts, useAttendanceDetail, useCategories, useCoaches, useCoachCategories, useEvaluations, useFees, useMatches, useMatchPlayers,
-  useMedical, usePayments, usePortalToken, useStudent, useTrainings, portalUrl, primaryGuardian, type StudentRow,
+  useMedical, usePayments, usePortalToken, useSettings, useSiblingGroups, useStudent, useStudents, useTrainings, portalUrl, primaryGuardian, type StudentRow,
 } from '@/lib/api'
 import {
   ACCOUNT_LABEL, ATTENDANCE_LABEL, FEE_LABEL, METHOD_LABEL, STATUS_LABEL, age, date, money, monthName, prettyPhone, shortDate, time,
@@ -25,6 +25,7 @@ import {
 import { attendanceRate, consecutiveAbsences, overallAverage } from '@/lib/stats'
 import { supabase, unwrap, signedUrl, BUCKETS } from '@/lib/supabase'
 import { waLink } from '@/lib/whatsapp'
+import { memberPrice, ordinal, promoStatus } from '@/lib/siblings'
 import { SKILL_GROUPS, type AttendanceStatus, type Evaluation, type FeeBalance, type SkillKey } from '@/lib/types'
 
 type Tab = 'general' | 'asistencias' | 'pagos' | 'seguimiento' | 'actividad' | 'reportes'
@@ -145,6 +146,7 @@ function GeneralTab({ s }: { s: StudentRow }) {
           {g?.email && <InfoRow label="Correo">{g.email}</InfoRow>}
           <InfoRow label="Emergencia">{s.emergency_contact_name ? <>{s.emergency_contact_name} {s.emergency_contact_phone && <a href={`tel:${s.emergency_contact_phone}`} className="ml-1 inline-flex items-center gap-1 text-brand"><Phone className="h-3.5 w-3.5" />{s.emergency_contact_phone}</a>}</> : '—'}</InfoRow>
         </Card>
+        <SiblingPromoCard s={s} />
         <PortalLinkCard s={s} />
         <MedicalCard studentId={s.id} />
       </div>
@@ -156,6 +158,37 @@ function GeneralTab({ s }: { s: StudentRow }) {
           ? `${s.full_name} volverá a aparecer en listas de asistencia y cobranza.`
           : `${s.full_name} dejará de aparecer en listas de asistencia y cobranza, y su link para padres se desactivará. Su historial se conserva y puedes reactivarlo cuando quieras.`} />
     </div>
+  )
+}
+
+function SiblingPromoCard({ s }: { s: StudentRow }) {
+  const { data: groups } = useSiblingGroups()
+  const { data: students } = useStudents()
+  const { data: accounts } = useAccounts()
+  const { data: settings } = useSettings()
+  if (!s.sibling_group_id) return null
+  const group = groups?.find((g) => g.id === s.sibling_group_id)
+  const members = (students ?? []).filter((x) => x.sibling_group_id === s.sibling_group_id).sort((a, b) => (a.sibling_order ?? 99) - (b.sibling_order ?? 99))
+  const st = promoStatus(members, new Set((accounts ?? []).filter((a) => a.status === 'vencido').map((a) => a.student_id)))
+  const prices = settings?.sibling_prices?.map(Number)
+  return (
+    <Card className={st.valid && !st.overdue.length ? 'p-5' : 'border-bad/50 p-5'}>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="font-display text-lg font-bold uppercase tracking-wide text-brand">Promo hermanos</h3>
+        {st.valid ? <Badge tone={st.overdue.length ? 'warn' : 'ok'}>{st.overdue.length ? 'Con pagos vencidos' : 'Válida'}</Badge> : <Badge tone="bad">No válida</Badge>}
+      </div>
+      <p className="mb-2 text-sm text-muted">{group?.name}</p>
+      <ul className="space-y-1 text-sm">
+        {members.map((m, i) => (
+          <li key={m.id} className="flex justify-between gap-2">
+            <Link to={`/alumnos/${m.id}`} className={m.id === s.id ? 'font-semibold text-white' : 'text-muted hover:text-white'}>{ordinal(m.sibling_order ?? i + 1)} {m.full_name}{m.status !== 'activo' && ' (baja)'}</Link>
+            <span>{money(memberPrice(m, i + 1, prices))}</span>
+          </li>
+        ))}
+      </ul>
+      {!st.valid && <p className="mt-2 text-xs text-bad">La promo sólo aplica si todos los hermanos siguen inscritos.</p>}
+      <Link to="/becas" className="mt-2 inline-block text-xs text-brand hover:underline">Administrar en Becas</Link>
+    </Card>
   )
 }
 

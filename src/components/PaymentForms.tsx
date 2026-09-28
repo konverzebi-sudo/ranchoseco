@@ -8,6 +8,7 @@ import { useCategories, useFees, useSettings, type StudentRow } from '@/lib/api'
 import { supabase, unwrap, BUCKETS } from '@/lib/supabase'
 import { METHOD_LABEL, date, money, monthName, toISODate, today } from '@/lib/format'
 import { TIER_LABEL, joinTier, tierAmount, tierNote, type JoinTier } from '@/lib/prorate'
+import { PROMO_REASON, memberPrice } from '@/lib/siblings'
 import type { PaymentMethod } from '@/lib/types'
 
 const PAY_KEYS = [['fees'], ['accounts'], ['payments']]
@@ -215,11 +216,18 @@ export function GenerateMonthModal({ students, onClose }: { students: StudentRow
     const rows = active.filter((s) => !existing.has(s.id)).map((s) => {
       const cat = categories?.find((c) => c.id === s.category_id)
       const regular = Number(cat?.monthly_fee ?? settings?.default_monthly_fee ?? 0)
-      const discount = s.monthly_fee != null ? Math.max(0, regular - Number(s.monthly_fee)) : 0
       const auto = joinTier(s.enrolled_at, periodDate)
       const tier: JoinTier = tierOverride[s.id] ?? auto ?? 'completo'
       const amount = tierAmount(regular, tier)
-      return { s, auto, tier, regular, amount, discount: tier === 'completo' ? discount : Math.min(discount, amount) }
+      // Promo hermanos (en mes completo) o cuota especial / beca individual
+      // Candado: la promo sólo aplica si todos los hermanos del grupo siguen inscritos
+      const group = s.sibling_group_id ? students.filter((x) => x.sibling_group_id === s.sibling_group_id) : []
+      const promoValid = group.length >= 2 && group.every((x) => x.status === 'activo')
+      const promo = promoValid ? memberPrice(s, s.sibling_order ?? 1, settings?.sibling_prices?.map(Number)) : null
+      const reason = promo != null ? PROMO_REASON : 'Beca'
+      const target = promo ?? (s.monthly_fee != null ? Number(s.monthly_fee) : null)
+      const discount = target != null && tier === 'completo' ? Math.max(0, regular - target) : 0
+      return { s, auto, tier, regular, amount, discount, reason }
     }).filter((r) => r.auto !== null) // si se inscribe después de ese mes, ese mes no paga
     return { toCreate: rows.filter((r) => r.amount > 0), noAmount: rows.filter((r) => !(r.amount > 0)), already: existing.size }
   }, [fees, students, categories, settings, periodDate, tierOverride])
@@ -228,9 +236,9 @@ export function GenerateMonthModal({ students, onClose }: { students: StudentRow
     setSaving(true)
     try {
       const due = dueDateFor(periodDate, settings?.due_day ?? 10)
-      const payload = plan.toCreate.map(({ s, amount, discount, tier }) => ({
+      const payload = plan.toCreate.map(({ s, amount, discount, tier, reason }) => ({
         student_id: s.id, concept: 'Mensualidad', period: periodDate, amount, due_date: due,
-        discount, discount_reason: discount > 0 ? 'Beca' : null,
+        discount, discount_reason: discount > 0 ? reason : null,
         notes: tierNote(tier),
       }))
       for (let i = 0; i < payload.length; i += 200) {
@@ -256,7 +264,7 @@ export function GenerateMonthModal({ students, onClose }: { students: StudentRow
         <Field label="Mes"><Input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} /></Field>
         <div className="rounded-xl bg-ink-900 p-4">
           <p>Se crearán <b className="text-brand">{plan.toCreate.length}</b> mensualidades por <b>{money(total)}</b>, con vencimiento el día {settings?.due_day ?? 10}.</p>
-          {becado > 0 && <p className="mt-1 text-ok">Incluye {money(becado)} en becas (alumnos con cuota especial).</p>}
+          {becado > 0 && <p className="mt-1 text-ok">Incluye {money(becado)} en becas y promo de hermanos.</p>}
           {plan.already > 0 && <p className="mt-1 text-muted">{plan.already} alumnos ya tienen la mensualidad de este mes (no se duplican).</p>}
           {plan.noAmount.length > 0 && (
             <p className="mt-2 text-warn">{plan.noAmount.length} alumnos no tienen importe definido. Configura la mensualidad en Categorías o en Configuración.</p>

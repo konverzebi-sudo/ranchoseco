@@ -15,6 +15,7 @@ import type {
   Payment,
   ReportRow,
   Settings,
+  SiblingGroup,
   Student,
   StudentAccount,
   StudentMedical,
@@ -57,6 +58,13 @@ export function useExpenses() {
   return useQuery({
     queryKey: ['expenses'],
     queryFn: async () => unwrap(await supabase.from('expenses').select('*').order('sort_order').order('created_at')) as Expense[],
+  })
+}
+
+export function useSiblingGroups() {
+  return useQuery({
+    queryKey: ['sibling_groups'],
+    queryFn: async () => unwrap(await supabase.from('sibling_groups').select('*').order('name')) as SiblingGroup[],
   })
 }
 

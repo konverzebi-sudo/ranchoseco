@@ -19,6 +19,7 @@ import StudentDetail from './pages/StudentDetail'
 import AttendancePage from './pages/Attendance'
 import Billing from './pages/Billing'
 import Expenses from './pages/Expenses'
+import Scholarships from './pages/Scholarships'
 import Categories from './pages/Categories'
 import Coaches from './pages/Coaches'
 import Trainings from './pages/Trainings'
@@ -54,6 +55,7 @@ createRoot(document.getElementById('root')!).render(
                   <Route path="asistencias" element={<AttendancePage />} />
                   <Route path="cobranza" element={<Billing />} />
                   <Route path="gastos" element={<Expenses />} />
+                  <Route path="becas" element={<Scholarships />} />
                   <Route path="categorias" element={<Categories />} />
                   <Route path="profesores" element={<Coaches />} />
                   <Route path="entrenamientos" element={<Trainings />} />

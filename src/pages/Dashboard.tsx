@@ -4,7 +4,8 @@ import { startOfMonth } from 'date-fns'
 import { Users, UserCog, ClipboardCheck, AlertTriangle, Wallet, TrendingUp, Plus, ChevronRight, Trophy, Dumbbell, HelpCircle, GraduationCap } from 'lucide-react'
 import { Avatar, Button, Card, ErrorState, PageHeader, Spinner, StatCard, Badge } from '@/components/ui'
 import { CollectButton } from '@/components/WhatsAppButtons'
-import { useAccounts, useCategories, useCoaches, useFees, useMatches, usePayments, useStudents, useTrainings, useAttendanceDetail } from '@/lib/api'
+import { useAccounts, useCategories, useCoaches, useFees, useMatches, usePayments, useSiblingGroups, useStudents, useTrainings, useAttendanceDetail } from '@/lib/api'
+import { promoStatus } from '@/lib/siblings'
 import { date, money, time, toISODate, today } from '@/lib/format'
 import { consecutiveAbsences } from '@/lib/stats'
 
@@ -20,6 +21,7 @@ export default function Dashboard() {
   const payments = usePayments(undefined, monthStart)
   const upcomingTr = useTrainings({ from: t })
   const upcomingMa = useMatches({ from: t })
+  const siblingGroups = useSiblingGroups()
   const recentAtt = useAttendanceDetail({ from: toISODate(new Date(Date.now() - 60 * 86400_000)) })
 
   const data = useMemo(() => {
@@ -45,8 +47,13 @@ export default function Dashboard() {
       .map((a) => ({ acc: a, s: active.find((s) => s.id === a.student_id)! }))
     const streaks = consecutiveAbsences(recentAtt.data ?? [])
     const absent = active.map((s) => ({ s, n: streaks.get(s.id) ?? 0 })).filter((x) => x.n >= 2).sort((a, b) => b.n - a.n)
-    return { active, byCategory, noCat, todayAtt, present, openFees, pendingTotal, lateFees, extras, becasMonth, becados, becasSeason, reviewTotal, collected, overdueStudents, absent }
-  }, [students.data, categories.data, recentAtt.data, fees.data, payments.data, accounts.data, t, monthStart])
+    const overdueSet = new Set((accounts.data ?? []).filter((a) => a.status === 'vencido').map((a) => a.student_id))
+    const promoAlerts = (siblingGroups.data ?? []).map((g) => {
+      const members = (students.data ?? []).filter((s) => s.sibling_group_id === g.id)
+      return { g, ...promoStatus(members, overdueSet) }
+    }).filter((r) => !r.valid || r.overdue.length)
+    return { promoAlerts, active, byCategory, noCat, todayAtt, present, openFees, pendingTotal, lateFees, extras, becasMonth, becados, becasSeason, reviewTotal, collected, overdueStudents, absent }
+  }, [students.data, categories.data, recentAtt.data, fees.data, payments.data, accounts.data, t, monthStart, siblingGroups.data])
 
   const loading = students.isLoading || accounts.isLoading || fees.isLoading
   const error = students.error || accounts.error || fees.error || categories.error
@@ -89,10 +96,24 @@ export default function Dashboard() {
                 <h2 className="font-display text-lg font-bold uppercase tracking-wide">Requieren atención</h2>
                 <Link to="/cobranza?f=vencido" className="text-sm text-brand hover:underline">Ver cobranza</Link>
               </div>
-              {data.overdueStudents.length === 0 && data.absent.length === 0 ? (
+              {data.overdueStudents.length === 0 && data.absent.length === 0 && data.promoAlerts.length === 0 ? (
                 <p className="px-5 py-8 text-center text-sm text-muted">Todo en orden: sin pagos vencidos ni faltas seguidas.</p>
               ) : (
                 <ul className="divide-y divide-ink-700">
+                  {data.promoAlerts.map((r) => (
+                    <li key={'p' + r.g.id}>
+                      <Link to="/becas" className="flex items-center gap-3 px-5 py-3 hover:bg-ink-700/50">
+                        <div className="rounded-full bg-bad/15 p-2"><AlertTriangle className="h-4 w-4 text-bad" /></div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-medium">{!r.valid ? 'Promo hermanos no válida' : 'Promo hermanos con pagos vencidos'} · {r.g.name}</p>
+                          <p className="truncate text-xs text-muted">{!r.valid
+                            ? `${r.notEnrolled.map((m) => m.full_name).join(', ')} ya no está inscrito`
+                            : `${r.overdue.map((m) => m.full_name).join(', ')} con pago vencido`}</p>
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-muted" />
+                      </Link>
+                    </li>
+                  ))}
                   {data.overdueStudents.slice(0, 6).map(({ acc, s }) => (
                     <li key={s.id} className="flex items-center gap-3 px-5 py-3">
                       <Avatar name={s.full_name} path={s.photo_path} size={36} />

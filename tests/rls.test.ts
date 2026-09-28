@@ -56,6 +56,7 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase/migrations/0009_gastos.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0010_recargo_mensual.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0011_gastos_en_partes.sql', 'utf8').replace(/notify pgrst[^;]*;/, ''))
+  await db.exec(readFileSync('supabase/migrations/0012_hermanos.sql', 'utf8'))
   await db.exec('update academia.settings set open_mode = false') // las pruebas por rol corren con el sitio cerrado
 
   const users: [string, string, string][] = [
@@ -385,5 +386,20 @@ describe('gastos generales', () => {
     expect(await count(COACH_A, 'academia.expenses')).toBe(0)
     const r = await as(COACH_A, `update academia.expenses set amount = 1`)
     expect(r.affectedRows).toBe(0)
+  })
+})
+
+describe('promoción de hermanos', () => {
+  it('sólo administración crea grupos; el papá ve el grupo de su hijo', async () => {
+    const g = (await db.query<{ id: string }>(`insert into academia.sibling_groups (name) values ('Familia Uno') returning id`)).rows[0].id
+    await db.query(`update academia.students set sibling_group_id = $1, sibling_order = 1 where id = $2`, [g, STU_1])
+    expect(await count(ADMIN, 'academia.sibling_groups')).toBe(1)
+    expect(await count(PARENT_1, 'academia.sibling_groups')).toBe(1)
+    expect(await count(PARENT_2, 'academia.sibling_groups')).toBe(0)
+    await expect(as(COACH_A, `insert into academia.sibling_groups (name) values ('X')`)).rejects.toThrow(/row-level security/)
+  })
+  it('precios por defecto 500 / 450 / 400', async () => {
+    const r = await db.query<{ p: string[] }>('select sibling_prices::text[] p from academia.settings')
+    expect(r.rows[0].p.map(Number)).toEqual([500, 450, 400])
   })
 })
