@@ -3,3 +3,8 @@ dist
 .env
 .env.local
 .DS_Store
+
+# Datos personales de alumnos: NUNCA al repositorio (es público)
+supabase/seed/seed_alumnos.sql
+supabase/INSTALAR_EN_SUPABASE.sql
+*.xlsx
