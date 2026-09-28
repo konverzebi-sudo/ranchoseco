@@ -36,6 +36,12 @@ export interface Coach {
   active: boolean
 }
 
+export interface CoachPay {
+  coach_id: string
+  amount: number
+  frequency: 'semanal' | 'quincenal' | 'mensual'
+}
+
 export interface Guardian {
   id: string
   full_name: string

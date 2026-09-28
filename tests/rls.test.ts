@@ -52,6 +52,7 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase/migrations/0004_open_mode.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0006_late_fees.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0007_becas.sql', 'utf8'))
+  await db.exec(readFileSync('supabase/migrations/0008_sueldos.sql', 'utf8'))
   await db.exec('update academia.settings set open_mode = false') // las pruebas por rol corren con el sitio cerrado
 
   const users: [string, string, string][] = [
@@ -345,5 +346,23 @@ describe('becas y montos por confirmar', () => {
   })
   it('el descuento no puede ser mayor al precio', async () => {
     await expect(as(ADMIN, `update academia.fees set discount = 600 where id = $1`, [fee])).rejects.toThrow()
+  })
+})
+
+describe('sueldos de profesores', () => {
+  beforeAll(async () => {
+    await db.query(`insert into academia.coach_pay (coach_id, amount, frequency) values ($1, 750, 'semanal')`, [COACH_A])
+  })
+  it('sólo administración ve los sueldos', async () => {
+    expect(await count(ADMIN, 'academia.coach_pay')).toBe(1)
+    expect(await count(COACH_A, 'academia.coach_pay')).toBe(0)
+    expect(await count(PARENT_1, 'academia.coach_pay')).toBe(0)
+  })
+  it('un profesor no puede cambiarse el sueldo', async () => {
+    const r = await as(COACH_A, `update academia.coach_pay set amount = 9999 where coach_id = $1`, [COACH_A])
+    expect(r.affectedRows).toBe(0)
+  })
+  it('frecuencia inválida se rechaza', async () => {
+    await expect(as(ADMIN, `update academia.coach_pay set frequency = 'diario' where coach_id = $1`, [COACH_A])).rejects.toThrow()
   })
 })

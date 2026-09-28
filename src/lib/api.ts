@@ -5,6 +5,7 @@ import type {
   AttendanceDetail,
   Category,
   Coach,
+  CoachPay,
   Evaluation,
   FeeBalance,
   Guardian,
@@ -47,6 +48,14 @@ export function useCoaches() {
   return useQuery({
     queryKey: ['coaches'],
     queryFn: async () => unwrap(await supabase.from('coaches').select('*').order('full_name')) as Coach[],
+    staleTime: 60_000,
+  })
+}
+
+export function useCoachPay() {
+  return useQuery({
+    queryKey: ['coach_pay'],
+    queryFn: async () => unwrap(await supabase.from('coach_pay').select('*')) as CoachPay[],
     staleTime: 60_000,
   })
 }

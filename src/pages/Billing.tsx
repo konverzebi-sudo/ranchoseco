@@ -7,6 +7,7 @@ import { Avatar, Badge, Button, Card, ConfirmDialog, Empty, ErrorState, PageHead
 import { CollectButton } from '@/components/WhatsAppButtons'
 import { PaymentModal, GenerateMonthModal } from '@/components/PaymentForms'
 import { ScholarshipReviewModal } from '@/components/ScholarshipReview'
+import CategoryResults from '@/components/CategoryResults'
 import { useToast } from '@/components/toast'
 import { supabase, unwrap } from '@/lib/supabase'
 import { useCategories, useFees, usePayments, useStudents, primaryGuardian, type StudentRow } from '@/lib/api'
@@ -233,6 +234,7 @@ function Summary({ open, all, students, catName }: { open: FeeBalance[]; all: Fe
   const becaTotal = [...becas.values()].reduce((a, b) => a + b.total, 0)
   return (
     <div className="grid gap-5 lg:grid-cols-2">
+      <div className="lg:col-span-2"><CategoryResults /></div>
       <Card className="overflow-x-auto lg:col-span-2">
         <h3 className="border-b border-ink-600 px-5 py-4 font-display text-lg font-bold uppercase tracking-wide">Becas · total {money(becaTotal)}</h3>
         <table className="table-base">

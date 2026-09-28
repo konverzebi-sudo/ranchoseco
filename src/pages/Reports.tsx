@@ -7,6 +7,7 @@ import { date } from '@/lib/format'
 import { periodLabel } from '@/pdf/reportData'
 import { signedUrl, BUCKETS } from '@/lib/supabase'
 import { useToast } from '@/components/toast'
+import CategoryResults from '@/components/CategoryResults'
 
 const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
@@ -32,7 +33,9 @@ export default function Reports() {
 
   return (
     <>
-      <PageHeader title="Reportes" subtitle="Elige un jugador para generar su reporte PDF y compartirlo con sus papás." />
+      <PageHeader title="Reportes" subtitle="Resultados por categoría y reportes PDF de cada jugador." />
+      <div className="mb-6"><CategoryResults /></div>
+      <h2 className="mb-3 font-display text-xl font-bold uppercase tracking-wide">Reporte PDF por jugador</h2>
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div>
           <div className="mb-3 grid gap-2 sm:grid-cols-[1fr_200px]">
