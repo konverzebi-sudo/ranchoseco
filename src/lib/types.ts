@@ -46,9 +46,12 @@ export interface Expense {
   id: string
   name: string
   amount: number
-  frequency: 'semanal' | 'quincenal' | 'mensual' | 'anual' | 'unico'
+  frequency: 'semanal' | 'quincenal' | 'mensual' | 'anual' | 'unico' | 'partes'
   paid_month: number | null
   paid_year: number | null
+  /** Sólo gastos en partes: anticipo y número de pagos mensuales del resto. */
+  down_payment: number | null
+  installments: number | null
   notes: string | null
   active: boolean
   sort_order: number

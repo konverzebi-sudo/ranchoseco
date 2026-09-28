@@ -178,7 +178,11 @@ export default function Billing() {
                         <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">
                           <div className="text-right">
                             <p className="font-display text-xl font-bold">{money(r.balance)}</p>
-                            <Badge tone={feeTone(r.status)}>{ACCOUNT_LABEL[r.status]}</Badge>
+                            {r.toReview.length > 0 ? (
+                              <button onClick={() => setReviewing({ fee: r.toReview[0], name: r.s.full_name })} title="Confirmar beca o adeudo" className="hover:opacity-80">
+                                <Badge tone="warn" className="cursor-pointer underline decoration-dotted">¿Beca? Por confirmar</Badge>
+                              </button>
+                            ) : <Badge tone={feeTone(r.status)}>{ACCOUNT_LABEL[r.status]}</Badge>}
                           </div>
                           {r.balance > 0 && (
                             <div className="flex gap-2">

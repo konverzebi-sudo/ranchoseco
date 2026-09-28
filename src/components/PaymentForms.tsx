@@ -101,6 +101,10 @@ export function PaymentModal({ student, feeId, onClose }: { student: StudentRow;
   )
 }
 
+/** Precio de la inscripción. */
+export const INSCRIPTION_FEE = 600
+const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+
 /** Monto sugerido: el de la categoría o el general de configuración. */
 export function useSuggestedFee(categoryId: string | null) {
   const { data: settings } = useSettings()
@@ -127,7 +131,9 @@ export function FeeModal({ student, onClose }: { student: StudentRow; onClose: (
   const [saving, setSaving] = useState(false)
   const periodDate = `${period}-01`
   const dueValue = due || dueDateFor(periodDate, settings?.due_day ?? 10)
-  const value = amount === '' ? suggested : Number(amount)
+  const isInscription = norm(concept.trim()) === 'inscripcion'
+  const suggestedFor = isInscription ? INSCRIPTION_FEE : suggested
+  const value = amount === '' ? suggestedFor : Number(amount)
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -157,7 +163,7 @@ export function FeeModal({ student, onClose }: { student: StudentRow; onClose: (
         </Field>
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Mes"><Input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} /></Field>
-          <Field label="Importe"><Input type="number" inputMode="decimal" min="1" step="0.01" placeholder={suggested ? String(suggested) : '0'} value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
+          <Field label="Importe"><Input type="number" inputMode="decimal" min="1" step="0.01" placeholder={suggestedFor ? String(suggestedFor) : '0'} value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
           <Field label="Vence"><Input type="date" value={dueValue} onChange={(e) => setDue(e.target.value)} /></Field>
         </div>
       </form>

@@ -370,7 +370,9 @@ function PaymentsTab({ s }: { s: StudentRow }) {
                   </td>
                   <td>{money(f.paid)}</td>
                   <td className="font-semibold">{money(f.balance)}</td>
-                  <td><Badge tone={feeTone(f.status)}>{FEE_LABEL[f.status]}</Badge></td>
+                  <td>{f.status === 'por_confirmar'
+                    ? <button onClick={() => setReview(f)} title="Confirmar beca o adeudo" className="hover:opacity-80"><Badge tone="warn" className="cursor-pointer underline decoration-dotted">{FEE_LABEL[f.status]}</Badge></button>
+                    : <Badge tone={feeTone(f.status)}>{FEE_LABEL[f.status]}</Badge>}</td>
                   <td className="text-right">
                     <div className="flex justify-end gap-1">
                       {f.status === 'por_confirmar' && <Button size="sm" onClick={() => setReview(f)}>¿Beca o adeudo?</Button>}

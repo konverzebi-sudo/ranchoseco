@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { categoryResults, monthlyCost } from '../src/lib/finance'
+import { categoryResults, expenseForMonth, installmentPlan, monthlyCost } from '../src/lib/finance'
 
 const cat = (id: string, name: string) => ({ id, name, description: null, schedule: null, monthly_fee: null, sort_order: 0, active: true })
 const fee = (student_id: string, period: string, discount: number) => ({
@@ -85,5 +85,28 @@ describe('gastos generales repartidos por alumno', () => {
   it('un gasto único cuenta completo en su mes', () => {
     const oct = categoryResults({ ...base, month: '2026-10', expenses: [exp('Única', 400, 'unico', 10)] })
     expect(oct.generalTotal).toBe(400)
+  })
+})
+
+describe('gastos en partes', () => {
+  const base = { amount: 3000, frequency: 'partes' as const, paid_month: 11, paid_year: 2026, active: true }
+  it('anticipo en el mes de inicio y el resto en pagos mensuales iguales', () => {
+    const plan = installmentPlan({ ...base, down_payment: 1000, installments: 4 })
+    expect(plan.remaining).toBe(2000)
+    expect(plan.each).toBe(500)
+    expect(plan.schedule.map((p) => [p.key, p.amount])).toEqual([['2026-11', 1000], ['2026-12', 500], ['2027-01', 500], ['2027-02', 500], ['2027-03', 500]])
+  })
+  it('cuenta en cada mes sólo lo que cae ese mes', () => {
+    const e = { ...base, down_payment: 1000, installments: 4 }
+    expect(expenseForMonth(e, '2026-10')).toBe(0)
+    expect(expenseForMonth(e, '2026-11')).toBe(1000)
+    expect(expenseForMonth(e, '2027-01')).toBe(500)
+    expect(expenseForMonth(e, '2027-04')).toBe(0)
+  })
+  it('sin anticipo el primer pago cae en el mes de inicio', () => {
+    const e = { ...base, down_payment: 0, installments: 3 }
+    expect(expenseForMonth(e, '2026-11')).toBe(1000)
+    expect(expenseForMonth(e, '2027-01')).toBe(1000)
+    expect(expenseForMonth(e, '2027-02')).toBe(0)
   })
 })

@@ -9,11 +9,30 @@ import { useToast } from '@/components/toast'
 import { useCategories, useCoachCategories, useCoachPay, useCoaches, useExpenses, useStudents } from '@/lib/api'
 import { supabase, unwrap } from '@/lib/supabase'
 import { money, today } from '@/lib/format'
-import { EXPENSE_FREQUENCY, FREQUENCY_LABEL, WEEKS_PER_MONTH, expenseForMonth, monthlyCost } from '@/lib/finance'
+import { EXPENSE_FREQUENCY, FREQUENCY_LABEL, WEEKS_PER_MONTH, expenseForMonth, installmentPlan, monthlyCost } from '@/lib/finance'
 import type { Expense } from '@/lib/types'
 
 const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 const cents = (n: number) => money(Math.round(n * 100) / 100)
+const thisYear = Number(today().slice(0, 4))
+const YEARS = [thisYear - 1, thisYear, thisYear + 1]
+
+/** Calendario del anticipo y los pagos; los meses ya pasados se marcan como pagados. */
+function PlanSchedule({ plan }: { plan: ReturnType<typeof installmentPlan> }) {
+  const month = today().slice(0, 7)
+  return (
+    <ul className="mt-2 flex flex-wrap gap-1.5">
+      {plan.schedule.map((p) => {
+        const done = p.key < month
+        return (
+          <li key={`${p.kind}${p.n}`} className={cx('rounded-lg border px-2 py-1 text-xs', done ? 'border-ok/40 text-ok' : p.key === month ? 'border-brand text-brand' : 'border-ink-600 text-muted')}>
+            {p.kind === 'anticipo' ? 'Anticipo' : `Pago ${p.n}`} · {p.label} · <b>{cents(p.amount)}</b>{done && ' ✓'}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
 
 export default function Expenses() {
   const expenses = useExpenses()
@@ -138,12 +157,11 @@ export default function Expenses() {
 function ExpenseCard({ expense, activeCount }: { expense: Expense; activeCount: number }) {
   const qc = useQueryClient()
   const toast = useToast()
-  const [f, setF] = useState({ name: expense.name, amount: String(expense.amount), frequency: expense.frequency, paid_month: expense.paid_month ?? 9 })
+  const init = () => ({ name: expense.name, amount: String(expense.amount), frequency: expense.frequency, paid_month: expense.paid_month ?? 9, paid_year: expense.paid_year ?? thisYear, down: String(expense.down_payment ?? 0), installments: String(expense.installments ?? 2) })
+  const [f, setF] = useState(init)
   const [state, setState] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [confirmDel, setConfirmDel] = useState(false)
-  useEffect(() => {
-    setF({ name: expense.name, amount: String(expense.amount), frequency: expense.frequency, paid_month: expense.paid_month ?? 9 })
-  }, [expense])
+  useEffect(() => { setF(init()) }, [expense]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = async (patch: Partial<Expense>) => {
     setState('saving')
@@ -158,6 +176,16 @@ function ExpenseCard({ expense, activeCount }: { expense: Expense; activeCount: 
     const n = Number(f.amount)
     if (!(n >= 0) || f.amount === '') { toast.error('Escribe un monto válido.'); return setF((x) => ({ ...x, amount: String(expense.amount) })) }
     if (n !== Number(expense.amount)) save({ amount: n })
+  }
+  const commitDown = () => {
+    const n = Number(f.down)
+    if (!(n >= 0) || n > Number(f.amount)) { toast.error('El anticipo no puede ser mayor que el total.'); return setF((x) => ({ ...x, down: String(expense.down_payment ?? 0) })) }
+    if (n !== Number(expense.down_payment ?? 0)) save({ down_payment: n })
+  }
+  const commitInstallments = () => {
+    const n = Math.round(Number(f.installments))
+    if (!(n >= 1 && n <= 60)) { toast.error('Los pagos deben ser entre 1 y 60.'); return setF((x) => ({ ...x, installments: String(expense.installments ?? 2) })) }
+    if (n !== expense.installments) save({ installments: n })
   }
   const commitName = () => {
     if (!f.name.trim()) return setF((x) => ({ ...x, name: expense.name }))
@@ -174,6 +202,8 @@ function ExpenseCard({ expense, activeCount }: { expense: Expense; activeCount: 
   const amount = Number(f.amount) || 0
   const freq = EXPENSE_FREQUENCY[f.frequency]
   const perStudent = activeCount ? amount / activeCount : 0
+  const isPlan = f.frequency === 'partes'
+  const plan = installmentPlan({ amount, down_payment: Number(f.down) || 0, installments: Number(f.installments) || 1, paid_month: f.paid_month, paid_year: f.paid_year })
   const monthly = f.frequency === 'semanal' ? amount * WEEKS_PER_MONTH : f.frequency === 'quincenal' ? amount * 2 : f.frequency === 'anual' ? amount / 12 : amount
 
   return (
@@ -194,7 +224,15 @@ function ExpenseCard({ expense, activeCount }: { expense: Expense; activeCount: 
             onBlur={commitAmount} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
             className="pl-7 font-display text-2xl font-bold" aria-label={`Monto de ${expense.name}`} />
         </div>
-        <Select value={f.frequency} onChange={(e) => { const v = e.target.value as Expense['frequency']; setF({ ...f, frequency: v }); save({ frequency: v, paid_month: v === 'anual' || v === 'unico' ? f.paid_month : null, paid_year: v === 'unico' ? Number(today().slice(0, 4)) : null }) }}
+        <Select value={f.frequency} onChange={(e) => {
+            const v = e.target.value as Expense['frequency']
+            setF({ ...f, frequency: v })
+            save({
+              frequency: v, paid_month: v === 'anual' || v === 'unico' || v === 'partes' ? f.paid_month : null,
+              paid_year: v === 'unico' || v === 'partes' ? f.paid_year : null,
+              down_payment: v === 'partes' ? Number(f.down) || 0 : null, installments: v === 'partes' ? Number(f.installments) || 2 : null,
+            })
+          }}
           className="w-40" aria-label="Frecuencia">
           {(Object.keys(EXPENSE_FREQUENCY) as Expense['frequency'][]).map((k) => <option key={k} value={k}>{EXPENSE_FREQUENCY[k].label}</option>)}
         </Select>
@@ -207,7 +245,38 @@ function ExpenseCard({ expense, activeCount }: { expense: Expense; activeCount: 
           </Select>
         </label>
       )}
+      {isPlan && (
+        <>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <Field label="Anticipo">
+              <Input type="number" min="0" inputMode="decimal" value={f.down} onChange={(e) => setF({ ...f, down: e.target.value })}
+                onBlur={commitDown} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
+            </Field>
+            <Field label="¿En cuántos pagos?">
+              <Input type="number" min="1" max="60" inputMode="numeric" value={f.installments} onChange={(e) => setF({ ...f, installments: e.target.value })}
+                onBlur={commitInstallments} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
+            </Field>
+          </div>
+          <label className="mt-2 flex items-center gap-2 text-sm text-muted">
+            {plan.down > 0 ? 'Anticipo en' : 'Primer pago en'}
+            <Select value={f.paid_month} onChange={(e) => { const m = Number(e.target.value); setF({ ...f, paid_month: m }); save({ paid_month: m }) }} className="h-9 w-32" aria-label="Mes de inicio">
+              {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+            </Select>
+            <Select value={f.paid_year} onChange={(e) => { const y = Number(e.target.value); setF({ ...f, paid_year: y }); save({ paid_year: y }) }} className="h-9 w-24" aria-label="Año de inicio">
+              {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+            </Select>
+          </label>
+        </>
+      )}
 
+      {isPlan ? (
+        <div className="mt-4 rounded-xl border border-brand/30 bg-brand-dim p-3">
+          <p className="text-xs uppercase tracking-wider text-muted">Restante</p>
+          <p className="font-display text-2xl font-bold text-brand">{money(plan.remaining)} <span className="text-sm font-normal text-muted">en {plan.n} {plan.n === 1 ? 'pago' : 'pagos'} de {cents(plan.each)}</span></p>
+          <p className="text-xs text-muted">Total {money(plan.total)} · anticipo {money(plan.down)}{activeCount > 0 && <> · {cents(plan.each / activeCount)} por alumno en cada pago</>}</p>
+          <PlanSchedule plan={plan} />
+        </div>
+      ) : (
       <div className="mt-4 rounded-xl border border-brand/30 bg-brand-dim p-3">
         <p className="text-xs uppercase tracking-wider text-muted">Corresponde por alumno</p>
         <p className="font-display text-2xl font-bold text-brand">{cents(perStudent)} <span className="text-sm font-normal text-muted">{freq.per}</span></p>
@@ -216,6 +285,7 @@ function ExpenseCard({ expense, activeCount }: { expense: Expense; activeCount: 
           {f.frequency !== 'mensual' && f.frequency !== 'unico' && activeCount > 0 && <> · ≈ {cents(monthly / activeCount)} al mes</>}
         </p>
       </div>
+      )}
       <ConfirmDialog open={confirmDel} onClose={() => setConfirmDel(false)} onConfirm={remove} danger title="Eliminar gasto" confirmLabel="Eliminar"
         text={<>Se eliminará <b className="text-white">{expense.name}</b> y dejará de restarse en los reportes. Si sólo quieres pausarlo, cambia el monto a 0.</>} />
     </Card>
@@ -225,18 +295,26 @@ function ExpenseCard({ expense, activeCount }: { expense: Expense; activeCount: 
 function ExpenseModal({ onClose, nextOrder }: { onClose: () => void; nextOrder: number }) {
   const qc = useQueryClient()
   const toast = useToast()
-  const [f, setF] = useState({ name: '', amount: '', frequency: 'mensual' as Expense['frequency'], paid_month: Number(today().slice(5, 7)), notes: '' })
+  const [f, setF] = useState({ name: '', amount: '', frequency: 'mensual' as Expense['frequency'], paid_month: Number(today().slice(5, 7)), paid_year: thisYear, down: '', installments: '2', notes: '' })
+  const isPlan = f.frequency === 'partes'
+  const plan = installmentPlan({ amount: Number(f.amount) || 0, down_payment: Number(f.down) || 0, installments: Math.round(Number(f.installments)) || 1, paid_month: f.paid_month, paid_year: f.paid_year })
   const [saving, setSaving] = useState(false)
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     if (!f.name.trim()) return toast.error('Escribe el nombre del gasto.')
     if (!(Number(f.amount) >= 0) || f.amount === '') return toast.error('Escribe el monto.')
+    if (isPlan) {
+      if (!(Number(f.down || 0) >= 0) || Number(f.down || 0) > Number(f.amount)) return toast.error('El anticipo no puede ser mayor que el total.')
+      const n = Math.round(Number(f.installments))
+      if (!(n >= 1 && n <= 60)) return toast.error('Los pagos deben ser entre 1 y 60.')
+    }
     setSaving(true)
     try {
       unwrap(await supabase.from('expenses').insert({
         name: f.name.trim(), amount: Number(f.amount), frequency: f.frequency,
-        paid_month: f.frequency === 'anual' || f.frequency === 'unico' ? f.paid_month : null,
-        paid_year: f.frequency === 'unico' ? Number(today().slice(0, 4)) : null,
+        paid_month: f.frequency === 'anual' || f.frequency === 'unico' || isPlan ? f.paid_month : null,
+        paid_year: f.frequency === 'unico' ? thisYear : isPlan ? f.paid_year : null,
+        ...(isPlan ? { down_payment: Number(f.down) || 0, installments: Math.round(Number(f.installments)) } : {}),
         notes: f.notes.trim() || null, sort_order: nextOrder,
       }))
       await qc.invalidateQueries({ queryKey: ['expenses'] })
@@ -251,7 +329,7 @@ function ExpenseModal({ onClose, nextOrder }: { onClose: () => void; nextOrder: 
         <Field label="Concepto"><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Ej. Luz, arbitrajes, balones…" autoFocus list="expense-names" /></Field>
         <datalist id="expense-names">{['Renta de canchas', 'Regalías', 'Seguro', 'Luz', 'Agua', 'Arbitrajes', 'Balones y material', 'Uniformes', 'Transporte'].map((n) => <option key={n} value={n} />)}</datalist>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Monto"><Input type="number" min="0" inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>
+          <Field label={isPlan ? 'Total del gasto' : 'Monto'}><Input type="number" min="0" inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>
           <Field label="¿Cada cuándo se paga?">
             <Select value={f.frequency} onChange={(e) => setF({ ...f, frequency: e.target.value as Expense['frequency'] })}>
               {(Object.keys(EXPENSE_FREQUENCY) as Expense['frequency'][]).map((k) => <option key={k} value={k}>{EXPENSE_FREQUENCY[k].label}</option>)}
@@ -264,6 +342,33 @@ function ExpenseModal({ onClose, nextOrder }: { onClose: () => void; nextOrder: 
               {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
             </Select>
           </Field>
+        )}
+        {isPlan && (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Anticipo" hint="Lo que se dio de entrada (0 si no hubo)"><Input type="number" min="0" inputMode="decimal" value={f.down} onChange={(e) => setF({ ...f, down: e.target.value })} placeholder="0" /></Field>
+              <Field label="¿En cuántos pagos el resto?" hint="Un pago por mes"><Input type="number" min="1" max="60" inputMode="numeric" value={f.installments} onChange={(e) => setF({ ...f, installments: e.target.value })} /></Field>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={plan.down > 0 ? 'Mes del anticipo' : 'Mes del primer pago'}>
+                <Select value={f.paid_month} onChange={(e) => setF({ ...f, paid_month: Number(e.target.value) })}>
+                  {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+                </Select>
+              </Field>
+              <Field label="Año">
+                <Select value={f.paid_year} onChange={(e) => setF({ ...f, paid_year: Number(e.target.value) })}>
+                  {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+                </Select>
+              </Field>
+            </div>
+            {Number(f.amount) > 0 && (
+              <div className="rounded-xl border border-brand/30 bg-brand-dim p-3 text-sm">
+                <p>Total <b>{money(plan.total)}</b> · Anticipo <b>{money(plan.down)}</b></p>
+                <p className="font-display text-xl font-bold text-brand">Restante {money(plan.remaining)} en {plan.n} {plan.n === 1 ? 'pago' : 'pagos'} de {cents(plan.each)}</p>
+                <PlanSchedule plan={plan} />
+              </div>
+            )}
+          </>
         )}
         <Field label="Notas (opcional)"><Textarea rows={2} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></Field>
       </form>

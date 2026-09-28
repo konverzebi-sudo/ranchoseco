@@ -5,12 +5,13 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Avatar, Badge, Button, Card, Empty, ErrorState, PageHeader, SearchInput, Select, Spinner, feeTone } from '@/components/ui'
 import { CollectButton } from '@/components/WhatsAppButtons'
 import StudentForm from '@/components/StudentForm'
+import { ScholarshipReviewModal } from '@/components/ScholarshipReview'
 import { useToast } from '@/components/toast'
-import { useAccounts, useCategories, useStudents, primaryGuardian } from '@/lib/api'
+import { useAccounts, useCategories, useFees, useStudents, primaryGuardian } from '@/lib/api'
 import { ACCOUNT_LABEL, STATUS_LABEL, age, money, prettyPhone } from '@/lib/format'
 import { supabase, unwrap } from '@/lib/supabase'
 import { exportCsv } from '@/lib/csv'
-import type { AccountStatus, StudentStatus } from '@/lib/types'
+import type { AccountStatus, FeeBalance, StudentStatus } from '@/lib/types'
 
 const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
@@ -22,6 +23,10 @@ export default function Students() {
   const students = useStudents()
   const categories = useCategories()
   const accounts = useAccounts()
+  const fees = useFees()
+  const [reviewing, setReviewing] = useState<{ fee: FeeBalance; name: string } | null>(null)
+  const reviewFee = (studentId: string) => (fees.data ?? []).find((f) => f.student_id === studentId && f.status === 'por_confirmar')
+  const openReview = (studentId: string, name: string) => { const f = reviewFee(studentId); if (f) setReviewing({ fee: f, name }) }
   const q = params.get('q') ?? ''
   const cat = params.get('cat') ?? ''
   const stParam = params.get('st')
@@ -149,7 +154,11 @@ export default function Students() {
                         </td>
                         <td>
                           <div className="flex items-center gap-2">
-                            <Badge tone={feeTone(a?.status ?? 'al_corriente')}>{ACCOUNT_LABEL[a?.status ?? 'al_corriente']}</Badge>
+                            {a?.status === 'por_confirmar' && reviewFee(s.id) ? (
+                              <button onClick={() => openReview(s.id, s.full_name)} title="Escribir cuánto es la mensualidad y cuánto paga" className="hover:opacity-80">
+                                <Badge tone="warn" className="cursor-pointer underline decoration-dotted">{ACCOUNT_LABEL.por_confirmar}</Badge>
+                              </button>
+                            ) : <Badge tone={feeTone(a?.status ?? 'al_corriente')}>{ACCOUNT_LABEL[a?.status ?? 'al_corriente']}</Badge>}
                             {Number(a?.balance ?? 0) > 0 && <span className="font-semibold">{money(a!.balance)}</span>}
                           </div>
                         </td>
@@ -179,7 +188,9 @@ export default function Students() {
                           <p className="truncate font-medium">{s.full_name}</p>
                           <div className="mt-1 flex flex-wrap items-center gap-1.5">
                             <span className="text-xs text-muted">{catMap.get(s.category_id ?? '') ?? 'Sin categoría'}</span>
-                            {a && a.status !== 'al_corriente' && <Badge tone={feeTone(a.status)}>{money(a.balance)}</Badge>}
+                            {a && a.status === 'por_confirmar' && reviewFee(s.id)
+                              ? <button onClick={(e) => { e.preventDefault(); openReview(s.id, s.full_name) }}><Badge tone="warn" className="underline decoration-dotted">¿Beca? {money(a.balance)}</Badge></button>
+                              : a && a.status !== 'al_corriente' && <Badge tone={feeTone(a.status)}>{money(a.balance)}</Badge>}
                           </div>
                         </div>
                       </Link>
@@ -192,6 +203,7 @@ export default function Students() {
           </>
         )}
 
+      {reviewing && <ScholarshipReviewModal fee={reviewing.fee} studentName={reviewing.name} onClose={() => setReviewing(null)} />}
       {creating && <StudentForm defaultCategory={cat && cat !== 'none' ? cat : undefined} onClose={() => setCreating(false)} onSaved={(id) => nav(`/alumnos/${id}`)} />}
     </>
   )

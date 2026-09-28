@@ -12,6 +12,7 @@ export const EXPENSE_FREQUENCY: Record<Expense['frequency'], { label: string; pe
   mensual: { label: 'Cada mes', per: 'por mes' },
   anual: { label: 'Una vez al año', per: 'al año' },
   unico: { label: 'Una sola vez', per: 'una vez' },
+  partes: { label: 'En partes', per: 'por pago' },
 }
 
 export const WEEKS_PER_MONTH = 52 / 12
@@ -23,12 +24,35 @@ export function monthlyCost(pay: Pick<CoachPay, 'amount' | 'frequency'> | undefi
   return pay.frequency === 'semanal' ? a * WEEKS_PER_MONTH : pay.frequency === 'quincenal' ? a * 2 : a
 }
 
+const MONTH_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+
+/**
+ * Calendario de un gasto en partes: el anticipo cae en paid_month/paid_year
+ * y el resto se divide en pagos mensuales iguales a partir del mes siguiente.
+ * Sin anticipo, el primer pago cae en paid_month.
+ */
+export function installmentPlan(e: Pick<Expense, 'amount' | 'down_payment' | 'installments' | 'paid_month' | 'paid_year'>, fallbackYear = new Date().getFullYear()) {
+  const total = Number(e.amount) || 0
+  const down = Math.min(total, Math.max(0, Number(e.down_payment) || 0))
+  const n = Math.max(1, Number(e.installments) || 1)
+  const remaining = total - down
+  const each = remaining / n
+  const start = (e.paid_year ?? fallbackYear) * 12 + ((e.paid_month ?? 1) - 1)
+  const at = (i: number) => ({ key: `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`, label: `${MONTH_SHORT[i % 12]} ${String(Math.floor(i / 12)).slice(2)}` })
+  const schedule = [
+    ...(down > 0 ? [{ ...at(start), amount: down, kind: 'anticipo' as const, n: 0 }] : []),
+    ...Array.from({ length: n }, (_, k) => ({ ...at(start + k + (down > 0 ? 1 : 0)), amount: each, kind: 'pago' as const, n: k + 1 })),
+  ]
+  return { total, down, remaining, n, each, schedule }
+}
+
 /**
  * Parte de un gasto que corresponde a un mes ('YYYY-MM').
  * Anual: se prorratea ÷12 para comparar meses de forma justa.
  * Único: completo en el mes en que se pagó.
+ * En partes: el anticipo o el pago que cae en ese mes.
  */
-export function expenseForMonth(e: Pick<Expense, 'amount' | 'frequency' | 'paid_month' | 'paid_year' | 'active'>, month: string) {
+export function expenseForMonth(e: Pick<Expense, 'amount' | 'frequency' | 'paid_month' | 'paid_year' | 'active' | 'down_payment' | 'installments'>, month: string) {
   if (!e.active) return 0
   const a = Number(e.amount)
   switch (e.frequency) {
@@ -40,6 +64,8 @@ export function expenseForMonth(e: Pick<Expense, 'amount' | 'frequency' | 'paid_
       const [y, m] = month.split('-').map(Number)
       return e.paid_month === m && (!e.paid_year || e.paid_year === y) ? a : 0
     }
+    case 'partes':
+      return installmentPlan(e, Number(month.slice(0, 4))).schedule.filter((p) => p.key === month).reduce((s, p) => s + p.amount, 0)
   }
 }
 
