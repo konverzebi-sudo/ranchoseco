@@ -97,6 +97,20 @@ Para regenerar la carga desde un Excel mensual:
 
 ## Publicación
 
-Cada `push` a `main` corre pruebas, compila y publica en GitHub Pages
-(`.github/workflows/deploy.yml`). Variables del repositorio requeridas:
-`VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` (públicas por diseño; nunca la `service_role`).
+`jefeshub.com` está conectado a GitHub Pages del repo **hub-jany**, así que el sitio compilado
+vive en la carpeta `ranchoseco/` de ese repo. Para publicar cambios:
+
+```bash
+bash scripts/publicar-en-jefeshub.sh
+```
+
+Corre las pruebas, compila y sube sólo la carpeta `ranchoseco/` al hub (no toca el resto).
+
+Además, cada `push` a `main` de este repo publica una copia en
+https://konverzebi-sudo.github.io/ranchoseco/ (`.github/workflows/deploy.yml`), útil como
+respaldo. Variables del repositorio: `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`
+(públicas por diseño; nunca la `service_role`).
+
+Los datos personales de alumnos (`supabase/seed/seed_alumnos.sql`,
+`supabase/INSTALAR_EN_SUPABASE.sql`, archivos `.xlsx`) están en `.gitignore`: este repositorio
+es público y nunca deben subirse.
