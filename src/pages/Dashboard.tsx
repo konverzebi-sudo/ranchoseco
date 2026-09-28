@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { startOfMonth } from 'date-fns'
-import { Users, UserCog, ClipboardCheck, AlertTriangle, Wallet, TrendingUp, Clock, Plus, ChevronRight, Trophy, Dumbbell, HelpCircle } from 'lucide-react'
+import { Users, UserCog, ClipboardCheck, AlertTriangle, Wallet, TrendingUp, Plus, ChevronRight, Trophy, Dumbbell, HelpCircle, GraduationCap } from 'lucide-react'
 import { Avatar, Button, Card, ErrorState, PageHeader, Spinner, StatCard, Badge } from '@/components/ui'
 import { CollectButton } from '@/components/WhatsAppButtons'
 import { useAccounts, useCategories, useCoaches, useFees, useMatches, usePayments, useStudents, useTrainings, useAttendanceDetail } from '@/lib/api'
@@ -31,7 +31,13 @@ export default function Dashboard() {
     const present = todayAtt.filter((a) => a.status === 'presente' || a.status === 'retardo').length
     const openFees = (fees.data ?? []).filter((f) => Number(f.balance) > 0 && activeIds.has(f.student_id))
     const pendingTotal = openFees.reduce((s, f) => s + Number(f.balance), 0)
-    const overdueTotal = openFees.filter((f) => f.status === 'vencido').reduce((s, f) => s + Number(f.balance), 0)
+    const lateFees = openFees.reduce((s, f) => s + Number(f.late_fee), 0)
+    const extras = openFees.filter((f) => f.concept !== 'Mensualidad').reduce((s, f) => s + Number(f.balance), 0)
+    const monthFees = (fees.data ?? []).filter((f) => f.period === monthStart && activeIds.has(f.student_id))
+    const becasMonth = monthFees.reduce((s, f) => s + Number(f.discount), 0)
+    const becados = new Set(monthFees.filter((f) => Number(f.discount) > 0).map((f) => f.student_id)).size
+    const becasSeason = (fees.data ?? []).reduce((s, f) => s + Number(f.discount), 0)
+    const reviewTotal = openFees.filter((f) => f.status === 'por_confirmar').reduce((s, f) => s + Number(f.balance), 0)
     const collected = (payments.data ?? []).reduce((s, p) => s + Number(p.amount), 0)
     const overdueStudents = (accounts.data ?? [])
       .filter((a) => a.status === 'vencido' && activeIds.has(a.student_id))
@@ -39,8 +45,8 @@ export default function Dashboard() {
       .map((a) => ({ acc: a, s: active.find((s) => s.id === a.student_id)! }))
     const streaks = consecutiveAbsences(recentAtt.data ?? [])
     const absent = active.map((s) => ({ s, n: streaks.get(s.id) ?? 0 })).filter((x) => x.n >= 2).sort((a, b) => b.n - a.n)
-    return { active, byCategory, noCat, todayAtt, present, openFees, pendingTotal, overdueTotal, collected, overdueStudents, absent }
-  }, [students.data, categories.data, recentAtt.data, fees.data, payments.data, accounts.data, t])
+    return { active, byCategory, noCat, todayAtt, present, openFees, pendingTotal, lateFees, extras, becasMonth, becados, becasSeason, reviewTotal, collected, overdueStudents, absent }
+  }, [students.data, categories.data, recentAtt.data, fees.data, payments.data, accounts.data, t, monthStart])
 
   const loading = students.isLoading || accounts.isLoading || fees.isLoading
   const error = students.error || accounts.error || fees.error || categories.error
@@ -66,13 +72,15 @@ export default function Dashboard() {
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatCard label="Cobrado este mes" value={money(data.collected)} icon={TrendingUp} tone="ok" onClick={() => nav('/cobranza')} />
-            <StatCard label="Pendiente de cobro" value={money(data.pendingTotal)} icon={Wallet} hint={`${data.openFees.length} mensualidades abiertas`} onClick={() => nav('/cobranza')} />
-            <StatCard label="Vencido" value={money(data.overdueTotal)} icon={AlertTriangle} tone={data.overdueTotal > 0 ? 'bad' : undefined} hint={`${data.overdueStudents.length} alumnos`} onClick={() => nav('/cobranza?f=vencido')} />
+            <StatCard label="Pendiente de cobro" value={money(data.pendingTotal)} icon={Wallet} hint={`${data.openFees.length} cargos abiertos · ${data.overdueStudents.length} alumnos atrasados`} onClick={() => nav('/cobranza?f=pendiente')} />
+            <StatCard label="Recargos y extras pendientes" value={money(data.lateFees + data.extras)} icon={AlertTriangle} tone={data.lateFees + data.extras > 0 ? 'bad' : undefined}
+              hint={`Recargos ${money(data.lateFees)} · Extras ${money(data.extras)}`} onClick={() => nav('/cobranza?f=vencido')} />
+            <StatCard label="Becas este mes" value={money(data.becasMonth)} icon={GraduationCap}
+              hint={`${data.becados} becados · Temporada ${money(data.becasSeason)}`} onClick={() => nav('/cobranza')} />
             <StatCard label="Asistencia de hoy" value={data.todayAtt.length ? `${data.present}/${data.todayAtt.length}` : '—'} icon={ClipboardCheck} hint={data.todayAtt.length ? 'presentes' : 'Aún no se pasa lista'} onClick={() => nav('/asistencias')} />
             <StatCard label="Alumnos activos" value={data.active.length} icon={Users} onClick={() => nav('/alumnos')} />
             <StatCard label="Profesores" value={(coaches.data ?? []).filter((c) => c.active).length} icon={UserCog} onClick={() => nav('/profesores')} />
-            <StatCard label="Mensualidades pendientes" value={data.openFees.length} icon={Clock} onClick={() => nav('/cobranza?f=pendiente')} />
-            <StatCard label="¿Beca? Por confirmar" value={data.openFees.filter((f) => f.status === 'por_confirmar').length} icon={HelpCircle} hint="Pagos menores a la cuota" onClick={() => nav('/cobranza?f=por_confirmar')} />
+            <StatCard label="¿Beca? Por confirmar" value={money(data.reviewTotal)} icon={HelpCircle} hint={`${data.openFees.filter((f) => f.status === 'por_confirmar').length} pagos menores a la cuota`} onClick={() => nav('/cobranza?f=por_confirmar')} />
           </div>
 
           <div className="grid gap-6 lg:grid-cols-3">
