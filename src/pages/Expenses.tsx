@@ -56,12 +56,30 @@ export default function Expenses() {
       {expenses.isLoading || students.isLoading ? <Spinner /> : !list.length ? (
         <Card className="mb-8"><Empty icon={Receipt} title="Aún no hay gastos" text="Agrega regalías, renta, seguro, sueldos generales…" action={<Button icon={Plus} onClick={() => setAdding(true)}>Agregar gasto</Button>} /></Card>
       ) : (
-        <div className="mb-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <>
+        <div className="mb-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {list.map((e) => <ExpenseCard key={e.id} expense={e} activeCount={activeCount} />)}
           <button onClick={() => setAdding(true)} className="flex min-h-[180px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-ink-500 text-muted transition hover:border-brand hover:text-brand">
             <Plus className="h-6 w-6" /> Agregar gasto
           </button>
         </div>
+        <Card className="mb-8 flex flex-wrap items-center justify-between gap-4 border-brand/40 bg-ink-900 px-5 py-4">
+          <div>
+            <p className="font-display text-lg font-bold uppercase tracking-wide">Total gastos generales</p>
+            <p className="text-xs text-muted">{list.filter((e) => e.active).length} gastos · semanal × 4.33 · anual ÷ 12</p>
+          </div>
+          <div className="flex flex-wrap gap-8">
+            <div>
+              <p className="text-xs uppercase tracking-wider text-muted">Al mes</p>
+              <p className="font-display text-3xl font-bold text-bad">{money(Math.round(generalMonthly))}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wider text-muted">Por alumno al mes</p>
+              <p className="font-display text-3xl font-bold text-brand">{activeCount ? cents(generalMonthly / activeCount) : '—'}</p>
+            </div>
+          </div>
+        </Card>
+        </>
       )}
 
       <h2 className="mb-3 font-display text-xl font-bold uppercase tracking-wide">Profesores por categoría</h2>
