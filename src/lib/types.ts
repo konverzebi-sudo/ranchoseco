@@ -11,7 +11,7 @@ export interface Settings {
   default_country_code: string
   default_monthly_fee: number
   due_day: number
-  late_fee_per_day: number
+  late_fee_amount: number
   payment_instructions: string
   collection_template: string
   report_template: string
@@ -99,9 +99,9 @@ export interface FeeBalance {
   discount: number
   discount_reason: string | null
   review: string | null
-  late_fee_per_day: number
+  late_fee_amount: number
   late_fee_waived: number
-  late_days: number
+  late_months: number
   late_fee: number
   total_due: number
   paid: number

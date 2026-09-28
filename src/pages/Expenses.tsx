@@ -50,6 +50,8 @@ export default function Expenses() {
         <StatCard label="Sueldos de profesores al mes" value={money(Math.round(salariesMonthly))} icon={UserCog} hint={`${coachRows.length} profesores con sueldo`} />
       </div>
 
+      <div className="mb-8"><CategoryResults /></div>
+
       <h2 className="mb-3 font-display text-xl font-bold uppercase tracking-wide">Gastos generales</h2>
       {expenses.isLoading || students.isLoading ? <Spinner /> : !list.length ? (
         <Card className="mb-8"><Empty icon={Receipt} title="Aún no hay gastos" text="Agrega regalías, renta, seguro, sueldos generales…" action={<Button icon={Plus} onClick={() => setAdding(true)}>Agregar gasto</Button>} /></Card>
@@ -84,7 +86,6 @@ export default function Expenses() {
         </Card>
       )}
 
-      <CategoryResults />
       {adding && <ExpenseModal onClose={() => setAdding(false)} nextOrder={list.length + 1} />}
     </>
   )

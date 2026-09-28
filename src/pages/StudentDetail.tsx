@@ -365,7 +365,7 @@ function PaymentsTab({ s }: { s: StudentRow }) {
                   <td>{Number(f.discount) > 0 ? <span className="text-ok">−{money(f.discount)}<span className="block text-xs text-muted">{f.discount_reason ?? 'Descuento'}</span></span> : <span className="text-muted">—</span>}</td>
                   <td>
                     {Number(f.late_fee) > 0 ? (
-                      <span className="text-bad">{money(f.late_fee)}<span className="block text-xs text-muted">{f.late_days} días × {money(f.late_fee_per_day)}</span></span>
+                      <span className="text-bad">{money(f.late_fee)}<span className="block text-xs text-muted">{f.late_months} {f.late_months === 1 ? 'mes' : 'meses'} × {money(f.late_fee_amount)}</span></span>
                     ) : Number(f.late_fee_waived) > 0 ? <span className="text-xs text-muted">Condonado</span> : <span className="text-muted">—</span>}
                   </td>
                   <td>{money(f.paid)}</td>
