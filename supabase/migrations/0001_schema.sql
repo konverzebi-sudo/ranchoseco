@@ -63,6 +63,7 @@ create table academia.categories (
   description  text,
   schedule     text,
   monthly_fee  numeric(10,2),
+  sort_order   smallint not null default 0,
   active       boolean not null default true,
   created_at   timestamptz not null default now()
 );
