@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, UserCog, MessageCircle } from 'lucide-react'
-import { Avatar, Badge, Button, Card, Empty, ErrorState, Field, Input, Modal, PageHeader, Select, Spinner, cx } from '@/components/ui'
+import { Plus, Pencil, UserCog, MessageCircle, Trash2, Receipt } from 'lucide-react'
+import { Avatar, Badge, Button, Card, ConfirmDialog, Empty, ErrorState, Field, Input, Modal, PageHeader, Select, Spinner, cx } from '@/components/ui'
 import { useToast } from '@/components/toast'
 import { useCategories, useCoachCategories, useCoachPay, useCoaches, useSettings, useStudents } from '@/lib/api'
 import { FREQUENCY_LABEL, monthlyCost } from '@/lib/finance'
@@ -85,7 +85,23 @@ function CoachModal({ coach, onClose }: { coach?: Coach; onClose: () => void }) 
   const [salary, setSalary] = useState(current ? String(current.amount) : '')
   const [frequency, setFrequency] = useState<CoachPay['frequency']>(current?.frequency ?? 'semanal')
   const [saving, setSaving] = useState(false)
+  const [confirmDel, setConfirmDel] = useState<'borrar' | 'gasto' | null>(null)
   const phone = f.phone ? normalizePhone(f.phone, settings?.default_country_code ?? '52') : ''
+
+  const remove = async (toExpense: boolean) => {
+    if (!coach) return
+    setSaving(true)
+    try {
+      if (toExpense && current) {
+        unwrap(await supabase.from('expenses').insert({ name: coach.full_name, amount: current.amount, frequency: current.frequency, notes: 'Sueldo', sort_order: 99 }))
+      }
+      unwrap(await supabase.from('coaches').delete().eq('id', coach.id))
+      await Promise.all(['coaches', 'coach_categories', 'coach_pay', 'expenses'].map((k) => qc.invalidateQueries({ queryKey: [k] })))
+      toast.ok(toExpense ? `${coach.full_name} ahora está en Gastos generales` : 'Profesor eliminado')
+      setConfirmDel(null)
+      onClose()
+    } catch (err) { toast.error(err) } finally { setSaving(false) }
+  }
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -110,7 +126,18 @@ function CoachModal({ coach, onClose }: { coach?: Coach; onClose: () => void }) 
 
   return (
     <Modal open onClose={onClose} title={coach ? 'Editar profesor' : 'Nuevo profesor'}
-      footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button type="submit" form="coach-form" loading={saving}>Guardar</Button></>}>
+      footer={<>
+        {coach && <Button variant="danger" icon={Trash2} className="mr-auto" onClick={() => setConfirmDel('borrar')}>Eliminar</Button>}
+        {coach && current && <Button variant="ghost" icon={Receipt} onClick={() => setConfirmDel('gasto')}>Pasar a gastos generales</Button>}
+        <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+        <Button type="submit" form="coach-form" loading={saving}>Guardar</Button>
+      </>}>
+      <ConfirmDialog open={!!confirmDel} onClose={() => setConfirmDel(null)} onConfirm={() => remove(confirmDel === 'gasto')} loading={saving} danger={confirmDel === 'borrar'}
+        title={confirmDel === 'gasto' ? 'Pasar a gastos generales' : 'Eliminar profesor'}
+        confirmLabel={confirmDel === 'gasto' ? 'Pasar a gastos' : 'Eliminar'}
+        text={confirmDel === 'gasto'
+          ? <>{coach?.full_name} dejará de estar en Profesores y su sueldo ({money(current?.amount ?? 0)} {current ? FREQUENCY_LABEL[current.frequency] : ''}) se agregará en <b className="text-white">Gastos generales</b>, repartido entre todos los alumnos.</>
+          : <>Se eliminará a {coach?.full_name} con su sueldo y sus categorías. Los alumnos, entrenamientos y evaluaciones se conservan. Si sólo dejó de trabajar temporalmente, mejor desmarca "Profesor activo".</>} />
       <form id="coach-form" onSubmit={submit} className="space-y-4">
         <Field label="Nombre completo *"><Input value={f.full_name} onChange={(e) => setF({ ...f, full_name: e.target.value })} autoFocus /></Field>
         <div className="grid gap-4 sm:grid-cols-2">
