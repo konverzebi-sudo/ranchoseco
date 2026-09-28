@@ -6,7 +6,8 @@ import { Button, Field, Input, Modal, Select, Textarea } from './ui'
 import { useToast } from './toast'
 import { useCategories, useFees, useSettings, type StudentRow } from '@/lib/api'
 import { supabase, unwrap, BUCKETS } from '@/lib/supabase'
-import { METHOD_LABEL, money, monthName, toISODate, today } from '@/lib/format'
+import { METHOD_LABEL, date, money, monthName, toISODate, today } from '@/lib/format'
+import { TIER_LABEL, joinTier, tierAmount, tierNote, type JoinTier } from '@/lib/prorate'
 import type { PaymentMethod } from '@/lib/types'
 
 const PAY_KEYS = [['fees'], ['accounts'], ['payments']]
@@ -132,7 +133,11 @@ export function FeeModal({ student, onClose }: { student: StudentRow; onClose: (
   const periodDate = `${period}-01`
   const dueValue = due || dueDateFor(periodDate, settings?.due_day ?? 10)
   const isInscription = norm(concept.trim()) === 'inscripcion'
-  const suggestedFor = isInscription ? INSCRIPTION_FEE : suggested
+  const isMonthly = norm(concept.trim()) === 'mensualidad'
+  const autoTier = joinTier(student.enrolled_at, periodDate) ?? 'completo'
+  const [tierPick, setTierPick] = useState<JoinTier | null>(null)
+  const tier: JoinTier = isMonthly ? (tierPick ?? autoTier) : 'completo'
+  const suggestedFor = isInscription ? INSCRIPTION_FEE : tierAmount(suggested, tier)
   const value = amount === '' ? suggestedFor : Number(amount)
 
   const submit = async (e: FormEvent) => {
@@ -141,7 +146,10 @@ export function FeeModal({ student, onClose }: { student: StudentRow; onClose: (
     if (!(value > 0)) return toast.error('Define el importe (o configura la mensualidad en Categorías / Configuración).')
     setSaving(true)
     try {
-      unwrap(await supabase.from('fees').insert({ student_id: student.id, concept: concept.trim(), period: periodDate, amount: value, due_date: dueValue }))
+      unwrap(await supabase.from('fees').insert({
+        student_id: student.id, concept: concept.trim(), period: periodDate, amount: value, due_date: dueValue,
+        notes: tierNote(tier),
+      }))
       await refresh(qc)
       toast.ok('Cargo creado')
       onClose()
@@ -166,6 +174,21 @@ export function FeeModal({ student, onClose }: { student: StudentRow; onClose: (
           <Field label="Importe"><Input type="number" inputMode="decimal" min="1" step="0.01" placeholder={suggestedFor ? String(suggestedFor) : '0'} value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
           <Field label="Vence"><Input type="date" value={dueValue} onChange={(e) => setDue(e.target.value)} /></Field>
         </div>
+        {isMonthly && (
+          <div className="rounded-xl border border-ink-600 bg-ink-900 p-4 text-sm">
+            <p className="font-medium">¿Cuándo entró?</p>
+            <p className="mb-2 text-xs text-muted">Del 1 al 15: mes completo · del 16 al 22: mitad · del 23 en adelante: $100.
+              {autoTier !== 'completo' && tierPick === null && <> Se inscribió el {date(student.enrolled_at)}, por eso se eligió solo.</>}</p>
+            <div className="flex flex-wrap gap-2">
+              {(['completo', 'mitad', 'minimo'] as JoinTier[]).map((t) => (
+                  <button type="button" key={t} onClick={() => { setTierPick(t); setAmount('') }}
+                    className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${tier === t ? 'bg-brand text-ink' : 'bg-ink-700 text-muted hover:text-white'}`}>
+                    {TIER_LABEL[t]} · {money(tierAmount(suggested, t))}
+                  </button>
+                ))}
+            </div>
+          </div>
+        )}
       </form>
     </Modal>
   )
@@ -183,6 +206,7 @@ export function GenerateMonthModal({ students, onClose }: { students: StudentRow
   const toast = useToast()
   const [period, setPeriod] = useState(toISODate(startOfMonth(new Date())).slice(0, 7))
   const [saving, setSaving] = useState(false)
+  const [tierOverride, setTierOverride] = useState<Record<string, JoinTier>>({})
   const periodDate = `${period}-01`
 
   const plan = useMemo(() => {
@@ -192,18 +216,22 @@ export function GenerateMonthModal({ students, onClose }: { students: StudentRow
       const cat = categories?.find((c) => c.id === s.category_id)
       const regular = Number(cat?.monthly_fee ?? settings?.default_monthly_fee ?? 0)
       const discount = s.monthly_fee != null ? Math.max(0, regular - Number(s.monthly_fee)) : 0
-      return { s, amount: regular, discount }
-    })
+      const auto = joinTier(s.enrolled_at, periodDate)
+      const tier: JoinTier = tierOverride[s.id] ?? auto ?? 'completo'
+      const amount = tierAmount(regular, tier)
+      return { s, auto, tier, regular, amount, discount: tier === 'completo' ? discount : Math.min(discount, amount) }
+    }).filter((r) => r.auto !== null) // si se inscribe después de ese mes, ese mes no paga
     return { toCreate: rows.filter((r) => r.amount > 0), noAmount: rows.filter((r) => !(r.amount > 0)), already: existing.size }
-  }, [fees, students, categories, settings, periodDate])
+  }, [fees, students, categories, settings, periodDate, tierOverride])
 
   const run = async () => {
     setSaving(true)
     try {
       const due = dueDateFor(periodDate, settings?.due_day ?? 10)
-      const payload = plan.toCreate.map(({ s, amount, discount }) => ({
+      const payload = plan.toCreate.map(({ s, amount, discount, tier }) => ({
         student_id: s.id, concept: 'Mensualidad', period: periodDate, amount, due_date: due,
         discount, discount_reason: discount > 0 ? 'Beca' : null,
+        notes: tierNote(tier),
       }))
       for (let i = 0; i < payload.length; i += 200) {
         unwrap(await supabase.from('fees').upsert(payload.slice(i, i + 200), { onConflict: 'student_id,concept,period', ignoreDuplicates: true }))
@@ -234,6 +262,31 @@ export function GenerateMonthModal({ students, onClose }: { students: StudentRow
             <p className="mt-2 text-warn">{plan.noAmount.length} alumnos no tienen importe definido. Configura la mensualidad en Categorías o en Configuración.</p>
           )}
         </div>
+        {(() => {
+          const late = plan.toCreate.filter((r) => r.auto !== 'completo')
+          if (!late.length) return null
+          return (
+            <div className="rounded-xl border border-ink-600 p-4">
+              <p className="font-medium">{late.length} {late.length === 1 ? 'alumno entró' : 'alumnos entraron'} a medio mes</p>
+              <p className="mb-3 text-xs text-muted">Del 1 al 15: mes completo · del 16 al 22: mitad · del 23 en adelante: $100. Toca otra opción para cambiarlo.</p>
+              <ul className="space-y-3">
+                {late.map((r) => (
+                  <li key={r.s.id}>
+                    <p className="truncate">{r.s.full_name} <span className="text-xs text-muted">· entró el {date(r.s.enrolled_at, "d 'de' MMM")}</span></p>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {(['completo', 'mitad', 'minimo'] as JoinTier[]).map((t) => (
+                  <button type="button" key={t} onClick={() => setTierOverride((o) => ({ ...o, [r.s.id]: t }))}
+                    className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${r.tier === t ? 'bg-brand text-ink' : 'bg-ink-700 text-muted hover:text-white'}`}>
+                    {TIER_LABEL[t]} · {money(tierAmount(r.regular, t))}
+                  </button>
+                ))}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )
+        })()}
         <p className="text-muted">Próximo mes sugerido: {monthName(toISODate(addMonths(new Date(periodDate + 'T12:00:00'), 1)))}</p>
       </div>
     </Modal>
