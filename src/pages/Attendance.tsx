@@ -44,7 +44,7 @@ function TakeAttendance() {
   const dayTrainings = cat ? trainings.data ?? [] : []
   const training: Training | undefined = dayTrainings.find((t) => t.id === trainingId) ?? dayTrainings[0]
   const attendance = useAttendanceFor(training?.id)
-  const [local, setLocal] = useState<Record<string, AttendanceStatus>>({})
+  const [local, setLocal] = useState<Record<string, AttendanceStatus | null>>({})
   const [pending, setPending] = useState<Set<string>>(new Set())
 
   useEffect(() => { try { if (cat) localStorage.setItem(LS_KEY, cat) } catch { /* sin almacenamiento */ } }, [cat])
@@ -58,7 +58,7 @@ function TakeAttendance() {
     return (students.data ?? []).filter((s) => s.status === 'activo' && (isExtra ? members.has(s.id) : s.category_id === cat))
   }, [students.data, cat, isExtra, extras.data])
   const saved = useMemo(() => new Map((attendance.data ?? []).map((a) => [a.student_id, a.status])), [attendance.data])
-  const statusOf = (id: string) => local[id] ?? saved.get(id)
+  const statusOf = (id: string) => (id in local ? local[id] : saved.get(id)) ?? undefined
   const marked = roster.filter((s) => statusOf(s.id)).length
 
   /** Crea el entrenamiento del día si aún no existe (un solo toque para empezar). */
@@ -90,6 +90,31 @@ function TakeAttendance() {
       toast.error(e)
     } finally {
       setPending((p) => { const n = new Set(p); studentIds.forEach((id) => n.delete(id)); return n })
+    }
+  }
+
+  /** Tocar de nuevo el mismo botón desmarca: se borra el registro de asistencia. */
+  const unmark = async (studentId: string) => {
+    if (!training) return setLocal((l) => ({ ...l, [studentId]: null }))
+    const prev = { ...local }
+    setLocal((l) => ({ ...l, [studentId]: null }))
+    setPending((p) => new Set([...p, studentId]))
+    try {
+      unwrap(await supabase.from('attendance').delete().eq('training_id', training.id).eq('student_id', studentId))
+      // Si era un entrenamiento creado solo al pasar lista y ya no tiene a nadie, se quita
+      const { count } = await supabase.from('attendance').select('id', { count: 'exact', head: true }).eq('training_id', training.id)
+      if (count === 0 && !training.objectives && !training.exercises && !training.notes) {
+        unwrap(await supabase.from('trainings').delete().eq('id', training.id))
+        creating.current = null
+        setTrainingId('')
+        await qc.invalidateQueries({ queryKey: ['trainings'] })
+      }
+      await qc.invalidateQueries({ queryKey: ['attendance'] })
+    } catch (e) {
+      setLocal(prev)
+      toast.error(e)
+    } finally {
+      setPending((p) => { const n = new Set(p); n.delete(studentId); return n })
     }
   }
 
@@ -129,7 +154,7 @@ function TakeAttendance() {
       ) : (
         <>
           <div className="sticky top-[57px] z-20 -mx-4 flex items-center justify-between gap-3 border-b border-ink-600 bg-ink/95 px-4 py-3 backdrop-blur lg:top-0 lg:mx-0 lg:rounded-2xl lg:border">
-            <p className="text-sm"><span className="font-display text-2xl font-bold text-brand">{marked}</span><span className="text-muted"> / {roster.length} marcados</span></p>
+            <p className="text-sm"><span className="font-display text-2xl font-bold text-brand">{marked}</span><span className="text-muted"> / {roster.length} marcados</span><span className="block text-xs text-muted">Toca de nuevo una opción para desmarcarla</span></p>
             <Button size="sm" icon={CheckCheck} onClick={() => mark(roster.filter((s) => !statusOf(s.id)).map((s) => s.id), 'presente')} disabled={marked === roster.length}>
               Resto presentes
             </Button>
@@ -147,7 +172,7 @@ function TakeAttendance() {
                     </div>
                     <div className="grid grid-cols-4 gap-1.5">
                       {OPTIONS.map((o) => (
-                        <button key={o.id} onClick={() => st !== o.id && mark([s.id], o.id)} aria-pressed={st === o.id}
+                        <button key={o.id} onClick={() => (st === o.id ? unmark(s.id) : mark([s.id], o.id))} aria-pressed={st === o.id} title={st === o.id ? 'Tocar de nuevo para desmarcar' : undefined}
                           className={cx('flex flex-col items-center gap-1 rounded-xl border py-2.5 text-[11px] font-semibold transition sm:flex-row sm:justify-center sm:gap-1.5 sm:text-sm',
                             st === o.id ? o.on : 'border-ink-600 bg-ink-900 text-muted hover:text-white')}>
                           <o.icon className="h-5 w-5 sm:h-4 sm:w-4" />
