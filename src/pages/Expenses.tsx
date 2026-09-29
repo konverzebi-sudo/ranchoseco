@@ -42,7 +42,8 @@ export default function Expenses() {
   const cc = useCoachCategories()
   const extras = useExtraClasses()
   const categories = useCategories()
-  const [adding, setAdding] = useState(false)
+  const [adding, setAdding] = useState<'fijo' | 'mes' | null>(null)
+  const [viewMonth, setViewMonth] = useState(today().slice(0, 7))
   const [picking, setPicking] = useState<{ id: string; name: string } | null>(null)
   const month = today().slice(0, 7)
 
@@ -50,6 +51,12 @@ export default function Expenses() {
   const activeCount = active.length
   const list = expenses.data ?? []
   const generalMonthly = list.reduce((a, e) => a + expenseForMonth(e, month), 0)
+  const FIXED: Expense['frequency'][] = ['semanal', 'quincenal', 'mensual', 'anual']
+  const fixedList = list.filter((e) => FIXED.includes(e.frequency))
+  const fixedMonthly = fixedList.reduce((a, e) => a + expenseForMonth(e, month), 0)
+  // Gastos del mes: los de una sola vez y los pagos en partes que caen en el mes elegido
+  const monthList = list.filter((e) => !FIXED.includes(e.frequency) && expenseForMonth(e, viewMonth) > 0)
+  const monthTotal = monthList.reduce((a, e) => a + expenseForMonth(e, viewMonth), 0)
   const coachRows = (coaches.data ?? []).filter((c) => c.active).map((c) => {
     const p = pay.data?.find((x) => x.coach_id === c.id)
     const cats = (cc.data ?? []).filter((x) => x.coach_id === c.id).map((x) => categories.data?.find((k) => k.id === x.category_id)).filter(Boolean)
@@ -65,7 +72,10 @@ export default function Expenses() {
   return (
     <>
       <PageHeader title="Gastos" subtitle="Captura los gastos a mano. El sistema calcula cuánto le corresponde a cada alumno."
-        actions={<Button icon={Plus} onClick={() => setAdding(true)}>Agregar gasto</Button>} />
+        actions={<>
+          <Button variant="secondary" icon={Plus} onClick={() => setAdding('mes')}>Gasto del mes</Button>
+          <Button icon={Plus} onClick={() => setAdding('fijo')}>Gasto fijo</Button>
+        </>} />
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Alumnos activos" value={activeCount} icon={Users} hint="Base para repartir los gastos" />
@@ -76,30 +86,67 @@ export default function Expenses() {
 
       <div className="mb-8"><CategoryResults /></div>
 
-      <h2 className="mb-3 font-display text-xl font-bold uppercase tracking-wide">Gastos generales</h2>
-      {expenses.isLoading || students.isLoading ? <Spinner /> : !list.length ? (
-        <Card className="mb-8"><Empty icon={Receipt} title="Aún no hay gastos" text="Agrega regalías, renta, seguro, sueldos generales…" action={<Button icon={Plus} onClick={() => setAdding(true)}>Agregar gasto</Button>} /></Card>
+      {/* ---------- Gastos del mes ---------- */}
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <h2 className="font-display text-xl font-bold uppercase tracking-wide">Gastos del mes</h2>
+          <p className="text-sm text-muted">Gastos de una sola vez y pagos en partes que caen en el mes.</p>
+        </div>
+        <div className="flex gap-2">
+          <Input type="month" value={viewMonth} onChange={(e) => setViewMonth(e.target.value || today().slice(0, 7))} className="h-9 w-40" aria-label="Mes" />
+          <Button size="sm" icon={Plus} onClick={() => setAdding('mes')}>Agregar</Button>
+        </div>
+      </div>
+      {expenses.isLoading ? <Spinner /> : (
+        <>
+          {monthList.length === 0 ? (
+            <Card className="mb-3 p-5 text-sm text-muted">Sin gastos extra en {MONTHS[Number(viewMonth.slice(5, 7)) - 1].toLowerCase()}. Agrega arbitrajes, balones, transporte, reparaciones…</Card>
+          ) : (
+            <div className="mb-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {monthList.map((e) => <ExpenseCard key={e.id} expense={e} activeCount={activeCount} />)}
+            </div>
+          )}
+          <Card className="mb-8 flex flex-wrap items-center justify-between gap-4 bg-ink-900 px-5 py-4">
+            <p className="font-display text-lg font-bold uppercase tracking-wide">Total gastos del mes · {MONTHS[Number(viewMonth.slice(5, 7)) - 1]}</p>
+            <div className="flex flex-wrap gap-8">
+              <div><p className="text-xs uppercase tracking-wider text-muted">Total</p><p className="font-display text-3xl font-bold text-bad">{money(Math.round(monthTotal))}</p></div>
+              <div><p className="text-xs uppercase tracking-wider text-muted">Por alumno</p><p className="font-display text-3xl font-bold text-brand">{activeCount ? cents(monthTotal / activeCount) : '—'}</p></div>
+            </div>
+          </Card>
+        </>
+      )}
+
+      {/* ---------- Gastos generales fijos ---------- */}
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <h2 className="font-display text-xl font-bold uppercase tracking-wide">Gastos generales fijos</h2>
+          <p className="text-sm text-muted">Se repiten cada semana, quincena, mes o año. Edita el monto directo en la tarjeta.</p>
+        </div>
+        <Button size="sm" icon={Plus} onClick={() => setAdding('fijo')}>Agregar gasto fijo</Button>
+      </div>
+      {expenses.isLoading || students.isLoading ? <Spinner /> : !fixedList.length ? (
+        <Card className="mb-8"><Empty icon={Receipt} title="Aún no hay gastos fijos" text="Agrega regalías, renta, seguro, sueldos generales…" action={<Button icon={Plus} onClick={() => setAdding('fijo')}>Agregar gasto fijo</Button>} /></Card>
       ) : (
         <>
         <div className="mb-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {list.map((e) => <ExpenseCard key={e.id} expense={e} activeCount={activeCount} />)}
-          <button onClick={() => setAdding(true)} className="flex min-h-[180px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-ink-500 text-muted transition hover:border-brand hover:text-brand">
-            <Plus className="h-6 w-6" /> Agregar gasto
+          {fixedList.map((e) => <ExpenseCard key={e.id} expense={e} activeCount={activeCount} />)}
+          <button onClick={() => setAdding('fijo')} className="flex min-h-[180px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-ink-500 text-muted transition hover:border-brand hover:text-brand">
+            <Plus className="h-6 w-6" /> Agregar gasto fijo
           </button>
         </div>
         <Card className="mb-8 flex flex-wrap items-center justify-between gap-4 border-brand/40 bg-ink-900 px-5 py-4">
           <div>
-            <p className="font-display text-lg font-bold uppercase tracking-wide">Total gastos generales</p>
-            <p className="text-xs text-muted">{list.filter((e) => e.active).length} gastos · semanal × 4.33 · anual ÷ 12</p>
+            <p className="font-display text-lg font-bold uppercase tracking-wide">Total gastos generales fijos</p>
+            <p className="text-xs text-muted">{fixedList.filter((e) => e.active).length} gastos · semanal × 4.33 · anual ÷ 12</p>
           </div>
           <div className="flex flex-wrap gap-8">
             <div>
               <p className="text-xs uppercase tracking-wider text-muted">Al mes</p>
-              <p className="font-display text-3xl font-bold text-bad">{money(Math.round(generalMonthly))}</p>
+              <p className="font-display text-3xl font-bold text-bad">{money(Math.round(fixedMonthly))}</p>
             </div>
             <div>
               <p className="text-xs uppercase tracking-wider text-muted">Por alumno al mes</p>
-              <p className="font-display text-3xl font-bold text-brand">{activeCount ? cents(generalMonthly / activeCount) : '—'}</p>
+              <p className="font-display text-3xl font-bold text-brand">{activeCount ? cents(fixedMonthly / activeCount) : '—'}</p>
             </div>
           </div>
         </Card>
@@ -151,7 +198,7 @@ export default function Expenses() {
       )}
 
       {picking && <CoachCategoryPicker coachId={picking.id} coachName={picking.name} onClose={() => setPicking(null)} />}
-      {adding && <ExpenseModal onClose={() => setAdding(false)} nextOrder={list.length + 1} />}
+      {adding && <ExpenseModal mode={adding} onClose={() => setAdding(null)} nextOrder={list.length + 1} />}
     </>
   )
 }
@@ -295,10 +342,10 @@ function ExpenseCard({ expense, activeCount }: { expense: Expense; activeCount: 
   )
 }
 
-function ExpenseModal({ onClose, nextOrder }: { onClose: () => void; nextOrder: number }) {
+function ExpenseModal({ mode, onClose, nextOrder }: { mode: 'fijo' | 'mes'; onClose: () => void; nextOrder: number }) {
   const qc = useQueryClient()
   const toast = useToast()
-  const [f, setF] = useState({ name: '', amount: '', frequency: 'mensual' as Expense['frequency'], paid_month: Number(today().slice(5, 7)), paid_year: thisYear, down: '', installments: '2', notes: '' })
+  const [f, setF] = useState({ name: '', amount: '', frequency: (mode === 'mes' ? 'unico' : 'mensual') as Expense['frequency'], paid_month: Number(today().slice(5, 7)), paid_year: thisYear, down: '', installments: '2', notes: '' })
   const isPlan = f.frequency === 'partes'
   const plan = installmentPlan({ amount: Number(f.amount) || 0, down_payment: Number(f.down) || 0, installments: Math.round(Number(f.installments)) || 1, paid_month: f.paid_month, paid_year: f.paid_year })
   const [saving, setSaving] = useState(false)
@@ -326,7 +373,7 @@ function ExpenseModal({ onClose, nextOrder }: { onClose: () => void; nextOrder: 
     } catch (err) { toast.error(err) } finally { setSaving(false) }
   }
   return (
-    <Modal open onClose={onClose} title="Agregar gasto"
+    <Modal open onClose={onClose} title={mode === 'mes' ? 'Agregar gasto del mes' : 'Agregar gasto fijo'}
       footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button type="submit" form="expense-form" icon={Wallet} loading={saving}>Agregar</Button></>}>
       <form id="expense-form" onSubmit={submit} className="space-y-4">
         <Field label="Concepto"><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Ej. Luz, arbitrajes, balones…" autoFocus list="expense-names" /></Field>
@@ -335,7 +382,9 @@ function ExpenseModal({ onClose, nextOrder }: { onClose: () => void; nextOrder: 
           <Field label={isPlan ? 'Total del gasto' : 'Monto'}><Input type="number" min="0" inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>
           <Field label="¿Cada cuándo se paga?">
             <Select value={f.frequency} onChange={(e) => setF({ ...f, frequency: e.target.value as Expense['frequency'] })}>
-              {(Object.keys(EXPENSE_FREQUENCY) as Expense['frequency'][]).map((k) => <option key={k} value={k}>{EXPENSE_FREQUENCY[k].label}</option>)}
+              {(Object.keys(EXPENSE_FREQUENCY) as Expense['frequency'][])
+                .filter((k) => (mode === 'mes' ? ['unico', 'partes'] : ['semanal', 'quincenal', 'mensual', 'anual']).includes(k))
+                .map((k) => <option key={k} value={k}>{EXPENSE_FREQUENCY[k].label}</option>)}
             </Select>
           </Field>
         </div>
