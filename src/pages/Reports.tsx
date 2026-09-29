@@ -28,13 +28,13 @@ export default function Reports() {
   const evalCounts = useEvaluationCounts()
 
   const section = SECTIONS.find((s) => s.key === view)
-  const title = view === 'ganancia' ? 'Ganancia real por categoría' : view === 'pdf' ? 'Reporte PDF por jugador' : section?.title
+  const title = view === 'ganancia' ? 'Ganancia real por categoría' : view === 'pdf' ? 'Reportes por jugador' : section?.title
 
   if (view && title) {
     return (
       <>
         <button onClick={() => go('')} className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted hover:text-white"><ArrowLeft className="h-4 w-4" /> Reportes</button>
-        <PageHeader title={title} subtitle={view === 'pdf' ? 'Genera y descarga el reporte de cada jugador.' : `Desglose de ${monthLabel(month)}`}
+        <PageHeader title={title} subtitle={view === 'pdf' ? 'Genera y descarga el reporte de cada jugador.' : section ? `${section.short} · ${monthLabel(month)}` : `Desglose de ${monthLabel(month)}`}
           actions={view !== 'ganancia' && view !== 'pdf' ? <Input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className="h-10 w-44" aria-label="Mes" /> : undefined} />
         {view === 'ganancia' && <CategoryResults key={month} initialMonth={month} />}
         {view === 'pdf' && <PdfPlayers />}
@@ -58,19 +58,19 @@ export default function Reports() {
           value={results ? money(Math.round(results.totals.result)) : '…'}
           hint={results ? `Ingreso ${money(Math.round(results.totals.income))} − gastos ${money(Math.round(results.totals.generalExpenses))} − sueldos ${money(Math.round(results.totals.salaries))}` : 'Calculando…'}
           onClick={() => go('ganancia')} />
-        <StatCard label="Reporte PDF por jugador" icon={FileText} value={monthReports}
-          hint={`PDF generados en el mes · ${evaluated} de ${activeCount} jugadores evaluados`} onClick={() => go('pdf')} />
       </div>
 
-      <h2 className="mb-3 font-display text-xl font-bold uppercase tracking-wide">Listas del mes · {monthLabel(month)}</h2>
+      <h2 className="mb-3 font-display text-xl font-bold uppercase tracking-wide">Jugadores · {monthLabel(month)}</h2>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <StatCard label="Reportes por jugador" icon={FileText} value={monthReports}
+          hint={`PDF generados en el mes · ${evaluated} de ${activeCount} evaluados`} onClick={() => go('pdf')} />
         {SECTIONS.map((s) => {
           const items = h?.[s.key] ?? []
           const names = items.map(render).filter(Boolean).slice(0, 3).map((r) => r!.name.split(' ')[0])
           return (
             <StatCard key={s.key} label={s.title} icon={s.icon} tone={s.tone === 'bad' ? 'bad' : s.tone === 'ok' ? 'ok' : 'brand'}
               value={h ? items.length : '…'}
-              hint={!h ? 'Calculando…' : items.length ? `${names.join(', ')}${items.length > 3 ? ` y ${items.length - 3} más` : ''}` : 'Nadie este mes'}
+              hint={<>{s.short}<span className="block">{!h ? 'Calculando…' : items.length ? `${names.join(', ')}${items.length > 3 ? ` y ${items.length - 3} más` : ''}` : 'Nadie este mes'}</span></>}
               onClick={() => go(s.key)} />
           )
         })}
