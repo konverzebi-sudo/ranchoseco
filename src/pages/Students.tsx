@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Plus, Users, Download, ChevronRight } from 'lucide-react'
+import { Plus, Users, Download, ChevronRight, CheckCircle2, Copy, MessageCircle } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Avatar, Badge, Button, Card, Empty, ErrorState, PageHeader, SearchInput, Select, Spinner, feeTone } from '@/components/ui'
 import { CollectButton } from '@/components/WhatsAppButtons'
@@ -36,6 +36,7 @@ export default function Students() {
   const stParam = params.get('st')
   const status = stParam === 'todos' ? '' : (stParam ?? 'activo')
   const acct = params.get('acct') ?? ''
+  const datos = params.get('datos') ?? ''
   const [creating, setCreating] = useState(params.get('nuevo') === '1')
 
   const setParam = (k: string, v: string) => {
@@ -56,6 +57,8 @@ export default function Students() {
       if (status && s.status !== status) return false
       if (cat && (cat === 'none' ? s.category_id : s.category_id !== cat)) return false
       if (acct && (accMap.get(s.id)?.status ?? 'al_corriente') !== acct) return false
+      if (datos === 'completos' && !s.profile_completed_at) return false
+      if (datos === 'faltan' && s.profile_completed_at) return false
       if (!nq) return true
       const g = primaryGuardian(s)
       return (
@@ -65,7 +68,7 @@ export default function Students() {
         (digits.length >= 4 && g?.phone.includes(digits))
       )
     })
-  }, [students.data, q, cat, status, acct, accMap, catMap])
+  }, [students.data, q, cat, status, acct, datos, accMap, catMap])
 
   const inlineUpdate = async (id: string, patch: { category_id?: string | null; status?: StudentStatus }) => {
     try {
@@ -93,6 +96,30 @@ export default function Students() {
           <Button variant="secondary" icon={Download} onClick={doExport} disabled={!rows.length}>Exportar</Button>
           <Button icon={Plus} onClick={() => setCreating(true)}>Nuevo alumno</Button>
         </>} />
+
+      {(() => {
+        const base = (students.data ?? []).filter((s) => s.status !== 'baja')
+        const done = base.filter((s) => s.profile_completed_at).length
+        const pct = base.length ? Math.round((done / base.length) * 100) : 0
+        const link = `${window.location.origin}${import.meta.env.BASE_URL}#/registro`
+        const msg = `Hola, familias de Deportivo Rancho Seco. Les pedimos completar los datos de su hijo (contacto, emergencias e información médica). Toma 2 minutos: ${link}`
+        return (
+          <Card className="mb-4 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-[220px] flex-1">
+                <p className="text-sm"><b className="font-display text-2xl text-brand">{done}</b> <span className="text-muted">de {base.length} alumnos tienen sus datos completos · faltan <b className="text-white">{base.length - done}</b></span></p>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-ink-700"><div className="h-full rounded-full bg-ok" style={{ width: `${pct}%` }} /></div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="secondary" onClick={() => setParam('datos', datos === 'faltan' ? '' : 'faltan')}>{datos === 'faltan' ? 'Ver todos' : 'Ver los que faltan'}</Button>
+                <Button size="sm" variant="secondary" icon={Copy} onClick={() => navigator.clipboard.writeText(link).then(() => toast.ok('Link copiado'))}>Copiar link para papás</Button>
+                <a href={`https://wa.me/?text=${encodeURIComponent(msg)}`} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-wa px-3 text-sm font-semibold text-ink hover:brightness-110"><MessageCircle className="h-4 w-4" /> Enviar por WhatsApp</a>
+              </div>
+            </div>
+          </Card>
+        )
+      })()}
 
       <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_180px_160px_180px]">
         <SearchInput value={q} onChange={(v) => setParam('q', v)} placeholder="Nombre, categoría, tutor o teléfono" className="sm:col-span-2 lg:col-span-1" />
@@ -137,7 +164,7 @@ export default function Students() {
                           <Link to={`/alumnos/${s.id}`} className="flex items-center gap-3 hover:text-brand">
                             <Avatar name={s.full_name} path={s.photo_path} size={36} />
                             <div className="min-w-0">
-                              <p className="font-medium">{s.full_name}</p>
+                              <p className="flex items-center gap-1.5 font-medium">{s.full_name}{s.profile_completed_at && <CheckCircle2 className="h-4 w-4 text-ok" aria-label="Datos completos" />}</p>
                               <p className="text-xs text-muted">{ag != null ? `${ag} años` : 'Sin fecha de nacimiento'}</p>
                             </div>
                           </Link>
@@ -198,7 +225,7 @@ export default function Students() {
                       <Link to={`/alumnos/${s.id}`} className="flex min-w-0 flex-1 items-center gap-3">
                         <Avatar name={s.full_name} path={s.photo_path} size={44} />
                         <div className="min-w-0">
-                          <p className="truncate font-medium">{s.full_name}</p>
+                          <p className="flex items-center gap-1.5 truncate font-medium">{s.full_name}{s.profile_completed_at && <CheckCircle2 className="h-4 w-4 shrink-0 text-ok" aria-label="Datos completos" />}</p>
                           <div className="mt-1 flex flex-wrap items-center gap-1.5">
                             <span className="text-xs text-muted">{catMap.get(s.category_id ?? '') ?? 'Sin categoría'}</span>
                             {a && a.status === 'por_confirmar' && reviewFee(s.id)

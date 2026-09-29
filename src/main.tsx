@@ -32,6 +32,7 @@ import NotFound from './pages/NotFound'
 
 // El portal para padres se carga por separado para que abra rápido en el celular.
 const Portal = lazy(() => import('./pages/Portal'))
+const Registro = lazy(() => import('./pages/Registro'))
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 15_000 } },
@@ -48,6 +49,7 @@ createRoot(document.getElementById('root')!).render(
             <Suspense fallback={<Spinner />}>
               <Routes>
                 <Route path="/p/:token" element={<Portal />} />
+                <Route path="/registro" element={<Registro />} />
                 <Route element={<Layout />}>
                   <Route index element={<Dashboard />} />
                   <Route path="alumnos" element={<Students />} />

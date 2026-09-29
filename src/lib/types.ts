@@ -91,6 +91,8 @@ export interface Student {
   inactive_since: string | null
   inactive_until: string | null
   inactive_reason: string | null
+  profile_completed_at: string | null
+  profile_completed_by: string | null
   created_at: string
 }
 

@@ -133,6 +133,18 @@ function GeneralTab({ s }: { s: StudentRow }) {
         <InfoRow label="Profesor">{coachNames || '—'}</InfoRow>
         <InfoRow label="Inscripción">{date(s.enrolled_at)}</InfoRow>
         <InfoRow label="Estatus">{STATUS_LABEL[s.status]}</InfoRow>
+        <InfoRow label="Datos de la familia">
+          {s.profile_completed_at
+            ? <span className="text-ok">Completos · {s.profile_completed_by} · {date(s.profile_completed_at.slice(0, 10))}
+                <button className="ml-2 text-xs text-brand hover:underline" onClick={async () => {
+                  try {
+                    unwrap(await supabase.from('students').update({ profile_completed_at: null, profile_completed_by: null }).eq('id', s.id))
+                    await Promise.all(['student', 'students'].map((k) => qc.invalidateQueries({ queryKey: [k] })))
+                    toast.ok('Listo: la familia puede volver a llenar sus datos con el link')
+                  } catch (e) { toast.error(e) }
+                }}>Permitir volver a llenar</button></span>
+            : <span className="text-warn">Faltan (se llenan con el link de registro)</span>}
+        </InfoRow>
         {s.status === 'suspendido' && (
           <div className="mt-3 rounded-xl border border-warn/40 bg-warn/10 p-3 text-sm">
             <p className="font-semibold text-warn">Inactivo temporal{s.inactive_reason ? ` · ${s.inactive_reason}` : ''}</p>

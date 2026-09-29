@@ -59,6 +59,7 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase/migrations/0012_hermanos.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0013_inactivo_temporal.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0014_clases_extra.sql', 'utf8'))
+  await db.exec(readFileSync('supabase/migrations/0015_registro_papas.sql', 'utf8'))
   await db.exec('update academia.settings set open_mode = false') // las pruebas por rol corren con el sitio cerrado
 
   const users: [string, string, string][] = [
@@ -425,5 +426,38 @@ describe('clases extra (porteros)', () => {
   it('el profe de la clase extra ve a sus porteros', async () => {
     const ids = (await as<{ id: string }>(COACH_B, 'select id from academia.students')).rows.map((x) => x.id)
     expect(ids).toContain(STU_1)
+  })
+})
+
+describe('registro de datos por los papás (link público)', () => {
+  async function anon(sql: string, params: unknown[] = []) {
+    await db.exec(`reset role; set request.jwt.claim.sub = ''; set role anon;`)
+    try { return await db.query<any>(sql, params) } finally { await db.exec('reset role;') }
+  }
+  beforeAll(async () => { await db.exec('update academia.settings set open_mode = false') })
+  it('un visitante ve sólo nombres y categorías', async () => {
+    const r = await anon('select * from academia.registro_lista()')
+    expect(r.rows.length).toBeGreaterThan(0)
+    expect(Object.keys(r.rows[0]).sort()).toEqual(['category', 'category_order', 'completed', 'full_name', 'id'])
+  })
+  it('guarda los datos una sola vez', async () => {
+    const payload = JSON.stringify({ tutor_name: 'Mamá Dos', tutor_phone: '81 1234 5678', tutor_relationship: 'Mamá', allergies: 'Polen', birth_date: '2015-03-02' })
+    await anon('select academia.registro_guardar($1, $2::jsonb)', [STU_2, payload])
+    const s = (await db.query<any>('select profile_completed_by, birth_date::text from academia.students where id = $1', [STU_2])).rows[0]
+    expect(s.profile_completed_by).toBe('Mamá Dos')
+    expect(s.birth_date).toBe('2015-03-02')
+    const m = (await db.query<any>('select allergies from academia.student_medical where student_id = $1', [STU_2])).rows[0]
+    expect(m.allergies).toBe('Polen')
+    const g = (await db.query<any>(`select g.phone from academia.guardians g join academia.student_guardians sg on sg.guardian_id = g.id where sg.student_id = $1 and sg.is_primary`, [STU_2])).rows[0]
+    expect(g.phone).toBe('528112345678')
+    const l = (await anon('select completed from academia.registro_lista() where id = $1', [STU_2])).rows[0]
+    expect(l.completed).toBe(true)
+    await expect(anon('select academia.registro_guardar($1, $2::jsonb)', [STU_2, payload])).rejects.toThrow(/ya fueron registrados/)
+  })
+  it('valida el WhatsApp', async () => {
+    await expect(anon('select academia.registro_guardar($1, $2::jsonb)', [STU_1, JSON.stringify({ tutor_name: 'X', tutor_phone: '123' })])).rejects.toThrow(/10 dígitos/)
+  })
+  it('sin modo abierto, el visitante sigue sin poder leer tablas', async () => {
+    expect((await anon('select * from academia.students')).rows.length).toBe(0)
   })
 })
