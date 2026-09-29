@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { CalendarClock, GraduationCap, Wallet } from 'lucide-react'
+import { CalendarClock, GraduationCap, Ticket, Wallet } from 'lucide-react'
 import { Button, Field, Input, Modal } from './ui'
 import { useToast } from './toast'
 import { supabase, unwrap } from '@/lib/supabase'
 import { date, money, monthName } from '@/lib/format'
 import { useStudents } from '@/lib/api'
 import { joinTier, tierAmount, TIER_LABEL } from '@/lib/prorate'
+import { CouponModal } from './CouponModal'
 import type { FeeBalance } from '@/lib/types'
 
 /**
@@ -23,6 +24,7 @@ export function ScholarshipReviewModal({ fee, studentName, onClose }: { fee: Fee
   const toast = useToast()
   const [saving, setSaving] = useState<'beca' | 'adeudo' | 'medio' | null>(null)
   const [keepFee, setKeepFee] = useState(true)
+  const [coupon, setCoupon] = useState(false)
   const paid = Number(fee.paid)
   const [price, setPrice] = useState(String(Number(fee.amount)))
   const [pays, setPays] = useState(String(paid))
@@ -144,6 +146,15 @@ export function ScholarshipReviewModal({ fee, studentName, onClose }: { fee: Fee
             </div>
           </div>
         )}
+        <button onClick={() => setCoupon(true)} disabled={!!saving}
+          className="flex w-full items-start gap-3 rounded-2xl border border-ink-600 bg-ink-900 p-4 text-left transition hover:border-brand">
+          <Ticket className="mt-0.5 h-6 w-6 shrink-0 text-brand" />
+          <div>
+            <p className="font-semibold">Cupón de una sola vez: liquidado con {money(paid)}</p>
+            <p className="mt-0.5 text-muted">Promoción sólo de este mes; escribe el motivo. Los siguientes meses paga completo.</p>
+          </div>
+        </button>
+        {coupon && <CouponModal fee={fee} studentName={studentName} onClose={() => { setCoupon(false); onClose() }} />}
         {saving && <p className="text-center text-muted">Guardando…</p>}
         <div className="flex justify-end"><Button variant="secondary" onClick={onClose}>Decidir después</Button></div>
       </div>

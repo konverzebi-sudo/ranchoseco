@@ -14,6 +14,7 @@ import { PaymentModal, FeeModal } from '@/components/PaymentForms'
 import { EvaluationModal, EvolutionChart, GroupSummary, SkillRadar } from '@/components/Evaluation'
 import ReportPanel from '@/components/ReportPanel'
 import { ScholarshipReviewModal } from '@/components/ScholarshipReview'
+import { CouponModal } from '@/components/CouponModal'
 import { PauseModal, ReactivateModal } from '@/components/InactiveModals'
 import { useToast } from '@/components/toast'
 import {
@@ -360,6 +361,7 @@ function PaymentsTab({ s }: { s: StudentRow }) {
   const [newFee, setNewFee] = useState(false)
   const [waive, setWaive] = useState<FeeBalance | null>(null)
   const [review, setReview] = useState<FeeBalance | null>(null)
+  const [coupon, setCoupon] = useState<FeeBalance | null>(null)
   const [waiving, setWaiving] = useState(false)
   const qc = useQueryClient()
   const doWaive = async () => {
@@ -423,6 +425,7 @@ function PaymentsTab({ s }: { s: StudentRow }) {
                   <td className="text-right">
                     <div className="flex justify-end gap-1">
                       {f.status === 'por_confirmar' && <Button size="sm" onClick={() => setReview(f)}>¿Beca o adeudo?</Button>}
+                      {f.status !== 'por_confirmar' && Number(f.balance) > 0 && <Button size="sm" variant="ghost" onClick={() => setCoupon(f)}>Cupón</Button>}
                       {Number(f.late_fee) > 0 && <Button size="sm" variant="ghost" onClick={() => setWaive(f)}>Perdonar recargo</Button>}
                       {Number(f.balance) > 0 && <Button size="sm" variant="secondary" onClick={() => setPay(f.id)}>Pagar</Button>}
                     </div>
@@ -455,6 +458,7 @@ function PaymentsTab({ s }: { s: StudentRow }) {
       {pay !== undefined && <PaymentModal student={s} feeId={pay ?? undefined} onClose={() => setPay(undefined)} />}
       {newFee && <FeeModal student={s} onClose={() => setNewFee(false)} />}
       {review && <ScholarshipReviewModal fee={review} onClose={() => setReview(null)} />}
+      {coupon && <CouponModal fee={coupon} studentName={s.full_name} onClose={() => setCoupon(null)} />}
       <ConfirmDialog open={!!waive} onClose={() => setWaive(null)} onConfirm={doWaive} loading={waiving} title="Perdonar recargo" confirmLabel="Perdonar"
         text={waive ? <>Se perdonan <b className="text-white">{money(waive.late_fee)}</b> de recargo de {waive.concept} {monthName(waive.period)}. Si el pago sigue pendiente, a partir de mañana el recargo vuelve a correr.</> : null} />
     </div>
