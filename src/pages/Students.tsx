@@ -9,6 +9,7 @@ import { ScholarshipReviewModal } from '@/components/ScholarshipReview'
 import { PauseModal, ReactivateModal } from '@/components/InactiveModals'
 import { useToast } from '@/components/toast'
 import { useAccounts, useCategories, useFees, useStudents, primaryGuardian } from '@/lib/api'
+import { PaymentModal } from '@/components/PaymentForms'
 import { ACCOUNT_LABEL, STATUS_LABEL, age, money, prettyPhone } from '@/lib/format'
 import { supabase, unwrap } from '@/lib/supabase'
 import { exportCsv } from '@/lib/csv'
@@ -26,6 +27,7 @@ export default function Students() {
   const accounts = useAccounts()
   const fees = useFees()
   const [reviewing, setReviewing] = useState<{ fee: FeeBalance; name: string } | null>(null)
+  const [paying, setPaying] = useState<(typeof rows)[number] | null>(null)
   const [pausing, setPausing] = useState<{ s: (typeof rows)[number]; mode: 'pause' | 'back' } | null>(null)
   const reviewFee = (studentId: string) => (fees.data ?? []).find((f) => f.student_id === studentId && f.status === 'por_confirmar')
   const openReview = (studentId: string, name: string) => { const f = reviewFee(studentId); if (f) setReviewing({ fee: f, name }) }
@@ -165,6 +167,10 @@ export default function Students() {
                               <button onClick={() => openReview(s.id, s.full_name)} title="Escribir cuánto es la mensualidad y cuánto paga" className="hover:opacity-80">
                                 <Badge tone="warn" className="cursor-pointer underline decoration-dotted">{ACCOUNT_LABEL.por_confirmar}</Badge>
                               </button>
+                            ) : Number(a?.balance ?? 0) > 0 ? (
+                              <button onClick={() => setPaying(s)} title="Registrar pago" className="hover:opacity-80">
+                                <Badge tone={feeTone(a!.status)} className="cursor-pointer underline decoration-dotted">{ACCOUNT_LABEL[a!.status]}</Badge>
+                              </button>
                             ) : <Badge tone={feeTone(a?.status ?? 'al_corriente')}>{ACCOUNT_LABEL[a?.status ?? 'al_corriente']}</Badge>}
                             {Number(a?.balance ?? 0) > 0 && <span className="font-semibold">{money(a!.balance)}</span>}
                           </div>
@@ -197,7 +203,7 @@ export default function Students() {
                             <span className="text-xs text-muted">{catMap.get(s.category_id ?? '') ?? 'Sin categoría'}</span>
                             {a && a.status === 'por_confirmar' && reviewFee(s.id)
                               ? <button onClick={(e) => { e.preventDefault(); openReview(s.id, s.full_name) }}><Badge tone="warn" className="underline decoration-dotted">¿Beca? {money(a.balance)}</Badge></button>
-                              : a && a.status !== 'al_corriente' && <Badge tone={feeTone(a.status)}>{money(a.balance)}</Badge>}
+                              : a && a.status !== 'al_corriente' && <button onClick={(e) => { e.preventDefault(); setPaying(s) }}><Badge tone={feeTone(a.status)} className="underline decoration-dotted">{money(a.balance)}</Badge></button>}
                           </div>
                         </div>
                       </Link>
@@ -210,6 +216,7 @@ export default function Students() {
           </>
         )}
 
+      {paying && <PaymentModal student={paying} onClose={() => setPaying(null)} />}
       {pausing?.mode === 'pause' && <PauseModal student={pausing.s} onClose={() => setPausing(null)} />}
       {pausing?.mode === 'back' && <ReactivateModal student={pausing.s} onClose={() => setPausing(null)} />}
       {reviewing && <ScholarshipReviewModal fee={reviewing.fee} studentName={reviewing.name} onClose={() => setReviewing(null)} />}

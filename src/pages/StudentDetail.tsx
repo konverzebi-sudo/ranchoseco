@@ -425,7 +425,7 @@ function PaymentsTab({ s }: { s: StudentRow }) {
                   <td className="text-right">
                     <div className="flex justify-end gap-1">
                       {f.status === 'por_confirmar' && <Button size="sm" onClick={() => setReview(f)}>¿Beca o adeudo?</Button>}
-                      {f.status !== 'por_confirmar' && Number(f.balance) > 0 && <Button size="sm" variant="ghost" onClick={() => setCoupon(f)}>Cupón</Button>}
+                      {f.status !== 'por_confirmar' && Number(f.balance) > 0 && <Button size="sm" variant="ghost" onClick={() => setCoupon(f)}>Descuento</Button>}
                       {Number(f.late_fee) > 0 && <Button size="sm" variant="ghost" onClick={() => setWaive(f)}>Perdonar recargo</Button>}
                       {Number(f.balance) > 0 && <Button size="sm" variant="secondary" onClick={() => setPay(f.id)}>Pagar</Button>}
                     </div>

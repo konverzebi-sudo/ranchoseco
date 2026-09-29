@@ -150,8 +150,8 @@ export function ScholarshipReviewModal({ fee, studentName, onClose }: { fee: Fee
           className="flex w-full items-start gap-3 rounded-2xl border border-ink-600 bg-ink-900 p-4 text-left transition hover:border-brand">
           <Ticket className="mt-0.5 h-6 w-6 shrink-0 text-brand" />
           <div>
-            <p className="font-semibold">Cupón de una sola vez: liquidado con {money(paid)}</p>
-            <p className="mt-0.5 text-muted">Promoción sólo de este mes; escribe el motivo. Los siguientes meses paga completo.</p>
+            <p className="font-semibold">Descuento de una sola vez</p>
+            <p className="mt-0.5 text-muted">Esta vez paga menos (ej. pagó a tiempo, promoción del mes). Escribes cuánto y por qué. Los siguientes meses paga completo.</p>
           </div>
         </button>
         {coupon && <CouponModal fee={fee} studentName={studentName} onClose={() => { setCoupon(false); onClose() }} />}
