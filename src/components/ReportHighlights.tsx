@@ -2,15 +2,14 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { CalendarCheck, Trophy, BadgeCheck, TrendingUp, GraduationCap, Clock, type LucideIcon } from 'lucide-react'
-import { Badge, Card, Input, Spinner, cx } from '@/components/ui'
-import { monthLabel } from '@/components/FinanceModules'
+import { Badge, Card, cx } from '@/components/ui'
 import { useAttendanceDetail, useCategories, useFees, useMatches, usePayments, useStudents } from '@/lib/api'
 import { supabase, unwrap } from '@/lib/supabase'
 import { monthHighlights, ON_TIME_DAY, type Highlights, type HighlightItem } from '@/lib/highlights'
 import { today } from '@/lib/format'
 import type { Evaluation, MatchPlayer } from '@/lib/types'
 
-const SECTIONS: { key: keyof Highlights; title: string; text: string; icon: LucideIcon; tone: 'ok' | 'bad' | 'brand' }[] = [
+export const SECTIONS: { key: keyof Highlights; title: string; text: string; icon: LucideIcon; tone: 'ok' | 'bad' | 'brand' }[] = [
   { key: 'allClasses', title: 'Asistieron a todas las clases', text: 'Presentes (o con retardo) en todos los entrenamientos en que se pasó lista.', icon: CalendarCheck, tone: 'ok' },
   { key: 'allMatches', title: 'Asistieron a todos los partidos', text: 'Llegaron a todos los partidos a los que fueron convocados. "No convocado" no cuenta como falta.', icon: Trophy, tone: 'ok' },
   { key: 'onTime', title: 'Pago puntual', text: `Pagaron la mensualidad del día 1 al ${ON_TIME_DAY} del mes, o antes.`, icon: BadgeCheck, tone: 'ok' },
@@ -19,9 +18,8 @@ const SECTIONS: { key: keyof Highlights; title: string; text: string; icon: Luci
   { key: 'latePayment', title: 'Retardo de pago', text: 'Pagaron la última semana del mes o después (o siguen sin pagar).', icon: Clock, tone: 'bad' },
 ]
 
-/** Listas del mes al final de Reportes: asistencia perfecta, pagos puntuales, retardos, etc. */
-export default function ReportHighlights() {
-  const [month, setMonth] = useState(today().slice(0, 7))
+/** Listas del mes para Reportes (asistencia, pagos, becas, mejoras). */
+export function useMonthHighlights(month: string) {
   const from = `${month}-01`
   const to = `${month}-${new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate()}`
   const students = useStudents()
@@ -49,36 +47,18 @@ export default function ReportHighlights() {
 
   const byId = new Map((students.data ?? []).map((s) => [s.id, s]))
   const catName = new Map((categories.data ?? []).map((c) => [c.id, c.name]))
-
-  return (
-    <section className="mt-10">
-      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <h2 className="font-display text-xl font-bold uppercase tracking-wide">Listas del mes</h2>
-          <p className="text-sm text-muted">Alumnos destacados y pendientes de {monthLabel(month)}.</p>
-        </div>
-        <Input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className="h-10 w-44" aria-label="Mes" />
-      </div>
-      {!h ? <Spinner /> : (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {SECTIONS.map((sec) => (
-            <HighlightCard key={sec.key} title={sec.title} text={sec.text} icon={sec.icon} tone={sec.tone} items={h[sec.key]}
-              render={(it) => {
-                const s = byId.get(it.student_id)
-                return s ? { id: s.id, name: s.full_name, cat: catName.get(s.category_id ?? '') ?? 'Sin categoría', note: it.note } : null
-              }} />
-          ))}
-        </div>
-      )}
-    </section>
-  )
+  const render = (it: HighlightItem) => {
+    const st = byId.get(it.student_id)
+    return st ? { id: st.id, name: st.full_name, cat: catName.get(st.category_id ?? '') ?? 'Sin categoría', note: it.note } : null
+  }
+  return { h, render }
 }
 
-function HighlightCard({ title, text, icon: Icon, tone, items, render }: {
-  title: string; text: string; icon: LucideIcon; tone: 'ok' | 'bad' | 'brand'; items: HighlightItem[]
+export function HighlightCard({ title, text, icon: Icon, tone, items, render, expanded }: {
+  title: string; text: string; icon: LucideIcon; tone: 'ok' | 'bad' | 'brand'; items: HighlightItem[]; expanded?: boolean
   render: (it: HighlightItem) => { id: string; name: string; cat: string; note?: string } | null
 }) {
-  const [all, setAll] = useState(false)
+  const [all, setAll] = useState(!!expanded)
   const rows = items.map(render).filter(Boolean).sort((a, b) => a!.cat.localeCompare(b!.cat) || a!.name.localeCompare(b!.name)) as { id: string; name: string; cat: string; note?: string }[]
   const shown = all ? rows : rows.slice(0, 10)
   return (

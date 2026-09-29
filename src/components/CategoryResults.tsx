@@ -12,8 +12,8 @@ import { exportCsv } from '@/lib/csv'
  * ingreso real − gastos generales (proporcionales a sus alumnos) − sueldo del profe.
  * Además muestra lo que no se recibió por becas.
  */
-export default function CategoryResults() {
-  const [month, setMonth] = useState(today().slice(0, 7))
+/** Cálculo de la ganancia real por categoría de un mes ('YYYY-MM'). */
+export function useCategoryResults(month: string) {
   const categories = useCategories()
   const students = useStudents()
   const payments = usePayments()
@@ -31,6 +31,12 @@ export default function CategoryResults() {
       coaches: coaches.data, coachCategories: cc.data, coachPay: pay.data, expenses: expenses.data, extraClasses: extras.data ?? [],
     })
   }, [month, categories.data, students.data, payments.data, fees.data, coaches.data, cc.data, pay.data, expenses.data, extras.data])
+  return { data, categories }
+}
+
+export default function CategoryResults({ initialMonth }: { initialMonth?: string } = {}) {
+  const [month, setMonth] = useState(initialMonth ?? today().slice(0, 7))
+  const { data, categories } = useCategoryResults(month)
 
   const r0 = (n: number) => Math.round(n)
   const doExport = () => data && exportCsv(`ganancia-por-categoria-${month}.csv`,
