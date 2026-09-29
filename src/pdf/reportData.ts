@@ -44,7 +44,7 @@ export async function loadReportData(studentId: string, from: string, to: string
     student.category_id
       ? supabase.from('trainings').select('date, objectives').eq('category_id', student.category_id).gte('date', from).lte('date', to).order('date')
       : Promise.resolve({ data: [], error: null }),
-    supabase.from('match_players').select('*, matches!inner(date, opponent, goals_for, goals_against, status)').eq('student_id', studentId)
+    supabase.from('match_players').select('*, matches!inner(date, opponent, goals_for, goals_against, status)').eq('student_id', studentId).eq('attended', true)
       .gte('matches.date', from).lte('matches.date', to),
     supabase.from('evaluations').select('*').eq('student_id', studentId).lte('date', to).order('date'),
   ])

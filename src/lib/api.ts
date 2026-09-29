@@ -6,6 +6,7 @@ import type {
   Category,
   Coach,
   CoachPay,
+  CoachPayHistory,
   Expense,
   ExtraClass,
   Evaluation,
@@ -81,6 +82,17 @@ export function useCoachPay() {
     queryKey: ['coach_pay'],
     queryFn: async () => unwrap(await supabase.from('coach_pay').select('*')) as CoachPay[],
     staleTime: 60_000,
+  })
+}
+
+export function useCoachPayHistory(coachId?: string) {
+  return useQuery({
+    queryKey: ['coach_pay_history', coachId ?? 'all'],
+    queryFn: async () => {
+      let q = supabase.from('coach_pay_history').select('*').order('effective_date', { ascending: false }).order('created_at', { ascending: false })
+      if (coachId) q = q.eq('coach_id', coachId)
+      return unwrap(await q) as CoachPayHistory[]
+    },
   })
 }
 

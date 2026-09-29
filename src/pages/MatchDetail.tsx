@@ -46,7 +46,7 @@ export default function MatchDetail() {
     const saved = new Map(players.data.map((p) => [p.student_id, p]))
     setRows(Object.fromEntries(roster.map((s) => {
       const p = saved.get(s.id)
-      return [s.id, { student_id: s.id, called: !!p, starter: p?.starter ?? false, position: p?.position ?? '', goals: p?.goals ?? 0, assists: p?.assists ?? 0, minutes: p?.minutes ?? 0 }]
+      return [s.id, { student_id: s.id, called: !!p, attended: p?.attended ?? true, starter: p?.starter ?? false, position: p?.position ?? '', goals: p?.goals ?? 0, assists: p?.assists ?? 0, minutes: p?.minutes ?? 0 }]
     })))
     setDirty(false)
   }, [players.data, roster, match])
@@ -61,7 +61,7 @@ export default function MatchDetail() {
       if (removed.length) unwrap(await supabase.from('match_players').delete().eq('match_id', id!).in('student_id', removed))
       if (called.length) unwrap(await supabase.from('match_players').upsert(called.map(({ called: _c, ...r }) => ({ ...r, position: r.position || null, match_id: id })), { onConflict: 'match_id,student_id' }))
       await qc.invalidateQueries({ queryKey: ['match_players'] })
-      toast.ok(`Convocatoria guardada (${called.length} jugadores)`)
+      toast.ok(`Lista guardada: ${called.filter((r) => r.attended).length} asistieron · ${called.filter((r) => !r.attended).length} faltaron`)
     } catch (e) { toast.error(e) } finally { setSaving(false) }
   }
 
@@ -78,7 +78,8 @@ export default function MatchDetail() {
   if (matches.isLoading || students.isLoading) return <Spinner />
   if (!match) return <Empty icon={Users} title="Partido no encontrado" action={<Link to="/partidos"><Button>Ver partidos</Button></Link>} />
   const calledCount = Object.values(rows).filter((r) => r.called).length
-  const starters = Object.values(rows).filter((r) => r.called && r.starter).length
+  const starters = Object.values(rows).filter((r) => r.called && r.attended && r.starter).length
+  const absentCount = Object.values(rows).filter((r) => r.called && !r.attended).length
 
   return (
     <>
@@ -103,7 +104,7 @@ export default function MatchDetail() {
       </Card>
 
       <div className="sticky top-[57px] z-20 -mx-4 mb-3 flex items-center justify-between gap-3 border-b border-ink-600 bg-ink/95 px-4 py-3 backdrop-blur lg:top-0 lg:mx-0 lg:rounded-2xl lg:border">
-        <p className="text-sm"><span className="font-display text-2xl font-bold text-brand">{calledCount}</span><span className="text-muted"> convocados · {starters} titulares</span></p>
+        <p className="text-sm"><span className="font-display text-2xl font-bold text-brand">{calledCount}</span><span className="text-muted"> convocados · {absentCount} faltaron · {starters} titulares</span></p>
         <Button icon={Save} loading={saving} disabled={!dirty} onClick={save}>Guardar</Button>
       </div>
 
@@ -120,12 +121,19 @@ export default function MatchDetail() {
                   <div className="flex items-center gap-3">
                     <Avatar name={s.full_name} path={s.photo_path} size={38} />
                     <p className="min-w-0 flex-1 truncate font-medium">{s.full_name}</p>
-                    <button onClick={() => upd(s.id, { called: !r.called, starter: r.called ? false : r.starter })}
-                      className={cx('rounded-xl border px-3 py-2 text-sm font-semibold', r.called ? 'border-brand bg-brand text-ink' : 'border-ink-600 text-muted')}>
-                      {r.called ? 'Convocado' : 'Convocar'}
-                    </button>
+                    <div className="flex overflow-hidden rounded-xl border border-ink-600 text-xs font-semibold sm:text-sm" role="group" aria-label={`Asistencia de ${s.full_name}`}>
+                      {([
+                        ['asistio', 'Asistió', r.called && r.attended, 'bg-ok text-ink'],
+                        ['falta', 'Faltó', r.called && !r.attended, 'bg-bad text-white'],
+                        ['no', 'No convocado', !r.called, 'bg-ink-600 text-white'],
+                      ] as const).map(([k, label, on, onCls]) => (
+                        <button key={k} type="button" aria-pressed={on}
+                          onClick={() => upd(s.id, k === 'no' ? { called: false, starter: false } : { called: true, attended: k === 'asistio', ...(k === 'falta' ? { starter: false } : {}) })}
+                          className={cx('px-2.5 py-2 sm:px-3', on ? onCls : 'text-muted hover:text-white')}>{label}</button>
+                      ))}
+                    </div>
                   </div>
-                  {r.called && (
+                  {r.called && r.attended && (
                     <div className="mt-3 grid grid-cols-2 gap-3 border-t border-ink-700 pt-3 text-sm sm:grid-cols-[auto_1fr_auto_auto_auto] sm:items-center">
                       <button onClick={() => upd(s.id, { starter: !r.starter })}
                         className={cx('rounded-xl border px-3 py-2 text-sm', r.starter ? 'border-ok bg-ok/15 text-ok' : 'border-ink-600 text-muted')}>

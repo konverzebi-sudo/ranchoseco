@@ -1,11 +1,21 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
-import { Save, ShieldAlert, ShieldCheck } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Save, ShieldAlert, ShieldCheck, History } from 'lucide-react'
 import { Button, Card, ErrorState, Field, Input, PageHeader, Spinner, Textarea } from '@/components/ui'
 import { useToast } from '@/components/toast'
 import { useSettings } from '@/lib/api'
 import { supabase, unwrap } from '@/lib/supabase'
 import { fillTemplate } from '@/lib/whatsapp'
+import { date } from '@/lib/format'
+
+/** Campos de precio que dejan historial cuando cambian. */
+const TRACKED = [
+  { field: 'default_monthly_fee', label: 'Mensualidad general', money: true },
+  { field: 'due_day', label: 'Último día para pagar sin recargo', money: false },
+  { field: 'late_fee_amount', label: 'Recargo por mes de atraso', money: true },
+] as const
+type HistoryRow = { id: string; field: string; label: string; old_value: string | null; new_value: string | null; reason: string | null; changed_at: string }
+const show = (v: string | null, isMoney: boolean) => (v == null || v === '' ? '—' : isMoney ? `$${Number(v).toLocaleString('es-MX')}` : `día ${v}`)
 
 export default function SettingsPage() {
   const settings = useSettings()
@@ -13,6 +23,13 @@ export default function SettingsPage() {
   const toast = useToast()
   const [f, setF] = useState({ academy_name: '', default_country_code: '52', default_monthly_fee: '', due_day: '10', late_fee_amount: '', payment_instructions: '', collection_template: '', report_template: '' })
   const [saving, setSaving] = useState(false)
+  const [reason, setReason] = useState('')
+  const history = useQuery({
+    queryKey: ['settings_history'],
+    queryFn: async () => unwrap(await supabase.from('settings_history').select('*').order('changed_at', { ascending: false }).limit(50)) as HistoryRow[],
+  })
+  const original = (k: (typeof TRACKED)[number]['field']) => String(Number(settings.data?.[k] ?? 0))
+  const changed = settings.data ? TRACKED.filter((t) => String(Number(f[t.field]) || 0) !== original(t.field)) : []
 
   useEffect(() => {
     const s = settings.data
@@ -34,8 +51,14 @@ export default function SettingsPage() {
         due_day: due, late_fee_amount: Number(f.late_fee_amount) || 0, payment_instructions: f.payment_instructions.trim(), collection_template: f.collection_template, report_template: f.report_template,
         updated_at: new Date().toISOString(),
       }).eq('id', 1))
-      await qc.invalidateQueries({ queryKey: ['settings'] })
-      toast.ok('Configuración guardada')
+      if (changed.length) {
+        unwrap(await supabase.from('settings_history').insert(changed.map((t) => ({
+          field: t.field, label: t.label, old_value: original(t.field), new_value: String(Number(f[t.field]) || 0), reason: reason.trim() || null,
+        }))))
+        setReason('')
+      }
+      await Promise.all(['settings', 'settings_history'].map((k) => qc.invalidateQueries({ queryKey: [k] })))
+      toast.ok(changed.length ? 'Guardado. El cambio de precio quedó en el historial.' : 'Configuración guardada')
     } catch (err) { toast.error(err) } finally { setSaving(false) }
   }
 
@@ -57,6 +80,28 @@ export default function SettingsPage() {
               <Input type="number" min="0" inputMode="decimal" value={f.late_fee_amount} onChange={(e) => setF({ ...f, late_fee_amount: e.target.value })} />
             </Field>
             <Field label="Lada del país"><Input value={f.default_country_code} onChange={(e) => setF({ ...f, default_country_code: e.target.value })} inputMode="numeric" /></Field>
+          </div>
+          {changed.length > 0 && (
+            <div className="rounded-xl border border-brand/40 bg-brand-dim p-3 text-sm">
+              <p className="mb-2">Cambios: {changed.map((t) => <span key={t.field} className="mr-3 inline-block"><b>{t.label}</b> {show(original(t.field), t.money)} → <b className="text-brand">{show(String(Number(f[t.field]) || 0), t.money)}</b></span>)}</p>
+              <Field label="¿Por qué cambia? (opcional)"><Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ej. Aumento de temporada 2027" /></Field>
+            </div>
+          )}
+          <div>
+            <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold"><History className="h-4 w-4 text-brand" /> Historial de cambios de precios</p>
+            {!history.data?.length ? <p className="rounded-xl border border-ink-600 px-3 py-3 text-sm text-muted">Sin cambios todavía. Cada vez que cambies la mensualidad, el día límite o el recargo, quedará aquí con su fecha.</p> : (
+              <ol className="max-h-64 divide-y divide-ink-700 overflow-y-auto rounded-xl border border-ink-600">
+                {history.data.map((h) => {
+                  const isMoney = TRACKED.find((t) => t.field === h.field)?.money ?? true
+                  return (
+                    <li key={h.id} className="px-3 py-2.5 text-sm">
+                      <div className="flex flex-wrap justify-between gap-2"><span><b>{h.label}</b>: {show(h.old_value, isMoney)} → <b className="text-brand">{show(h.new_value, isMoney)}</b></span><span className="text-xs text-muted">{date(h.changed_at.slice(0, 10))}</span></div>
+                      {h.reason && <p className="text-xs text-muted">{h.reason}</p>}
+                    </li>
+                  )
+                })}
+              </ol>
+            )}
           </div>
           <Field label="Datos para pagar" hint="Se muestran a los papás en su link (cuenta, CLABE, horario de caja…)">
             <Textarea value={f.payment_instructions} onChange={(e) => setF({ ...f, payment_instructions: e.target.value })} />

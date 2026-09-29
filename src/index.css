@@ -4,6 +4,8 @@
 
 :root {
   color-scheme: dark;
+  /* Letra un poco más grande en toda la plataforma (todo está en rem) */
+  font-size: 17px;
   -webkit-tap-highlight-color: transparent;
 }
 

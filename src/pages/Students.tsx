@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Plus, Users, Download, ChevronRight, CheckCircle2, Copy, MessageCircle } from 'lucide-react'
+import { Plus, Users, Download, ChevronRight, CheckCircle2, Copy, MessageCircle, ArrowUp, ArrowDown, ArrowUpDown, UserPlus, X } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Avatar, Badge, Button, Card, Empty, ErrorState, PageHeader, SearchInput, Select, Spinner, feeTone } from '@/components/ui'
 import { CollectButton } from '@/components/WhatsAppButtons'
@@ -13,7 +13,13 @@ import { PaymentModal } from '@/components/PaymentForms'
 import { ACCOUNT_LABEL, STATUS_LABEL, age, money, prettyPhone } from '@/lib/format'
 import { supabase, unwrap } from '@/lib/supabase'
 import { exportCsv } from '@/lib/csv'
+import { isNewEnrollment } from '@/lib/finance'
+import { monthLabel } from '@/components/FinanceModules'
 import type { AccountStatus, FeeBalance, StudentStatus } from '@/lib/types'
+
+type SortKey = 'nombre' | 'categoria' | 'tutor' | 'estatus' | 'cuenta'
+const STATUS_ORDER: Record<string, number> = { activo: 0, suspendido: 1, baja: 2 }
+const ACCOUNT_ORDER: Record<string, number> = { al_corriente: 0, pendiente: 1, por_confirmar: 2, vencido: 3 }
 
 const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
@@ -37,6 +43,16 @@ export default function Students() {
   const status = stParam === 'todos' ? '' : (stParam ?? 'activo')
   const acct = params.get('acct') ?? ''
   const datos = params.get('datos') ?? ''
+  const nuevos = /^\d{4}-\d{2}$/.test(params.get('nuevos') ?? '') ? params.get('nuevos')! : ''
+  const sortKey = (params.get('orden') as SortKey) || 'nombre'
+  const sortDir = params.get('dir') === 'desc' ? -1 : 1
+  // Primer toque: de menor a mayor; si ya estaba así, al revés
+  const toggleSort = (k: SortKey) => {
+    const p = new URLSearchParams(params)
+    p.set('orden', k)
+    if (k === sortKey && sortDir === 1) p.set('dir', 'desc'); else p.delete('dir')
+    setParams(p, { replace: true })
+  }
   const [creating, setCreating] = useState(params.get('nuevo') === '1')
 
   const setParam = (k: string, v: string) => {
@@ -49,11 +65,13 @@ export default function Students() {
 
   const accMap = useMemo(() => new Map((accounts.data ?? []).map((a) => [a.student_id, a])), [accounts.data])
   const catMap = useMemo(() => new Map((categories.data ?? []).map((c) => [c.id, c.name])), [categories.data])
+  const catOrder = useMemo(() => new Map((categories.data ?? []).map((c) => [c.id, c.sort_order])), [categories.data])
 
   const rows = useMemo(() => {
     const nq = norm(q.trim())
     const digits = q.replace(/\D/g, '')
-    return (students.data ?? []).filter((s) => {
+    const list = (students.data ?? []).filter((s) => {
+      if (nuevos && !isNewEnrollment(s, nuevos)) return false
       if (status && s.status !== status) return false
       if (cat && (cat === 'none' ? s.category_id : s.category_id !== cat)) return false
       if (acct && (accMap.get(s.id)?.status ?? 'al_corriente') !== acct) return false
@@ -68,7 +86,34 @@ export default function Students() {
         (digits.length >= 4 && g?.phone.includes(digits))
       )
     })
-  }, [students.data, q, cat, status, acct, datos, accMap, catMap])
+    const byName = (a: (typeof list)[number], b: (typeof list)[number]) => a.full_name.localeCompare(b.full_name, 'es')
+    const key = (s: (typeof list)[number]): number | string => {
+      switch (sortKey) {
+        case 'categoria': return s.category_id ? catOrder.get(s.category_id) ?? 98 : 99
+        case 'tutor': return norm(primaryGuardian(s)?.full_name ?? '~')
+        case 'estatus': return STATUS_ORDER[s.status] ?? 9
+        case 'cuenta': { const a = accMap.get(s.id); return (ACCOUNT_ORDER[a?.status ?? 'al_corriente'] ?? 0) * 1e7 + Number(a?.balance ?? 0) }
+        default: return norm(s.full_name)
+      }
+    }
+    return list.sort((a, b) => {
+      const ka = key(a), kb = key(b)
+      const c = typeof ka === 'number' && typeof kb === 'number' ? ka - kb : String(ka).localeCompare(String(kb), 'es')
+      return c * sortDir || byName(a, b)
+    })
+  }, [students.data, q, cat, status, acct, datos, nuevos, accMap, catMap, catOrder, sortKey, sortDir])
+
+  const SortTh = ({ k, children, className }: { k: SortKey; children: string; className?: string }) => {
+    const on = sortKey === k
+    const Icon = !on ? ArrowUpDown : sortDir === 1 ? ArrowUp : ArrowDown
+    return (
+      <th className={className} aria-sort={on ? (sortDir === 1 ? 'ascending' : 'descending') : 'none'}>
+        <button onClick={() => toggleSort(k)} className={`inline-flex items-center gap-1 uppercase hover:text-brand ${on ? 'text-brand' : ''}`}>
+          {children}<Icon className={`h-3.5 w-3.5 ${on ? '' : 'opacity-40'}`} />
+        </button>
+      </th>
+    )
+  }
 
   const inlineUpdate = async (id: string, patch: { category_id?: string | null; status?: StudentStatus }) => {
     try {
@@ -140,6 +185,25 @@ export default function Students() {
         </Select>
       </div>
 
+      {nuevos && (
+        <Card className="mb-4 flex flex-wrap items-center justify-between gap-2 border-ok/40 p-3">
+          <p className="flex items-center gap-2 text-sm"><UserPlus className="h-4 w-4 text-ok" /> Mostrando las <b>nuevas inscripciones de {monthLabel(nuevos)}</b> ({rows.length})</p>
+          <Button size="sm" variant="ghost" icon={X} onClick={() => setParam('nuevos', '')}>Quitar filtro</Button>
+        </Card>
+      )}
+
+      {/* Celular: ordenar */}
+      <div className="mb-3 flex items-center gap-2 lg:hidden">
+        <Select value={sortKey} onChange={(e) => toggleSort(e.target.value as SortKey)} className="h-9 flex-1 text-sm" aria-label="Ordenar por">
+          <option value="nombre">Ordenar por nombre</option>
+          <option value="categoria">Ordenar por categoría</option>
+          <option value="tutor">Ordenar por tutor</option>
+          <option value="estatus">Ordenar por estatus</option>
+          <option value="cuenta">Ordenar por estado de cuenta</option>
+        </Select>
+        <Button size="sm" variant="secondary" icon={sortDir === 1 ? ArrowUp : ArrowDown} onClick={() => toggleSort(sortKey)}>{sortDir === 1 ? 'A→Z' : 'Z→A'}</Button>
+      </div>
+
       {students.error ? <ErrorState error={students.error} onRetry={() => students.refetch()} /> :
         students.isLoading ? <Spinner /> :
         rows.length === 0 ? (
@@ -151,7 +215,7 @@ export default function Students() {
             <Card className="hidden overflow-hidden lg:block">
               <table className="table-base">
                 <thead>
-                  <tr><th>Alumno</th><th>Categoría</th><th>Tutor</th><th>Estatus</th><th>Estado de cuenta</th><th className="text-right">Acciones</th></tr>
+                  <tr><SortTh k="nombre">Alumno</SortTh><SortTh k="categoria">Categoría</SortTh><SortTh k="tutor">Tutor</SortTh><SortTh k="estatus">Estatus</SortTh><SortTh k="cuenta">Estado de cuenta</SortTh><th className="text-right">Acciones</th></tr>
                 </thead>
                 <tbody>
                   {rows.map((s) => {

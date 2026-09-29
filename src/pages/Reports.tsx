@@ -8,6 +8,7 @@ import { periodLabel } from '@/pdf/reportData'
 import { signedUrl, BUCKETS } from '@/lib/supabase'
 import { useToast } from '@/components/toast'
 import CategoryResults from '@/components/CategoryResults'
+import ReportHighlights from '@/components/ReportHighlights'
 
 const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
@@ -83,6 +84,7 @@ export default function Reports() {
           )}
         </Card>
       </div>
+      <ReportHighlights />
     </>
   )
 }

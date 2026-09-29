@@ -177,6 +177,7 @@ function GeneralTab({ s }: { s: StudentRow }) {
         <PortalLinkCard s={s} />
         <MedicalCard studentId={s.id} />
       </div>
+      <PaymentHistoryCard s={s} />
 
       <ConfirmDialog open={confirmBaja} onClose={() => setConfirmBaja(false)} onConfirm={darDeBaja} loading={saving} danger={s.status !== 'baja'}
         title={s.status === 'baja' ? 'Reactivar alumno' : 'Dar de baja'}
@@ -185,6 +186,52 @@ function GeneralTab({ s }: { s: StudentRow }) {
           ? `${s.full_name} volverá a aparecer en listas de asistencia y cobranza.`
           : `${s.full_name} dejará de aparecer en listas de asistencia y cobranza, y su link para padres se desactivará. Su historial se conserva y puedes reactivarlo cuando quieras.`} />
     </div>
+  )
+}
+
+/** Historial de lo que ha ido pagando el alumno, mes por mes. */
+function PaymentHistoryCard({ s }: { s: StudentRow }) {
+  const fees = useFees(s.id)
+  const payments = usePayments(s.id)
+  const [, setParams] = useSearchParams()
+  const list = [...(fees.data ?? [])].sort((a, b) => a.period.localeCompare(b.period) || a.concept.localeCompare(b.concept))
+  const paidTotal = (payments.data ?? []).reduce((t, p) => t + Number(p.amount), 0)
+  const discTotal = list.reduce((t, f) => t + Number(f.discount), 0)
+  const balance = list.reduce((t, f) => t + Number(f.balance), 0)
+  const payDates = (feeId: string) => (payments.data ?? []).filter((p) => p.fee_id === feeId).map((p) => shortDate(p.paid_at)).join(', ')
+  return (
+    <Card className="lg:col-span-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-600 px-5 py-4">
+        <h3 className="flex items-center gap-2 font-display text-lg font-bold uppercase tracking-wide text-brand"><Receipt className="h-5 w-5" /> Historial de pagos</h3>
+        <div className="flex flex-wrap gap-5 text-sm">
+          <span>Ha pagado <b className="text-ok">{money(paidTotal)}</b></span>
+          {discTotal > 0 && <span>Becas/descuentos <b>{money(discTotal)}</b></span>}
+          <span>Debe <b className={balance > 0 ? 'text-bad' : 'text-ok'}>{money(balance)}</b></span>
+        </div>
+      </div>
+      {fees.isLoading ? <Spinner /> : !list.length ? <p className="px-5 py-6 text-center text-sm text-muted">Sin cargos todavía.</p> : (
+        <div className="overflow-x-auto">
+          <table className="table-base min-w-[640px]">
+            <thead><tr><th>Mes</th><th>Cuota</th><th>Beca / descuento</th><th>Pagó</th><th>Cuándo</th><th>Estado</th></tr></thead>
+            <tbody>
+              {list.map((f) => (
+                <tr key={f.id}>
+                  <td className="font-medium">{f.concept} {monthName(f.period)}</td>
+                  <td>{money(f.amount)}</td>
+                  <td>{Number(f.discount) > 0 ? <span className="text-ok">−{money(f.discount)} <span className="text-xs text-muted">{f.discount_reason}</span></span> : <span className="text-muted">—</span>}</td>
+                  <td className="font-semibold">{money(f.paid)}</td>
+                  <td className="text-sm text-muted">{payDates(f.id) || '—'}</td>
+                  <td><Badge tone={feeTone(f.status)}>{FEE_LABEL[f.status]}</Badge></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="border-t border-ink-600 px-5 py-3 text-right">
+        <button onClick={() => setParams({ tab: 'pagos' }, { replace: true })} className="text-sm text-brand hover:underline">Registrar pago o ver comprobantes →</button>
+      </div>
+    </Card>
   )
 }
 
@@ -448,7 +495,8 @@ function PaymentsTab({ s }: { s: StudentRow }) {
         </table>
       </Card>
       <Card>
-        <h3 className="border-b border-ink-600 px-5 py-4 font-display text-lg font-bold uppercase tracking-wide">Historial de pagos</h3>
+        <h3 className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-600 px-5 py-4 font-display text-lg font-bold uppercase tracking-wide">Historial de pagos
+          <span className="font-sans text-sm font-normal normal-case tracking-normal text-muted">Total pagado <b className="text-ok">{money((payments.data ?? []).reduce((t, p) => t + Number(p.amount), 0))}</b> · {payments.data?.length ?? 0} pagos</span></h3>
         {!payments.data?.length ? <p className="px-5 py-8 text-center text-sm text-muted">Sin pagos registrados.</p> : (
           <ul className="divide-y divide-ink-700">
             {payments.data.map((p) => {
@@ -541,7 +589,7 @@ function ActivityTab({ s }: { s: StudentRow }) {
   const mp = useMatchPlayers({ studentId: s.id })
   const matches = useMatches({ categoryId: s.category_id ?? '00000000-0000-0000-0000-000000000000' })
   const attMap = new Map((att.data ?? []).map((a) => [a.training_id, a.status]))
-  const myMatches = (mp.data ?? []).map((p) => ({ p, m: matches.data?.find((m) => m.id === p.match_id) })).filter((x) => x.m)
+  const myMatches = (mp.data ?? []).filter((p) => p.attended !== false).map((p) => ({ p, m: matches.data?.find((m) => m.id === p.match_id) })).filter((x) => x.m)
     .sort((a, b) => b.m!.date.localeCompare(a.m!.date))
   const totals = myMatches.reduce((t, { p }) => ({ goals: t.goals + p.goals, assists: t.assists + p.assists, minutes: t.minutes + p.minutes }), { goals: 0, assists: 0, minutes: 0 })
   return (

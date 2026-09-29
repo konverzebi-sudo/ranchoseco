@@ -187,3 +187,124 @@ export function categoryResults(opts: {
     totals: { ...totals, result: totals.income - totals.generalExpenses - totals.salaries },
   }
 }
+
+// ---------------------------------------------------------------------
+// Desglose día a día, ahorro del seguro, inscripciones y descuentos
+// ---------------------------------------------------------------------
+
+/** Día en que se pagan los sueldos semanales (6 = sábado). */
+export const PAYDAY = 6
+/** Los alumnos con esta fecha de ingreso son la lista con la que arrancó la temporada. */
+export const SEASON_START = '2026-09-01'
+/** Mes en que empieza a apartarse el dinero del seguro. */
+export const INSURANCE_SAVING_START = '2026-10'
+
+const pad = (n: number) => String(n).padStart(2, '0')
+const daysIn = (y: number, m: number) => new Date(y, m, 0).getDate()
+const weekday = (y: number, m: number, d: number) => new Date(y, m - 1, d).getDay()
+
+export interface ExpenseEntry {
+  date: string
+  name: string
+  amount: number
+  kind: 'sueldo' | 'fijo' | 'mes'
+  detail: string
+}
+
+/**
+ * Gastos reales de un mes, día por día:
+ * sueldos semanales cada sábado, quincenales el 15 y el último día,
+ * mensuales el día 1, anuales completos en su mes, únicos en su fecha.
+ */
+export function expenseEntries(opts: {
+  month: string
+  expenses: Expense[]
+  coaches: { id: string; full_name: string; active: boolean }[]
+  coachPay: CoachPay[]
+}): ExpenseEntry[] {
+  const { month, expenses, coaches, coachPay } = opts
+  const [y, m] = month.split('-').map(Number)
+  const last = daysIn(y, m)
+  const day = (d: number) => `${month}-${pad(Math.min(Math.max(d, 1), last))}`
+  const out: ExpenseEntry[] = []
+  const recurring = (name: string, amount: number, frequency: 'semanal' | 'quincenal' | 'mensual', kind: ExpenseEntry['kind'], detail: string) => {
+    if (frequency === 'semanal') {
+      for (let d = 1; d <= last; d++) if (weekday(y, m, d) === PAYDAY) out.push({ date: day(d), name, amount, kind, detail: `${detail} · semanal` })
+    } else if (frequency === 'quincenal') {
+      out.push({ date: day(15), name, amount, kind, detail: `${detail} · 1a quincena` }, { date: day(last), name, amount, kind, detail: `${detail} · 2a quincena` })
+    } else out.push({ date: day(1), name, amount, kind, detail: `${detail} · mensual` })
+  }
+  for (const c of coaches) {
+    if (!c.active) continue
+    const p = coachPay.find((x) => x.coach_id === c.id)
+    if (p && Number(p.amount) > 0) recurring(c.full_name, Number(p.amount), p.frequency, 'sueldo', 'Sueldo profesor')
+  }
+  for (const e of expenses) {
+    if (!e.active || !(Number(e.amount) > 0)) continue
+    const a = Number(e.amount)
+    const onDay = e.paid_on && e.paid_on.startsWith(month) ? Number(e.paid_on.slice(8, 10)) : 1
+    switch (e.frequency) {
+      case 'semanal': case 'quincenal': case 'mensual':
+        recurring(e.name, a, e.frequency, 'fijo', 'Gasto fijo'); break
+      case 'anual':
+        if (e.paid_month === m) out.push({ date: day(1), name: e.name, amount: a, kind: 'fijo', detail: 'Pago anual' }); break
+      case 'unico':
+        if (expenseForMonth(e, month) > 0) out.push({ date: day(onDay), name: e.name, amount: a, kind: 'mes', detail: 'Gasto del mes' }); break
+      case 'partes':
+        for (const p of installmentPlan(e, y).schedule.filter((x) => x.key === month))
+          out.push({ date: day(onDay), name: e.name, amount: p.amount, kind: 'mes', detail: p.kind === 'anticipo' ? 'Anticipo' : `Pago ${p.n} de ${Number(e.installments) || 1}` })
+        break
+    }
+  }
+  return out.sort((a, b) => a.date.localeCompare(b.date) || a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name))
+}
+
+/**
+ * Ahorro para el seguro anual: cada mes, a partir del mes siguiente a su pago,
+ * se aparta 1/12 para tenerlo completo cuando vuelva a pagarse.
+ */
+export function insuranceSaving(expenses: Expense[], month: string) {
+  const ins = expenses.find((e) => e.active && e.frequency === 'anual' && /seguro/i.test(e.name))
+  if (!ins) return null
+  const total = Number(ins.amount)
+  const monthly = total / 12
+  const payMonth = ins.paid_month ?? 9
+  const [y, m] = month.split('-').map(Number)
+  const idx = y * 12 + (m - 1)
+  const cycleStart = idx - ((m - 1 - (payMonth % 12) + 12) % 12)
+  const [sy, sm] = INSURANCE_SAVING_START.split('-').map(Number)
+  const start = Math.max(cycleStart, sy * 12 + (sm - 1))
+  const months = idx < start ? 0 : Math.min(12, idx - start + 1)
+  const saved = monthly * months
+  const dueIdx = cycleStart + 11
+  return {
+    name: ins.name, total, monthly, months, saved, remaining: total - saved,
+    startsIn: start > idx ? MONTH_SHORT[start % 12] : null,
+    dueLabel: `${MONTH_SHORT[dueIdx % 12]} ${Math.floor(dueIdx / 12)}`,
+  }
+}
+
+/** Alumno nuevo en el mes (no cuenta la lista con la que arrancó la temporada). */
+export const isNewEnrollment = (s: { enrolled_at: string | null }, month: string) =>
+  !!s.enrolled_at && s.enrolled_at.startsWith(month) && s.enrolled_at !== SEASON_START
+
+export type DiscountKind = 'beca' | 'hermanos' | 'descuento'
+export const DISCOUNT_LABEL: Record<DiscountKind, string> = { beca: 'Becas', hermanos: 'Promo hermanos', descuento: 'Descuentos' }
+export function discountKind(reason: string | null): DiscountKind {
+  if (reason?.startsWith('Descuento')) return 'descuento'
+  if (reason && /hermano/i.test(reason)) return 'hermanos'
+  return 'beca'
+}
+
+/** Becas y descuentos de las cuotas de un mes, separados por tipo. */
+export function discountsFor(fees: Pick<FeeBalance, 'discount' | 'discount_reason' | 'student_id'>[]) {
+  const by: Record<DiscountKind, number> = { beca: 0, hermanos: 0, descuento: 0 }
+  const kids = new Set<string>()
+  for (const f of fees) {
+    const d = Number(f.discount)
+    if (!(d > 0)) continue
+    by[discountKind(f.discount_reason)] += d
+    kids.add(f.student_id)
+  }
+  return { total: by.beca + by.hermanos + by.descuento, by, students: kids.size }
+}

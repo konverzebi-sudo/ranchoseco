@@ -49,6 +49,18 @@ export interface CoachPay {
   frequency: 'semanal' | 'quincenal' | 'mensual'
 }
 
+export interface CoachPayHistory {
+  id: string
+  coach_id: string
+  amount: number
+  frequency: CoachPay['frequency']
+  previous_amount: number | null
+  effective_date: string
+  reason: string | null
+  responsibilities: string | null
+  created_at: string
+}
+
 export interface Expense {
   id: string
   name: string
@@ -59,6 +71,8 @@ export interface Expense {
   /** Sólo gastos en partes: anticipo y número de pagos mensuales del resto. */
   down_payment: number | null
   installments: number | null
+  /** Día exacto en que se hizo un gasto de una sola vez (desglose día a día). */
+  paid_on: string | null
   notes: string | null
   active: boolean
   sort_order: number
@@ -207,6 +221,8 @@ export interface MatchPlayer {
   goals: number
   assists: number
   minutes: number
+  /** Convocado que sí llegó (false = falta). Los no convocados no tienen registro. */
+  attended: boolean
   notes: string | null
 }
 
