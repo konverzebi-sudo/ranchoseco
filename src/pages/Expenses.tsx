@@ -6,7 +6,7 @@ import { Badge, Button, Card, ConfirmDialog, Empty, ErrorState, Field, IconButto
 import CategoryResults from '@/components/CategoryResults'
 import CoachCategoryPicker from '@/components/CoachCategoryPicker'
 import { useToast } from '@/components/toast'
-import { useCategories, useCoachCategories, useCoachPay, useCoaches, useExpenses, useStudents } from '@/lib/api'
+import { useCategories, useCoachCategories, useCoachPay, useCoaches, useExpenses, useExtraClasses, useStudents } from '@/lib/api'
 import { supabase, unwrap } from '@/lib/supabase'
 import { money, today } from '@/lib/format'
 import { EXPENSE_FREQUENCY, FREQUENCY_LABEL, WEEKS_PER_MONTH, expenseForMonth, installmentPlan, monthlyCost } from '@/lib/finance'
@@ -40,6 +40,7 @@ export default function Expenses() {
   const coaches = useCoaches()
   const pay = useCoachPay()
   const cc = useCoachCategories()
+  const extras = useExtraClasses()
   const categories = useCategories()
   const [adding, setAdding] = useState(false)
   const [picking, setPicking] = useState<{ id: string; name: string } | null>(null)
@@ -52,7 +53,9 @@ export default function Expenses() {
   const coachRows = (coaches.data ?? []).filter((c) => c.active).map((c) => {
     const p = pay.data?.find((x) => x.coach_id === c.id)
     const cats = (cc.data ?? []).filter((x) => x.coach_id === c.id).map((x) => categories.data?.find((k) => k.id === x.category_id)).filter(Boolean)
-    const catStudents = active.filter((s) => cats.some((k) => k!.id === s.category_id)).length
+    // Alumnos a su cargo: los de sus categorías y los inscritos en sus clases extra (p. ej. Porteros)
+    const extraMembers = new Set((extras.data ?? []).filter((x) => cats.some((k) => k!.is_extra && k!.id === x.category_id)).map((x) => x.student_id))
+    const catStudents = active.filter((s) => cats.some((k) => !k!.is_extra && k!.id === s.category_id) || extraMembers.has(s.id)).length
     return { c, p, cats, catStudents, monthly: monthlyCost(p) }
   }).filter((r) => r.p)
   const salariesMonthly = coachRows.reduce((a, r) => a + r.monthly, 0)
