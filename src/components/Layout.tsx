@@ -2,7 +2,7 @@ import { useState, useEffect, type FormEvent } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Layers, UserCog, ClipboardCheck, Wallet, Receipt, GraduationCap, Dumbbell, Trophy, CalendarDays,
-  FileText, Settings, Menu, X, Search,
+  FileText, Settings, Menu, X, Search, Scale,
 } from 'lucide-react'
 import { cx } from './ui'
 
@@ -13,6 +13,7 @@ export const NAV = [
   { to: '/cobranza', label: 'Mensualidades y pagos', short: 'Cobranza', icon: Wallet },
   { to: '/becas', label: 'Becas', icon: GraduationCap },
   { to: '/gastos', label: 'Gastos', icon: Receipt },
+  { to: '/corte', label: 'Corte semanal', short: 'Corte', icon: Scale },
   { to: '/categorias', label: 'Categorías', icon: Layers },
   { to: '/profesores', label: 'Profesores', icon: UserCog },
   { to: '/entrenamientos', label: 'Entrenamientos', icon: Dumbbell },

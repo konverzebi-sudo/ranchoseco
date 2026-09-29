@@ -3,7 +3,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import { PauseCircle, PlayCircle } from 'lucide-react'
 import { Button, Field, Input, Modal, Select } from './ui'
 import { useToast } from './toast'
-import { useFees, type StudentRow } from '@/lib/api'
+import { useFees, useSettings, type StudentRow } from '@/lib/api'
+import { dueDateForStudent } from './PaymentForms'
 import { supabase, unwrap } from '@/lib/supabase'
 import { date, money, monthName, today } from '@/lib/format'
 import { REINSCRIPTION_FEE, cycleEnd, inactiveDays, needsReinscription } from '@/lib/inactive'
@@ -82,6 +83,7 @@ export function PauseModal({ student, onClose }: { student: StudentRow; onClose:
 /** Regresa de inactivo temporal: sólo paga reinscripción si pasó un año o más. */
 export function ReactivateModal({ student, onClose }: { student: StudentRow; onClose: () => void }) {
   const qc = useQueryClient()
+  const { data: settings } = useSettings()
   const toast = useToast()
   const [back, setBack] = useState(today())
   const owes = needsReinscription(student.inactive_since, back)
@@ -101,7 +103,7 @@ export function ReactivateModal({ student, onClose }: { student: StudentRow; onC
       }).eq('id', student.id))
       if (owes && charge) {
         unwrap(await supabase.from('fees').upsert({
-          student_id: student.id, concept: 'Reinscripción', period: back.slice(0, 7) + '-01', amount: REINSCRIPTION_FEE, due_date: back,
+          student_id: student.id, concept: 'Reinscripción', period: back.slice(0, 7) + '-01', amount: REINSCRIPTION_FEE, due_date: dueDateForStudent(back.slice(0, 7) + '-01', settings?.due_day ?? 8, back),
           notes: 'Regresó después de un año o más inactivo',
         }, { onConflict: 'student_id,concept,period', ignoreDuplicates: true }))
       }

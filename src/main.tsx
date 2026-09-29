@@ -20,6 +20,7 @@ import AttendancePage from './pages/Attendance'
 import Billing from './pages/Billing'
 import Expenses from './pages/Expenses'
 import ExpenseBreakdown from './pages/ExpenseBreakdown'
+import WeeklyCut from './pages/WeeklyCut'
 import Scholarships from './pages/Scholarships'
 import Categories from './pages/Categories'
 import Coaches from './pages/Coaches'
@@ -59,6 +60,7 @@ createRoot(document.getElementById('root')!).render(
                   <Route path="cobranza" element={<Billing />} />
                   <Route path="gastos" element={<Expenses />} />
                   <Route path="gastos/desglose" element={<ExpenseBreakdown />} />
+                  <Route path="corte" element={<WeeklyCut />} />
                   <Route path="becas" element={<Scholarships />} />
                   <Route path="categorias" element={<Categories />} />
                   <Route path="profesores" element={<Coaches />} />

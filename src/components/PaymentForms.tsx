@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Save, Paperclip } from 'lucide-react'
-import { addMonths, startOfMonth, setDate } from 'date-fns'
+import { addDays, addMonths, startOfMonth, setDate } from 'date-fns'
 import { Button, Field, Input, Modal, Select, Textarea } from './ui'
 import { useToast } from './toast'
 import { useCategories, useFees, useSettings, useStudents, type StudentRow } from '@/lib/api'
@@ -178,6 +178,17 @@ export function dueDateFor(period: string, dueDay: number) {
   return toISODate(setDate(new Date(period + 'T12:00:00'), dueDay))
 }
 
+/**
+ * Fecha límite para un alumno: la general del mes, salvo que haya entrado después;
+ * entonces tiene los mismos días que todos (del 1 al 8 = 8 días) contados desde que entró,
+ * para que un alumno nuevo no nazca con recargo.
+ */
+export function dueDateForStudent(period: string, dueDay: number, enrolledAt: string | null | undefined) {
+  const base = dueDateFor(period, dueDay)
+  if (!enrolledAt || enrolledAt <= base) return base
+  return toISODate(addDays(new Date(enrolledAt + 'T12:00:00'), Math.max(0, dueDay - 1)))
+}
+
 /** Crear un cargo (mensualidad, inscripción, uniforme, torneo…) para un alumno. */
 export function FeeModal({ student, onClose }: { student: StudentRow; onClose: () => void }) {
   const { data: settings } = useSettings()
@@ -191,7 +202,7 @@ export function FeeModal({ student, onClose }: { student: StudentRow; onClose: (
   const [due, setDue] = useState('')
   const [saving, setSaving] = useState(false)
   const periodDate = `${period}-01`
-  const dueValue = due || dueDateFor(periodDate, settings?.due_day ?? 10)
+  const dueValue = due || dueDateForStudent(periodDate, settings?.due_day ?? 10, student.enrolled_at)
   const isInscription = norm(concept.trim()) === 'inscripcion'
   const isMonthly = norm(concept.trim()) === 'mensualidad'
   const autoTier = joinTier(student.enrolled_at, periodDate) ?? 'completo'
@@ -295,9 +306,8 @@ export function GenerateMonthModal({ students, onClose }: { students: StudentRow
   const run = async () => {
     setSaving(true)
     try {
-      const due = dueDateFor(periodDate, settings?.due_day ?? 10)
       const payload = plan.toCreate.map(({ s, amount, discount, tier, reason }) => ({
-        student_id: s.id, concept: 'Mensualidad', period: periodDate, amount, due_date: due,
+        student_id: s.id, concept: 'Mensualidad', period: periodDate, amount, due_date: dueDateForStudent(periodDate, settings?.due_day ?? 10, s.enrolled_at),
         discount, discount_reason: discount > 0 ? reason : null,
         notes: tierNote(tier),
       }))
