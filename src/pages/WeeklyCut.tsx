@@ -320,11 +320,21 @@ export default function WeeklyCut() {
             <h3 className="mb-3 flex items-center gap-2 font-display text-lg font-bold uppercase tracking-wide"><Vault className="h-5 w-5 text-brand" /> Caja y a dónde se va el dinero</h3>
             <div className="grid gap-5 lg:grid-cols-2">
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-xl bg-ink-900 p-3 text-sm">
-                  <span>Caja chica anterior</span><b className="text-right">{cents(carry)}</b>
-                  <span>+ Entró (revisado)</span><b className="text-right text-ok">{cents(tot.income)}</b>
-                  <span>− Salió (revisado)</span><b className="text-right text-bad">{cents(tot.outflow)}</b>
-                  <span className="font-semibold">= Debería haber</span><b className={cx('text-right', expected < 0 ? 'text-bad' : 'text-brand')}>{cents(expected)}</b>
+                <div className="divide-y divide-ink-700 rounded-xl bg-ink-900 text-sm">
+                  <div className="flex justify-between px-3 py-2"><span>Caja chica anterior</span><b>{cents(carry)}</b></div>
+                  <Breakdown label="+ Total de entradas" total={tot.income} tone="text-ok"
+                    lines={items.filter((i) => i.type === 'entrada' && counts(i)).map((i) => [`${i.concept} · ${i.detail.split(' · ')[0]}`, itemValue(i)])} />
+                  <Breakdown label="− Total de salidas" total={tot.outflow} tone="text-bad"
+                    lines={OUT_GROUPS.flatMap((g) => {
+                      const l = items.filter((i) => i.type === 'salida' && counts(i) && outGroup(i) === g.id)
+                      return l.length ? [[g.label.toUpperCase(), l.reduce((a, i) => a + itemValue(i), 0), true] as const, ...l.map((i) => [`${i.concept}`, itemValue(i)] as const)] : []
+                    })} />
+                  <Breakdown label="− Total de ahorro" total={savingsTotal} tone="text-brand"
+                    lines={funds.filter((f) => savedNow(f) > 0).map((f) => [f.name, savedNow(f)])} empty="No se apartó ahorro." />
+                  <div className="flex justify-between px-3 py-2.5 font-semibold">
+                    <span>= Saldo final al día de hoy <span className="block text-xs font-normal text-muted">lo que queda en caja</span></span>
+                    <b className={cx('font-display text-2xl', expected - savingsTotal < 0 ? 'text-bad' : 'text-white')}>{cents(expected - savingsTotal)}</b>
+                  </div>
                 </div>
                 {expected < 0 && (
                   <p className="rounded-xl border border-bad/40 bg-bad/10 p-3 text-sm text-bad">Salió {cents(-expected)} más de lo que había. Revisa arriba si algún pago <b>no salió de la caja</b> (lápiz ✎) o si el dinero salió de otro lado y anótalo en las notas.</p>
@@ -409,6 +419,28 @@ export default function WeeklyCut() {
       <ConfirmDialog open={!!deleting} onClose={() => setDeleting(null)} onConfirm={remove} danger title="Eliminar corte" confirmLabel="Eliminar"
         text={deleting ? `Se eliminará el corte del ${date(deleting.cut_date)} con lo que se apartó de ahorro. Los pagos y gastos no se borran.` : null} />
     </>
+  )
+}
+
+/** Un total que al tocarlo muestra su desglose en texto simple. */
+function Breakdown({ label, total, tone, lines, empty = 'Nada palomeado.' }: {
+  label: string; total: number; tone: string; lines: (readonly [string, number] | readonly [string, number, boolean])[]; empty?: string
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div>
+      <button type="button" onClick={() => setOpen(!open)} className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-ink-800">
+        <span>{label} <span className="text-xs text-muted">{open ? '▾ ocultar' : '▸ ver desglose'}</span></span>
+        <b className={tone}>{cents(total)}</b>
+      </button>
+      {open && (
+        <div className="space-y-0.5 px-3 pb-3 font-mono text-xs text-muted">
+          {lines.length === 0 ? <p>{empty}</p> : lines.map(([t, v, head], k) => (
+            <p key={k} className={cx('flex justify-between gap-3', head && 'pt-1.5 font-semibold text-white')}><span className="truncate">{head ? t : `· ${t}`}</span><span>{cents(v)}</span></p>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
