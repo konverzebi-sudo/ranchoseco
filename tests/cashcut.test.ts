@@ -40,16 +40,17 @@ describe('sugerencia de ahorro', () => {
     const [f] = savingFunds({ cutDate: '2026-10-07', expenses: [regalias], cuts: [] })
     expect(f).toMatchObject({ key: 'f:r:2026-11-01', due: '2026-11-01', weeksLeft: 4, suggested: 1875, saved: 0 })
   })
-  it('si se guardó menos, lo que falta se reparte en las semanas restantes', () => {
-    const cuts = [{ id: 'c1', savings: [{ key: 'f:r:2026-11-01', name: 'x', target: 7500, due: '2026-11-01', suggested: 1875, saved: 1000 }] }]
+  it('la parte semanal es fija y nunca más de lo que falta', () => {
+    const cuts = [{ id: 'c1', savings: [{ key: 'f:r:2026-11-01', name: 'x', target: 7500, due: '2026-11-01', suggested: 1875, saved: 6500 }] }]
     const [f] = savingFunds({ cutDate: '2026-10-14', expenses: [regalias], cuts })
-    expect(f).toMatchObject({ saved: 1000, weeksLeft: 3 })
-    expect(f.suggested).toBeCloseTo(6500 / 3, 2)
+    expect(f).toMatchObject({ saved: 6500, weeksLeft: 3, suggested: 1000 })
+    expect(savingFunds({ cutDate: '2026-09-30', expenses: [regalias], cuts: [] })[0]).toMatchObject({ due: '2026-10-01', suggested: 1875 })
     expect(savingFunds({ cutDate: '2026-10-14', expenses: [regalias], cuts, excludeCut: 'c1' })[0].saved).toBe(0)
   })
   it('el seguro anual se junta hasta septiembre', () => {
     const [f] = savingFunds({ cutDate: '2026-10-07', expenses: [seguro], cuts: [] })
     expect(f).toMatchObject({ kind: 'seguro', due: '2027-09-01', weeksLeft: 47 })
+    expect(f.suggested).toBeCloseTo(11000 / 52, 2)
   })
   it('las partes pendientes y los préstamos piden guardar su siguiente pago', () => {
     const inst = (id: string, n: number, due_date: string, amount: number, paid_on: string | null) => ({ id, expense_id: 'x', n, due_date, amount, paid_on, notes: null })

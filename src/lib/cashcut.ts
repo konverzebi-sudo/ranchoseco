@@ -129,17 +129,21 @@ function nextDue(e: Expense, after: string): string | null {
 }
 
 /**
- * Sugerencias de ahorro para el corte: lo que falta de cada pago grande
- * se reparte entre las semanas que quedan (Regalías $7,500 a 4 semanas = $1,875 por semana).
+ * Sugerencias de ahorro para el corte, una parte proporcional por semana:
+ * mensual ÷ 4 (Regalías $7,500 = $1,875), quincenal ÷ 2, anual ÷ 52;
+ * pagos en partes y préstamos: lo que falta ÷ semanas que quedan.
+ * Nunca más de lo que falta por juntar.
  */
 export function savingFunds(opts: { cutDate: string; expenses: Expense[]; cuts: Pick<CashCut, 'id' | 'savings'>[]; excludeCut?: string }): SavingFund[] {
   const { cutDate, expenses, cuts, excludeCut } = opts
   const savedFor = (key: string) => cuts.filter((c) => c.id !== excludeCut)
     .flatMap((c) => c.savings ?? []).filter((s) => s.key === key).reduce((a, s) => a + Number(s.saved), 0)
-  const fund = (f: Omit<SavingFund, 'saved' | 'weeksLeft' | 'suggested'>): SavingFund => {
+  const fund = (f: Omit<SavingFund, 'saved' | 'weeksLeft' | 'suggested'>, weeksInCycle?: number): SavingFund => {
     const saved = savedFor(f.key)
     const weeksLeft = Math.max(1, Math.ceil((toDate(f.due).getTime() - toDate(cutDate).getTime()) / (7 * DAY)))
-    const suggested = Math.max(0, Math.round(((f.target - saved) / weeksLeft) * 100) / 100)
+    const remaining = Math.max(0, f.target - saved)
+    const rate = weeksInCycle ? f.target / weeksInCycle : remaining / weeksLeft
+    const suggested = Math.round(Math.min(remaining, rate) * 100) / 100
     return { ...f, saved, weeksLeft, suggested }
   }
   const out: SavingFund[] = []
@@ -147,7 +151,8 @@ export function savingFunds(opts: { cutDate: string; expenses: Expense[]; cuts: 
     if (!e.active) continue
     if (!isLoan(e) && ['mensual', 'quincenal', 'anual'].includes(e.frequency)) {
       const due = nextDue(e, cutDate)
-      if (due) out.push(fund({ key: `f:${e.id}:${due}`, name: e.name, kind: /seguro/i.test(e.name) ? 'seguro' : 'fijo', target: Number(e.amount), due }))
+      const perCycle = e.frequency === 'mensual' ? 4 : e.frequency === 'quincenal' ? 2 : 52
+      if (due) out.push(fund({ key: `f:${e.id}:${due}`, name: e.name, kind: /seguro/i.test(e.name) ? 'seguro' : 'fijo', target: Number(e.amount), due }, perCycle))
       continue
     }
     const next = (installmentsOf(e) ?? []).find((i) => !i.paid_on)

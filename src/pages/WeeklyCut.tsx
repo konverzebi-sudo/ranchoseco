@@ -71,7 +71,7 @@ export default function WeeklyCut() {
   const funds = useMemo(() => savingFunds({ cutDate: to, expenses: expenses.data ?? [], cuts: cuts.data ?? [], excludeCut: editingCut?.id }), [to, expenses.data, cuts.data, editingCut])
   const [saveAmt, setSaveAmt] = useState<Record<string, string>>({})
   const [saveNote, setSaveNote] = useState<Record<string, string>>({})
-  const savedNow = (f: SavingFund) => (f.key in saveAmt ? Number(saveAmt[f.key]) || 0 : f.suggested)
+  const savedNow = (f: SavingFund) => (f.key in saveAmt ? Number(saveAmt[f.key]) || 0 : 0)
   const savingsTotal = funds.reduce((a, f) => a + savedNow(f), 0)
   const suggestedTotal = funds.reduce((a, f) => a + f.suggested, 0)
 
@@ -247,7 +247,8 @@ export default function WeeklyCut() {
           <Card>
             <div className="border-b border-ink-600 px-5 py-4">
               <h3 className="flex items-center gap-2 font-display text-lg font-bold uppercase tracking-wide"><PiggyBank className="h-5 w-5 text-brand" /> Sugerencia de ahorro</h3>
-              <p className="text-xs text-muted">Lo que falta de cada pago se reparte entre las semanas que quedan. Escribe cuánto se guarda de verdad (puede ser menos o nada).</p>
+              <p className="text-xs text-muted">Para cada pago grande te sugerimos cuánto apartar esta semana. Escribe cuánto se guarda de verdad; si no hay dinero, déjalo en 0.
+                {countedN > 0 ? <> Hay <b className="text-white">{cents(countedN)}</b> en caja para repartir.</> : <> <b className="text-warn">Esta semana no hay dinero en caja para ahorrar.</b></>}</p>
             </div>
             {funds.length === 0 ? <p className="px-5 py-6 text-center text-sm text-muted">No hay pagos grandes por juntar.</p> : (
               <ul className="divide-y divide-ink-700">
@@ -274,10 +275,10 @@ export default function WeeklyCut() {
                       <div className="text-sm">
                         <p className="text-xs uppercase tracking-wider text-muted">Te sugerimos</p>
                         <p className="font-display text-2xl font-bold text-brand">{cents(f.suggested)}</p>
-                        <p className="text-xs text-muted">{f.weeksLeft > 1 ? `${cents(Math.max(0, f.target - f.saved))} ÷ ${f.weeksLeft} semanas` : 'Se paga esta semana'}</p>
+                        <p className="text-xs text-muted">{f.kind === 'fijo' || f.kind === 'seguro' ? 'parte de esta semana' : `${cents(Math.max(0, f.target - f.saved))} ÷ ${f.weeksLeft} ${f.weeksLeft === 1 ? 'semana' : 'semanas'}`}</p>
                       </div>
                       <div className="space-y-1">
-                        <Input type="number" min="0" inputMode="decimal" value={f.key in saveAmt ? saveAmt[f.key] : String(f.suggested)} aria-label={`Se guarda para ${f.name}`}
+                        <Input type="number" min="0" inputMode="decimal" value={saveAmt[f.key] ?? ''} placeholder="0" aria-label={`Se guarda para ${f.name}`}
                           onChange={(e) => setSaveAmt({ ...saveAmt, [f.key]: e.target.value })} className="h-10" />
                         <div className="flex gap-1">
                           <button className="text-xs text-brand hover:underline" onClick={() => setSaveAmt({ ...saveAmt, [f.key]: String(f.suggested) })}>Lo sugerido</button>
@@ -291,8 +292,11 @@ export default function WeeklyCut() {
                 })}
               </ul>
             )}
-            <div className="flex flex-wrap justify-between gap-2 border-t border-ink-600 bg-ink-900 px-5 py-3">
-              <span className="text-sm text-muted">Sugerido esta semana {cents(suggestedTotal)}</span>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-ink-600 bg-ink-900 px-5 py-3">
+              <span className="flex flex-wrap items-center gap-2 text-sm text-muted">Sugerido esta semana {cents(suggestedTotal)}
+                {funds.length > 0 && <button className="text-brand hover:underline" onClick={() => setSaveAmt(Object.fromEntries(funds.map((f) => [f.key, String(f.suggested)])))}>Guardar todo lo sugerido</button>}
+                {Object.keys(saveAmt).length > 0 && <button className="hover:underline" onClick={() => setSaveAmt({})}>Borrar</button>}
+              </span>
               <span className="font-display text-lg font-bold uppercase">Se guarda <span className="text-brand">{cents(savingsTotal)}</span></span>
             </div>
           </Card>
@@ -306,9 +310,12 @@ export default function WeeklyCut() {
                   <span>Caja chica anterior</span><b className="text-right">{cents(carry)}</b>
                   <span>+ Entró (revisado)</span><b className="text-right text-ok">{cents(tot.income)}</b>
                   <span>− Salió (revisado)</span><b className="text-right text-bad">{cents(tot.outflow)}</b>
-                  <span className="font-semibold">= Debería haber</span><b className="text-right text-brand">{cents(expected)}</b>
+                  <span className="font-semibold">= Debería haber</span><b className={cx('text-right', expected < 0 ? 'text-bad' : 'text-brand')}>{cents(expected)}</b>
                 </div>
-                <Field label="¿Cuánto dinero hay? (contado)" hint={Math.abs(countedN - expected) > 0.5 ? `${countedN > expected ? 'Sobran' : 'Faltan'} ${cents(Math.abs(countedN - expected))} contra lo esperado` : 'Cuadra con lo esperado'}>
+                {expected < 0 && (
+                  <p className="rounded-xl border border-bad/40 bg-bad/10 p-3 text-sm text-bad">Salió {cents(-expected)} más de lo que había. Revisa arriba si algún pago <b>no salió de la caja</b> (lápiz ✎) o si el dinero salió de otro lado y anótalo en las notas.</p>
+                )}
+                <Field label="¿Cuánto dinero hay? (contado)" hint={expected < 0 ? 'Escribe lo que de verdad hay en caja' : Math.abs(countedN - expected) > 0.5 ? `${countedN > expected ? 'Sobran' : 'Faltan'} ${cents(Math.abs(countedN - expected))} contra lo esperado` : 'Cuadra con lo esperado'}>
                   <Input type="number" min="0" inputMode="decimal" value={counted === '' ? String(Math.max(0, Math.round(expected * 100) / 100)) : counted} onChange={(e) => setCounted(e.target.value)} />
                 </Field>
                 <p className="text-xs text-muted">Incluye cobros por transferencia. Si ese dinero no está en efectivo, mándalo a "Banco".</p>
