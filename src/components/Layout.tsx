@@ -65,7 +65,7 @@ export default function Layout() {
   return (
     <div className="min-h-dvh lg:flex">
       {/* Sidebar escritorio */}
-      <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-ink-600 bg-ink-900 lg:flex">
+      <aside className="theme-dark sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-ink-600 bg-ink-900 lg:flex">
         <div className="px-5 pb-4 pt-6"><Brand /></div>
         <div className="px-4 pb-3"><QuickSearch /></div>
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 pb-4" aria-label="Menú principal">
@@ -82,7 +82,7 @@ export default function Layout() {
       </aside>
 
       {/* Encabezado celular */}
-      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-ink-600 bg-ink/95 px-4 py-2.5 backdrop-blur lg:hidden">
+      <header className="theme-dark sticky top-0 z-30 flex items-center justify-between border-b border-ink-600 bg-ink-900/95 px-4 py-2.5 backdrop-blur lg:hidden">
         <Brand compact />
         <button onClick={() => setDrawer(true)} aria-label="Abrir menú" className="rounded-xl p-2 text-muted hover:bg-ink-700 hover:text-white">
           <Menu className="h-6 w-6" />
@@ -94,7 +94,7 @@ export default function Layout() {
       </main>
 
       {/* Barra inferior celular */}
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-ink-600 bg-ink-900/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden" aria-label="Navegación rápida">
+      <nav className="theme-dark fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-ink-600 bg-ink-900/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden" aria-label="Navegación rápida">
         {NAV.filter((n) => MOBILE_MAIN.includes(n.to)).map(({ to, label, short, icon: Icon, end }) => (
           <NavLink key={to} to={to} end={end}
             className={({ isActive }) => cx('flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium', isActive ? 'text-brand' : 'text-muted')}>
@@ -112,7 +112,7 @@ export default function Layout() {
       {drawer && (
         <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Menú">
           <div className="absolute inset-0 bg-black/70" onClick={() => setDrawer(false)} />
-          <div className="absolute inset-y-0 right-0 flex w-[86%] max-w-sm flex-col border-l border-ink-600 bg-ink-900">
+          <div className="theme-dark absolute inset-y-0 right-0 flex w-[86%] max-w-sm flex-col border-l border-ink-600 bg-ink-900">
             <div className="flex items-center justify-between px-4 py-3">
               <Brand compact />
               <button onClick={() => setDrawer(false)} aria-label="Cerrar menú" className="rounded-xl p-2 text-muted hover:bg-ink-700"><X className="h-6 w-6" /></button>

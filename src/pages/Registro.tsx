@@ -38,7 +38,7 @@ export default function Registro() {
   if (kid) return <KidForm kid={kid} onBack={() => setKid(null)} onDone={() => { setDone(kid); setKid(null); qc.invalidateQueries({ queryKey: ['registro_lista'] }) }} />
 
   return (
-    <div className="min-h-dvh bg-ink pb-12">
+    <div className="min-h-dvh bg-page pb-12">
       <header className="border-b-4 border-brand bg-ink-900">
         <div className="mx-auto flex max-w-2xl items-center gap-4 px-4 py-5">
           <img src={LOGO} alt="Escudo Deportivo Rancho Seco" className="h-16 w-16" />
@@ -169,7 +169,7 @@ function KidForm({ kid, onBack, onDone }: { kid: Kid; onBack: () => void; onDone
   }
 
   return (
-    <div className="min-h-dvh bg-ink pb-12">
+    <div className="min-h-dvh bg-page pb-12">
       <header className="sticky top-0 z-10 border-b border-ink-600 bg-ink-900/95 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-3">
           <button onClick={onBack} className="rounded-xl p-2 text-muted hover:bg-ink-700" aria-label="Regresar"><ChevronLeft className="h-6 w-6" /></button>

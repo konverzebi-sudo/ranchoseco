@@ -54,7 +54,7 @@ export default function Portal() {
     retry: 1,
   })
 
-  if (q.isLoading) return <div className="min-h-dvh bg-ink"><Spinner label="Cargando información…" /></div>
+  if (q.isLoading) return <div className="min-h-dvh bg-page"><Spinner label="Cargando información…" /></div>
   if (q.error || !q.data) {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center p-6 text-center">
@@ -111,7 +111,7 @@ export default function Portal() {
   }
 
   return (
-    <div className="min-h-dvh bg-ink pb-10">
+    <div className="min-h-dvh bg-page pb-10">
       <header className="border-b-4 border-brand bg-ink-900">
         <div className="mx-auto flex max-w-3xl items-center gap-4 px-4 py-5">
           <img src={LOGO} alt="Escudo Deportivo Rancho Seco" className="h-16 w-16" />

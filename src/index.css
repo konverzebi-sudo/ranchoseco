@@ -2,16 +2,59 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+/* Colores oscuros (barra lateral) */
+:root,
+.theme-dark {
+  --page: 17 17 17;
+  --ink-900: 11 11 11;
+  --ink-800: 22 22 22;
+  --ink-700: 32 32 32;
+  --ink-600: 42 42 42;
+  --ink-500: 58 58 58;
+  --muted: 163 163 163;
+  --fg: 255 255 255;
   color-scheme: dark;
+}
+/* Colores claros: fondo blanco, letras negras y grises (todo menos la barra lateral) */
+.theme-light {
+  --page: 244 244 245;
+  --ink-900: 247 247 248;
+  --ink-800: 255 255 255;
+  --ink-700: 236 236 239;
+  --ink-600: 224 224 228;
+  --ink-500: 190 190 196;
+  --muted: 100 100 108;
+  --fg: 17 17 17;
+  color-scheme: light;
+}
+.theme-dark,
+.theme-light {
+  color: rgb(var(--fg));
+}
+/* El amarillo como letra se oscurece un poco para que se lea sobre blanco */
+.theme-light .text-brand,
+.theme-light .hover\:text-brand:hover,
+.theme-light .group:hover .group-hover\:text-brand {
+  color: #9c8a00;
+}
+.theme-dark .text-brand,
+.theme-dark .hover\:text-brand:hover {
+  color: #f2e30a;
+}
+.theme-light input[type='date']::-webkit-calendar-picker-indicator,
+.theme-light input[type='time']::-webkit-calendar-picker-indicator {
+  filter: none;
+}
+
+:root {
   /* Letra un poco más grande en toda la plataforma (todo está en rem) */
   font-size: 17px;
   -webkit-tap-highlight-color: transparent;
 }
 
 body {
-  background: #111111;
-  color: #ffffff;
+  background: rgb(var(--page));
+  color: rgb(var(--fg));
   font-family: Inter, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }

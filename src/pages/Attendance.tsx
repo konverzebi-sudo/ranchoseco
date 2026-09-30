@@ -14,7 +14,7 @@ import type { AttendanceStatus, Training } from '@/lib/types'
 
 const OPTIONS: { id: AttendanceStatus; label: string; icon: typeof Check; on: string }[] = [
   { id: 'presente', label: 'Presente', icon: Check, on: 'bg-ok text-ink border-ok' },
-  { id: 'falta', label: 'Falta', icon: X, on: 'bg-bad text-white border-bad' },
+  { id: 'falta', label: 'Falta', icon: X, on: 'bg-bad text-[#fff] border-bad' },
   { id: 'justificada', label: 'Justificada', icon: FileCheck2, on: 'bg-info text-ink border-info' },
   { id: 'retardo', label: 'Retardo', icon: Clock, on: 'bg-warn text-ink border-warn' },
 ]
@@ -153,7 +153,7 @@ function TakeAttendance() {
         <Card><Empty icon={ClipboardCheck} title="No hay alumnos activos en esta categoría" action={<Link to="/alumnos?nuevo=1"><Button icon={Plus}>Agregar alumno</Button></Link>} /></Card>
       ) : (
         <>
-          <div className="sticky top-[57px] z-20 -mx-4 flex items-center justify-between gap-3 border-b border-ink-600 bg-ink/95 px-4 py-3 backdrop-blur lg:top-0 lg:mx-0 lg:rounded-2xl lg:border">
+          <div className="sticky top-[57px] z-20 -mx-4 flex items-center justify-between gap-3 border-b border-ink-600 bg-page/95 px-4 py-3 backdrop-blur lg:top-0 lg:mx-0 lg:rounded-2xl lg:border">
             <p className="text-sm"><span className="font-display text-2xl font-bold text-brand">{marked}</span><span className="text-muted"> / {roster.length} marcados</span><span className="block text-xs text-muted">Toca de nuevo una opción para desmarcarla</span></p>
             <Button size="sm" icon={CheckCheck} onClick={() => mark(roster.filter((s) => !statusOf(s.id)).map((s) => s.id), 'presente')} disabled={marked === roster.length}>
               Resto presentes

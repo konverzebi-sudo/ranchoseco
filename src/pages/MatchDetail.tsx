@@ -103,7 +103,7 @@ export default function MatchDetail() {
         </div>
       </Card>
 
-      <div className="sticky top-[57px] z-20 -mx-4 mb-3 flex items-center justify-between gap-3 border-b border-ink-600 bg-ink/95 px-4 py-3 backdrop-blur lg:top-0 lg:mx-0 lg:rounded-2xl lg:border">
+      <div className="sticky top-[57px] z-20 -mx-4 mb-3 flex items-center justify-between gap-3 border-b border-ink-600 bg-page/95 px-4 py-3 backdrop-blur lg:top-0 lg:mx-0 lg:rounded-2xl lg:border">
         <p className="text-sm"><span className="font-display text-2xl font-bold text-brand">{calledCount}</span><span className="text-muted"> convocados · {absentCount} faltaron · {starters} titulares</span></p>
         <Button icon={Save} loading={saving} disabled={!dirty} onClick={save}>Guardar</Button>
       </div>
@@ -124,7 +124,7 @@ export default function MatchDetail() {
                     <div className="flex overflow-hidden rounded-xl border border-ink-600 text-xs font-semibold sm:text-sm" role="group" aria-label={`Asistencia de ${s.full_name}`}>
                       {([
                         ['asistio', 'Asistió', r.called && r.attended, 'bg-ok text-ink'],
-                        ['falta', 'Faltó', r.called && !r.attended, 'bg-bad text-white'],
+                        ['falta', 'Faltó', r.called && !r.attended, 'bg-bad text-[#fff]'],
                         ['no', 'No convocado', !r.called, 'bg-ink-600 text-white'],
                       ] as const).map(([k, label, on, onCls]) => (
                         <button key={k} type="button" aria-pressed={on}

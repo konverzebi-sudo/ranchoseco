@@ -403,7 +403,19 @@ export default function WeeklyCut() {
                 <div className="divide-y divide-ink-700 rounded-xl bg-ink-900 text-sm">
                   <div className="flex justify-between px-3 py-2"><span>Caja chica anterior</span><b>{cents(carry)}</b></div>
                   <Breakdown label="+ Total de entradas" total={tot.income} tone="text-ok"
-                    lines={items.filter((i) => i.type === 'entrada' && counts(i)).map((i) => [`${i.concept} · ${i.detail.split(' · ')[0]}`, itemValue(i)])} />
+                    lines={(() => {
+                      // Agrupado por concepto: inscripciones, mensualidades, etc., con su subtotal y el total al final
+                      const ins = items.filter((i) => i.type === 'entrada' && counts(i))
+                      const concept = (i: CutItem) => i.detail.split(' · ')[0] || 'Otro'
+                      const order = ['Inscripción', 'Reinscripción', 'Mensualidad']
+                      const groups = [...new Set(ins.map(concept))].sort((a, b) => (order.indexOf(a) + 99) % 99 - (order.indexOf(b) + 99) % 99 || a.localeCompare(b))
+                      const lines = groups.flatMap((g) => {
+                        const l = ins.filter((i) => concept(i) === g)
+                        const label = g === 'Inscripción' ? 'Inscripciones' : g === 'Reinscripción' ? 'Reinscripciones' : g === 'Mensualidad' ? 'Mensualidades' : g
+                        return [[`${label.toUpperCase()} (${l.length})`, l.reduce((a, i) => a + itemValue(i), 0), true] as const, ...l.map((i) => [i.concept, itemValue(i)] as const)]
+                      })
+                      return lines.length ? [...lines, ['TOTAL DE ENTRADAS', tot.income, true] as const] : lines
+                    })()} />
                   <Breakdown label="− Total de salidas" total={tot.outflow} tone="text-bad"
                     lines={OUT_GROUPS.flatMap((g) => {
                       const l = items.filter((i) => i.type === 'salida' && counts(i) && outGroup(i) === g.id)
