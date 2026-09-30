@@ -71,7 +71,7 @@ export interface CashCut {
   counted: number
   distribution: { to: string; amount: number }[]
   /** Entradas y salidas revisadas (✓ aprobada, monto corregido y nota) */
-  items?: { key: string; type: 'entrada' | 'salida'; date: string; concept: string; detail: string; amount: number; approved: boolean; adjusted: number | null; note: string }[]
+  items?: { key: string; type: 'entrada' | 'salida'; date: string; concept: string; detail: string; amount: number; approved: boolean; adjusted: number | null; note: string; excluded?: boolean }[]
   /** Ahorros apartados en este corte */
   savings?: { key: string; name: string; target: number; due: string; suggested: number; saved: number; note?: string }[]
   notes: string | null

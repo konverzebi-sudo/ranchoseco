@@ -70,6 +70,8 @@ export interface CutItem {
   approved: boolean
   adjusted: number | null
   note: string
+  /** No salió (o no entró) por la caja: se pagó por otro lado, no cuenta en el corte */
+  excluded?: boolean
 }
 export const itemValue = (i: Pick<CutItem, 'amount' | 'adjusted'>) => (i.adjusted ?? i.amount)
 
@@ -83,12 +85,12 @@ export function buildItems(d: ReturnType<typeof periodSummary>, prev: CutItem[] 
   ]
   return base.map((b) => {
     const k = kept.get(b.key)
-    return { ...b, approved: k?.approved ?? false, adjusted: k?.adjusted ?? null, note: k?.note ?? '' }
+    return { ...b, approved: k?.approved ?? false, adjusted: k?.adjusted ?? null, note: k?.note ?? '', excluded: k?.excluded ?? false }
   })
 }
 
 export function itemTotals(items: CutItem[]) {
-  const sum = (t: CutItem['type']) => items.filter((i) => i.type === t).reduce((a, i) => a + itemValue(i), 0)
+  const sum = (t: CutItem['type']) => items.filter((i) => i.type === t && !i.excluded).reduce((a, i) => a + itemValue(i), 0)
   return { income: sum('entrada'), outflow: sum('salida'), pending: items.filter((i) => !i.approved).length, adjusted: items.filter((i) => i.adjusted != null).length }
 }
 

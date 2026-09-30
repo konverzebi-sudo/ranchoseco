@@ -9,13 +9,13 @@ import '@fontsource/barlow-condensed/600.css'
 import '@fontsource/barlow-condensed/700.css'
 import './index.css'
 import Layout from './components/Layout'
+import Dashboard from './pages/Dashboard'
 import { ToastProvider } from './components/toast'
 import { Spinner } from './components/ui'
 import { isConfigured } from './lib/supabase'
 import SetupNeeded from './pages/SetupNeeded'
 
 // Cada sección se descarga sólo cuando se abre, para que la primera carga en el celular sea rápida.
-const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Students = lazy(() => import('./pages/Students'))
 const StudentDetail = lazy(() => import('./pages/StudentDetail'))
 const AttendancePage = lazy(() => import('./pages/Attendance'))

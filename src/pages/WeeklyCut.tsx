@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { startOfWeek } from 'date-fns'
 import { TrendingUp, TrendingDown, Scale, Banknote, Download, MessageCircle, Printer, Plus, Trash2, Vault, PiggyBank, Check, Pencil, CheckCheck } from 'lucide-react'
-import { Badge, Button, Card, ConfirmDialog, ErrorState, Field, IconButton, Input, PageHeader, Spinner, StatCard, Textarea, cx } from '@/components/ui'
+import { Badge, Button, Card, ConfirmDialog, ErrorState, Field, IconButton, Input, Modal, PageHeader, Spinner, StatCard, Textarea, cx } from '@/components/ui'
 import { useToast } from '@/components/toast'
 import { useCashCuts, useCoachPay, useCoaches, useExpenses, useFees, usePayments, useStudents } from '@/lib/api'
 import {
@@ -18,7 +18,7 @@ import type { CashCut, PaymentMethod } from '@/lib/types'
 const cents = (n: number) => money(Math.round(n * 100) / 100)
 const range = (from: string, to: string) => `${date(from, "d 'de' MMM")} al ${date(to, "d 'de' MMM yyyy")}`
 const FUND_LABEL: Record<SavingFund['kind'], string> = { fijo: 'Gasto fijo', seguro: 'Seguro anual', parte: 'Pago pendiente', prestamo: 'Préstamo' }
-type Review = Record<string, { approved?: boolean; adjusted?: number | null; note?: string }>
+type Review = Record<string, { approved?: boolean; adjusted?: number | null; note?: string; excluded?: boolean }>
 
 /**
  * Corte de caja (normalmente el miércoles, cuando se paga a los profes):
@@ -38,13 +38,15 @@ export default function WeeklyCut() {
   const qc = useQueryClient()
   const toast = useToast()
   const [deleting, setDeleting] = useState<CashCut | null>(null)
+  const [confirming, setConfirming] = useState(false)
+  const [editingCut, setEditingCut] = useState<CashCut | null>(null)
 
   const t = today()
   const defaultFrom = nextPeriodStart(cuts.data ?? [], toISODate(startOfWeek(new Date(), { weekStartsOn: 1 })))
   const from = params.get('desde') ?? defaultFrom
   const to = params.get('hasta') ?? t
   const setRange = (k: 'desde' | 'hasta', v: string) => { const p = new URLSearchParams(params); p.set(k, v); setParams(p, { replace: true }) }
-  const prev = (cuts.data ?? []).find((c) => c.period_to < from)
+  const prev = (cuts.data ?? []).find((c) => c.period_to < from && c.id !== editingCut?.id)
   const carry = carryOver(prev)
 
   const d = useMemo(() => periodSummary({
@@ -66,7 +68,7 @@ export default function WeeklyCut() {
   })
 
   // Sugerencias de ahorro
-  const funds = useMemo(() => savingFunds({ cutDate: to, expenses: expenses.data ?? [], cuts: cuts.data ?? [] }), [to, expenses.data, cuts.data])
+  const funds = useMemo(() => savingFunds({ cutDate: to, expenses: expenses.data ?? [], cuts: cuts.data ?? [], excludeCut: editingCut?.id }), [to, expenses.data, cuts.data, editingCut])
   const [saveAmt, setSaveAmt] = useState<Record<string, string>>({})
   const [saveNote, setSaveNote] = useState<Record<string, string>>({})
   const savedNow = (f: SavingFund) => (f.key in saveAmt ? Number(saveAmt[f.key]) || 0 : f.suggested)
@@ -95,24 +97,45 @@ export default function WeeklyCut() {
     return [...m.entries()].sort((a, b) => b[1] - a[1])
   }, [cuts.data])
 
+  const distributionNow = () => [
+    ...(savingsTotal > 0 ? [{ to: 'Ahorros apartados', amount: Math.round(savingsTotal * 100) / 100 }] : []),
+    ...rows.filter((r) => r.to.trim() && Number(r.amount) > 0).map((r) => ({ to: r.to.trim(), amount: Number(r.amount) })),
+  ]
   const save = async () => {
-    if (tot.pending > 0 && !window.confirm(`Hay ${tot.pending} líneas sin revisar (sin ✓). ¿Guardar el corte así?`)) return
     const distribution = [
       ...(savingsTotal > 0 ? [{ to: 'Ahorros apartados', amount: Math.round(savingsTotal * 100) / 100 }] : []),
       ...rows.filter((r) => r.to.trim() && Number(r.amount) > 0).map((r) => ({ to: r.to.trim(), amount: Number(r.amount) })),
     ]
     setSaving(true)
     try {
-      unwrap(await supabase.from('cash_cuts').insert({
+      const row = {
         cut_date: to, period_from: from, period_to: to, income: tot.income, outflow: tot.outflow, counted: countedN, distribution,
         items, savings: funds.map((f) => ({ key: f.key, name: f.name, target: f.target, due: f.due, suggested: f.suggested, saved: savedNow(f), note: saveNote[f.key] || undefined })),
         notes: notes.trim() || null,
-      }))
+      }
+      if (editingCut) unwrap(await supabase.from('cash_cuts').update(row).eq('id', editingCut.id))
+      else unwrap(await supabase.from('cash_cuts').insert(row))
       await qc.invalidateQueries({ queryKey: ['cash_cuts'] })
-      toast.ok('Corte guardado. El siguiente empieza mañana.')
-      setReview({}); setSaveAmt({}); setSaveNote({}); setCounted(''); setRows([]); setNotes('')
-      setParams({}, { replace: true })
+      toast.ok(editingCut ? 'Corte actualizado' : 'Corte guardado. El siguiente empieza mañana.')
+      resetDraft()
+      setConfirming(false)
     } catch (e) { toast.error(e) } finally { setSaving(false) }
+  }
+  const resetDraft = () => {
+    setReview({}); setSaveAmt({}); setSaveNote({}); setCounted(''); setRows([]); setNotes(''); setEditingCut(null)
+    setParams({}, { replace: true })
+  }
+  /** Cargar un corte guardado para corregirlo */
+  const startEdit = (c: CashCut) => {
+    setEditingCut(c)
+    setReview(Object.fromEntries((c.items ?? []).map((i) => [i.key, { approved: i.approved, adjusted: i.adjusted, note: i.note, excluded: i.excluded }])))
+    setSaveAmt(Object.fromEntries((c.savings ?? []).map((s) => [s.key, String(s.saved)])))
+    setSaveNote(Object.fromEntries((c.savings ?? []).filter((s) => s.note).map((s) => [s.key, s.note!])))
+    setCounted(String(c.counted))
+    setRows(c.distribution.filter((x) => x.to !== 'Ahorros apartados').map((x) => ({ to: x.to, amount: String(x.amount) })))
+    setNotes(c.notes ?? '')
+    setParams({ desde: c.period_from, hasta: c.period_to }, { replace: true })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   const remove = async () => {
     if (!deleting) return
@@ -142,7 +165,7 @@ export default function WeeklyCut() {
         {list.length === 0 ? <p className="px-5 py-6 text-center text-sm text-muted">Nada en estas fechas.</p> : (
           <ul className="divide-y divide-ink-700">
             {list.map((i) => (
-              <li key={i.key} className={cx('px-4 py-2.5', i.approved && 'bg-ok/5')}>
+              <li key={i.key} className={cx('px-4 py-2.5', i.approved && 'bg-ok/5', i.excluded && 'opacity-50')}>
                 <div className="flex items-center gap-3">
                   <button onClick={() => setItem(i.key, { approved: !i.approved })} aria-pressed={i.approved} aria-label={i.approved ? 'Quitar aprobación' : 'Aprobar'}
                     className={cx('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-2', i.approved ? 'border-ok bg-ok text-ink' : 'border-ink-500 text-transparent hover:border-ok')}>
@@ -151,11 +174,12 @@ export default function WeeklyCut() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium">{i.concept}</p>
                     <p className="truncate text-xs text-muted">{i.date ? date(i.date, 'EEE d MMM') : ''} · {i.detail.replace(/ · (efectivo|transferencia|tarjeta|deposito|otro)$/, (m) => ` · ${METHOD_LABEL[m.slice(3) as PaymentMethod] ?? m.slice(3)}`)}</p>
+                    {i.excluded && <p className="text-xs text-info">No salió de la caja (no cuenta)</p>}
                     {i.note && <p className="text-xs text-warn">Nota: {i.note}</p>}
                   </div>
                   <div className="text-right">
                     {i.adjusted != null && <p className="text-xs text-muted line-through">{cents(i.amount)}</p>}
-                    <p className={cx('font-semibold', i.adjusted != null && 'text-warn')}>{cents(itemValue(i))}</p>
+                    <p className={cx('font-semibold', i.adjusted != null && 'text-warn', i.excluded && 'line-through')}>{cents(itemValue(i))}</p>
                   </div>
                   <IconButton icon={Pencil} label="Corregir" onClick={() => setEditing(editing === i.key ? null : i.key)} className="h-8 w-8" />
                 </div>
@@ -164,6 +188,8 @@ export default function WeeklyCut() {
                     <Input type="number" min="0" inputMode="decimal" defaultValue={String(itemValue(i))} aria-label="Monto correcto" className="h-10"
                       onBlur={(e) => { const v = Number(e.target.value); setItem(i.key, { adjusted: v >= 0 && v !== i.amount ? v : null }) }} />
                     <Input defaultValue={i.note} placeholder="¿Por qué se corrige? (nota)" aria-label="Nota" className="h-10" onBlur={(e) => setItem(i.key, { note: e.target.value })} />
+                    <label className="flex items-center gap-2 text-xs sm:col-span-3"><input type="checkbox" checked={!!i.excluded} onChange={(e) => setItem(i.key, { excluded: e.target.checked })} className="h-4 w-4 accent-[#F2E30A]" />
+                      {type === 'salida' ? 'No salió de la caja (se pagó por otro lado, por ejemplo transferencia)' : 'No entró a la caja (por ejemplo, transferencia al banco)'}</label>
                     <div className="flex gap-2">
                       {i.adjusted != null && <Button size="sm" variant="ghost" onClick={() => setItem(i.key, { adjusted: null })}>Deshacer</Button>}
                       <Button size="sm" onClick={() => { setItem(i.key, { approved: true }); setEditing(null) }}>Listo</Button>
@@ -187,13 +213,20 @@ export default function WeeklyCut() {
         actions={<>
           <Button variant="secondary" icon={Download} onClick={doExport} disabled={loading}>Exportar</Button>
           <Button variant="secondary" icon={Printer} onClick={() => window.print()} className="hidden sm:inline-flex">Imprimir</Button>
+          <Button icon={Vault} onClick={() => setConfirming(true)} disabled={loading}>{editingCut ? 'Guardar corrección' : 'Hacer corte ahora'}</Button>
         </>} />
 
+      {editingCut && (
+        <Card className="mb-3 flex flex-wrap items-center justify-between gap-2 border-brand/50 bg-brand-dim p-3">
+          <p className="text-sm">Estás corrigiendo el corte del <b>{date(editingCut.cut_date, "EEEE d 'de' MMMM")}</b>. Cambia lo que necesites y pica <b>Guardar corrección</b>.</p>
+          <Button size="sm" variant="ghost" onClick={resetDraft}>Cancelar corrección</Button>
+        </Card>
+      )}
       <Card className="mb-5 flex flex-wrap items-end gap-3 p-4">
         <Field label="Desde"><Input type="date" value={from} max={to} onChange={(e) => e.target.value && setRange('desde', e.target.value)} className="h-10" /></Field>
         <Field label="Hasta (día del corte)"><Input type="date" value={to} min={from} onChange={(e) => e.target.value && setRange('hasta', e.target.value)} className="h-10" /></Field>
         <p className="pb-2 text-sm text-muted">{prev ? <>Último corte: <b className="text-white">{date(prev.cut_date)}</b> · se quedaron {cents(carry)} en caja chica</> : 'Todavía no hay cortes: el primero empieza este lunes.'}</p>
-        {(params.get('desde') || params.get('hasta')) && <Button size="sm" variant="ghost" onClick={() => setParams({}, { replace: true })}>Desde el último corte</Button>}
+        {!editingCut && (params.get('desde') || params.get('hasta')) && <Button size="sm" variant="ghost" onClick={() => setParams({}, { replace: true })}>Desde el último corte</Button>}
       </Card>
 
       {loading ? <Spinner /> : (
@@ -305,7 +338,7 @@ export default function WeeklyCut() {
             <Field label="Notas del corte (opcional)" className="mt-4"><Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ej. Se pagó a los profes en efectivo" /></Field>
             <div className="mt-4 flex flex-wrap items-center justify-end gap-3">
               {tot.pending > 0 && <span className="text-sm text-warn">{tot.pending} líneas sin revisar</span>}
-              <Button icon={Vault} onClick={save} loading={saving}>Guardar corte</Button>
+              <Button icon={Vault} onClick={() => setConfirming(true)}>{editingCut ? "Guardar corrección" : "Hacer corte"}</Button>
             </div>
           </Card>
 
@@ -321,13 +354,37 @@ export default function WeeklyCut() {
           <div>
             <h2 className="mb-3 font-display text-xl font-bold uppercase tracking-wide">Cortes anteriores</h2>
             {!cuts.data?.length ? <Card className="p-6 text-center text-sm text-muted">Aún no hay cortes. Cuando pagues a los profes, revisa todo arriba y pica <b>Guardar corte</b>.</Card> : (
-              <div className="space-y-3">{cuts.data.map((c) => <CutCard key={c.id} cut={c} onDelete={() => setDeleting(c)} />)}</div>
+              <div className="space-y-3">{cuts.data.map((c) => <CutCard key={c.id} cut={c} onEdit={() => startEdit(c)} onDelete={() => setDeleting(c)} />)}</div>
             )}
           </div>
           <p className="text-xs text-muted">Los sueldos semanales cuentan el miércoles · gastos mensuales el día 1 · gastos del mes y pagos en partes el día que se pagaron. Se editan en <Link to="/gastos" className="text-brand hover:underline">Gastos</Link>.</p>
         </div>
       )}
 
+      <Modal open={confirming} onClose={() => setConfirming(false)} title={editingCut ? 'Confirmar corrección del corte' : 'Confirmar corte de caja'}
+        footer={<><Button variant="secondary" onClick={() => setConfirming(false)}>Revisar otra vez</Button><Button icon={Check} onClick={save} loading={saving}>Confirmar corte</Button></>}>
+        <div className="space-y-4 text-sm">
+          <Field label="Día del corte"><Input type="date" value={to} min={from} max={t} onChange={(e) => e.target.value && setRange('hasta', e.target.value)} /></Field>
+          <p className="text-muted">Del {range(from, to)}</p>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-xl bg-ink-900 p-3">
+            <span>Entró</span><b className="text-right text-ok">{cents(tot.income)}</b>
+            <span>Salió</span><b className="text-right text-bad">{cents(tot.outflow)}</b>
+            <span>Debería haber</span><b className="text-right">{cents(expected)}</b>
+            <span className="font-semibold">Dinero contado</span><b className="text-right text-brand">{cents(countedN)}</b>
+          </div>
+          <div>
+            <p className="mb-1 font-semibold">A dónde se va</p>
+            {distributionNow().length === 0 ? <p className="text-muted">Nada asignado.</p> : (
+              <ul className="space-y-1">{distributionNow().map((x) => <li key={x.to} className="flex justify-between"><span>{x.to}</span><b>{cents(x.amount)}</b></li>)}</ul>
+            )}
+            {Math.abs(left) > 0.5 && <p className="mt-1 text-warn">{left > 0 ? 'Falta asignar' : 'Te pasaste por'} {cents(Math.abs(left))}</p>}
+          </div>
+          {tot.pending > 0
+            ? <p className="rounded-xl border border-warn/40 bg-warn/10 p-3 text-warn">Hay {tot.pending} líneas sin revisar (sin ✓). Puedes confirmar así o regresar a revisarlas.</p>
+            : <p className="rounded-xl border border-ok/40 bg-ok/10 p-3 text-ok">Todas las entradas y salidas están revisadas ✓</p>}
+          {tot.adjusted > 0 && <p className="text-muted">{tot.adjusted} montos corregidos con nota.</p>}
+        </div>
+      </Modal>
       <ConfirmDialog open={!!deleting} onClose={() => setDeleting(null)} onConfirm={remove} danger title="Eliminar corte" confirmLabel="Eliminar"
         text={deleting ? `Se eliminará el corte del ${date(deleting.cut_date)} con lo que se apartó de ahorro. Los pagos y gastos no se borran.` : null} />
     </>
@@ -343,7 +400,7 @@ const shareText = (c: CashCut) => [
   ...(c.notes ? ['', c.notes] : []),
 ].join('\n')
 
-function CutCard({ cut: c, onDelete }: { cut: CashCut; onDelete: () => void }) {
+function CutCard({ cut: c, onEdit, onDelete }: { cut: CashCut; onEdit: () => void; onDelete: () => void }) {
   const assigned = c.distribution.reduce((a, x) => a + Number(x.amount), 0)
   const items = c.items ?? []
   const adjusted = items.filter((i) => i.adjusted != null)
@@ -363,6 +420,7 @@ function CutCard({ cut: c, onDelete }: { cut: CashCut; onDelete: () => void }) {
         <div className="flex gap-1">
           <a href={`https://wa.me/?text=${encodeURIComponent(shareText(c))}`} target="_blank" rel="noopener noreferrer" aria-label="Enviar por WhatsApp"
             className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-wa hover:bg-ink-700"><MessageCircle className="h-4 w-4" /></a>
+          <IconButton icon={Pencil} label="Corregir corte" onClick={onEdit} className="h-8 w-8" />
           <IconButton icon={Trash2} label="Eliminar corte" onClick={onDelete} className="h-8 w-8" />
         </div>
       </div>
