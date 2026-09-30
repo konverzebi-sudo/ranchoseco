@@ -13,11 +13,18 @@ import {
 import { METHOD_LABEL, date, money, toISODate, today } from '@/lib/format'
 import { supabase, unwrap } from '@/lib/supabase'
 import { exportCsv } from '@/lib/csv'
+import { waLink } from '@/lib/whatsapp'
 import type { CashCut, PaymentMethod } from '@/lib/types'
 
 const cents = (n: number) => money(Math.round(n * 100) / 100)
 const range = (from: string, to: string) => `${date(from, "d 'de' MMM")} al ${date(to, "d 'de' MMM yyyy")}`
 const FUND_LABEL: Record<SavingFund['kind'], string> = { fijo: 'Gasto fijo', seguro: 'Seguro anual', parte: 'Pago pendiente', prestamo: 'Préstamo' }
+/** A quién se le manda el reporte de cada corte por WhatsApp. */
+const REPORT_TO = [
+  { name: 'Marco DL', phone: '528442713705' },
+  { name: 'Junior DR', phone: '528444958824' },
+]
+
 type Review = Record<string, { approved?: boolean; adjusted?: number | null; note?: string; excluded?: boolean }>
 
 /**
@@ -40,6 +47,7 @@ export default function WeeklyCut() {
   const [deleting, setDeleting] = useState<CashCut | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [editingCut, setEditingCut] = useState<CashCut | null>(null)
+  const [sent, setSent] = useState<CashCut | null>(null)
 
   const t = today()
   const defaultFrom = nextPeriodStart(cuts.data ?? [], toISODate(startOfWeek(new Date(), { weekStartsOn: 1 })))
@@ -115,12 +123,13 @@ export default function WeeklyCut() {
         items, savings: funds.map((f) => ({ key: f.key, name: f.name, target: f.target, due: f.due, suggested: f.suggested, saved: savedNow(f), note: saveNote[f.key] || undefined })),
         notes: notes.trim() || null,
       }
-      if (editingCut) unwrap(await supabase.from('cash_cuts').update(row).eq('id', editingCut.id))
-      else unwrap(await supabase.from('cash_cuts').insert(row))
+      const savedCut = editingCut
+        ? unwrap(await supabase.from('cash_cuts').update(row).eq('id', editingCut.id).select('*').single()) as CashCut
+        : unwrap(await supabase.from('cash_cuts').insert(row).select('*').single()) as CashCut
       await qc.invalidateQueries({ queryKey: ['cash_cuts'] })
-      toast.ok(editingCut ? 'Corte actualizado' : 'Corte guardado. El siguiente empieza mañana.')
       resetDraft()
       setConfirming(false)
+      setSent(savedCut)
     } catch (e) { toast.error(e) } finally { setSaving(false) }
   }
   const resetDraft = () => {
@@ -420,6 +429,21 @@ export default function WeeklyCut() {
           {tot.adjusted > 0 && <p className="text-muted">{tot.adjusted} montos corregidos con nota.</p>}
         </div>
       </Modal>
+      <Modal open={!!sent} onClose={() => setSent(null)} title="Corte guardado ✓"
+        footer={<Button variant="secondary" onClick={() => setSent(null)}>Listo</Button>}>
+        {sent && (
+          <div className="space-y-4 text-sm">
+            <p>Se guardó el corte del <b>{date(sent.cut_date, "EEEE d 'de' MMMM")}</b>. El siguiente empieza mañana.</p>
+            <div className="grid grid-cols-3 gap-2 rounded-xl bg-ink-900 p-3 text-center">
+              <div><p className="text-xs text-muted">Entró</p><p className="font-semibold text-ok">{cents(Number(sent.income))}</p></div>
+              <div><p className="text-xs text-muted">Salió</p><p className="font-semibold text-bad">{cents(Number(sent.outflow))}</p></div>
+              <div><p className="text-xs text-muted">En caja</p><p className="font-semibold text-brand">{cents(Number(sent.counted))}</p></div>
+            </div>
+            <p className="font-semibold">Enviar reporte del corte por WhatsApp a:</p>
+            <ReportButtons cut={sent} />
+          </div>
+        )}
+      </Modal>
       <ConfirmDialog open={!!deleting} onClose={() => setDeleting(null)} onConfirm={remove} danger title="Eliminar corte" confirmLabel="Eliminar"
         text={deleting ? `Se eliminará el corte del ${date(deleting.cut_date)} con lo que se apartó de ahorro. Los pagos y gastos no se borran.` : null} />
     </>
@@ -448,9 +472,27 @@ function Breakdown({ label, total, tone, lines, empty = 'Nada palomeado.' }: {
   )
 }
 
+/** Botones para mandar el reporte del corte por WhatsApp a Marco y Junior. */
+function ReportButtons({ cut, small }: { cut: CashCut; small?: boolean }) {
+  return (
+    <div className={cx('flex flex-wrap gap-2', !small && 'flex-col sm:flex-row')}>
+      {REPORT_TO.map((r) => (
+        <a key={r.phone} href={waLink(r.phone, shareText(cut))} target="_blank" rel="noopener noreferrer"
+          className={cx('inline-flex items-center justify-center gap-1.5 rounded-xl bg-wa font-semibold text-ink hover:brightness-110', small ? 'h-8 px-2.5 text-xs' : 'h-11 flex-1 px-4')}>
+          <MessageCircle className="h-4 w-4" /> {small ? r.name : `Enviar a ${r.name}`}
+        </a>
+      ))}
+    </div>
+  )
+}
+
 const shareText = (c: CashCut) => [
   '*Corte de caja Rancho Seco*', `${date(c.cut_date, "EEEE d 'de' MMMM")} · del ${range(c.period_from, c.period_to)}`, '',
-  `Entró: ${cents(Number(c.income))}`, `Salió: ${cents(Number(c.outflow))}`, `*Contado en caja: ${cents(Number(c.counted))}*`,
+  `Entró: ${cents(Number(c.income))}`, `Salió: ${cents(Number(c.outflow))}`,
+  ...OUT_GROUPS.flatMap((g) => {
+    const v = (c.items ?? []).filter((i) => i.type === 'salida' && counts(i) && outGroup(i) === g.id).reduce((a, i) => a + itemValue(i), 0)
+    return v > 0 ? [`  · ${g.label}: ${cents(v)}`] : []
+  }), `*Contado en caja: ${cents(Number(c.counted))}*`,
   ...((c.items ?? []).filter((i) => i.adjusted != null).length ? ['', 'Correcciones:', ...(c.items ?? []).filter((i) => i.adjusted != null).map((i) => `  · ${i.concept}: ${cents(i.amount)} → ${cents(Number(i.adjusted))}${i.note ? ` (${i.note})` : ''}`)] : []),
   ...((c.savings ?? []).some((s) => Number(s.saved) > 0) ? ['', 'Ahorro apartado:', ...(c.savings ?? []).filter((s) => Number(s.saved) > 0).map((s) => `  · ${s.name}: ${cents(Number(s.saved))}`)] : []),
   '', 'A dónde se fue:', ...c.distribution.map((x) => `  · ${x.to}: ${cents(Number(x.amount))}`),
@@ -474,9 +516,8 @@ function CutCard({ cut: c, onEdit, onDelete }: { cut: CashCut; onEdit: () => voi
           <span>Salió <b className="text-bad">{cents(Number(c.outflow))}</b></span>
           <span>Contado <b className="text-brand">{cents(Number(c.counted))}</b></span>
         </div>
-        <div className="flex gap-1">
-          <a href={`https://wa.me/?text=${encodeURIComponent(shareText(c))}`} target="_blank" rel="noopener noreferrer" aria-label="Enviar por WhatsApp"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-wa hover:bg-ink-700"><MessageCircle className="h-4 w-4" /></a>
+        <div className="flex flex-wrap items-center gap-1">
+          <ReportButtons cut={c} small />
           <IconButton icon={Pencil} label="Corregir corte" onClick={onEdit} className="h-8 w-8" />
           <IconButton icon={Trash2} label="Eliminar corte" onClick={onDelete} className="h-8 w-8" />
         </div>
