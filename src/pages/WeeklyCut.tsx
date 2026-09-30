@@ -7,7 +7,7 @@ import { Badge, Button, Card, ConfirmDialog, ErrorState, Field, IconButton, Inpu
 import { useToast } from '@/components/toast'
 import { useCashCuts, useCoachPay, useCoaches, useExpenses, useFees, usePayments, useStudents } from '@/lib/api'
 import {
-  CARRY_DESTINATION, DESTINATIONS, OUT_GROUPS, buildItems, carryOver, counts, itemTotals, itemValue, nextPeriodStart, outGroup, periodSummary, savingFunds,
+  CARRY_DESTINATION, DESTINATIONS, OUT_GROUPS, SAVINGS_BOX_KEY, buildItems, carryOver, counts, itemTotals, itemValue, nextPeriodStart, outGroup, periodSummary, savingFunds,
   type CutItem, type SavingFund,
 } from '@/lib/cashcut'
 import { METHOD_LABEL, date, money, toISODate, today } from '@/lib/format'
@@ -18,7 +18,7 @@ import type { CashCut, PaymentMethod } from '@/lib/types'
 
 const cents = (n: number) => money(Math.round(n * 100) / 100)
 const range = (from: string, to: string) => `${date(from, "d 'de' MMM")} al ${date(to, "d 'de' MMM yyyy")}`
-const FUND_LABEL: Record<SavingFund['kind'], string> = { fijo: 'Gasto fijo', seguro: 'Seguro anual', parte: 'Pago pendiente', prestamo: 'Préstamo' }
+const FUND_LABEL: Record<SavingFund['kind'], string> = { fijo: 'Gasto fijo', seguro: 'Seguro anual', parte: 'Pago pendiente', prestamo: 'Préstamo', ahorro: 'Ahorro libre' }
 /** A quién se le manda el reporte de cada corte por WhatsApp. */
 const REPORT_TO = [
   { name: 'Marco DL', phone: '528442713705' },
@@ -85,8 +85,11 @@ export default function WeeklyCut() {
   const savedNow = (f: SavingFund) => (f.key in saveAmt ? Number(saveAmt[f.key]) || 0 : 0)
   const savingsTotal = funds.reduce((a, f) => a + savedNow(f), 0)
   const suggestedTotal = funds.reduce((a, f) => a + f.suggested, 0)
-  // Lo apartado en cortes anteriores para pagos que todavía no se hacen
-  const savedBefore = funds.reduce((a, f) => a + f.saved, 0)
+  // Las cajas después de este corte
+  const box = funds.find((f) => f.kind === 'ahorro')
+  const cajaAhorro = box ? box.saved + savedNow(box) : 0
+  const apartado = funds.filter((f) => f.kind !== 'ahorro').reduce((a, f) => a + f.saved + savedNow(f), 0)
+  const inscripciones = items.filter((i) => i.type === 'entrada' && counts(i) && i.detail.startsWith('Inscripción')).reduce((a, i) => a + itemValue(i), 0)
 
   // Caja
   const expected = carry + tot.income - tot.outflow
@@ -249,8 +252,14 @@ export default function WeeklyCut() {
           return (
             <div className="space-y-1 border-t border-ink-600 px-5 py-3 text-sm">
               {[...by.entries()].sort((a, b) => b[1].total - a[1].total || b[1].all - a[1].all).map(([k, r]) => (
-                <p key={k} className="flex justify-between gap-3">
-                  <span>Total de {plural(k).toLowerCase()} <span className="text-xs text-muted">({r.n} de {r.all} palomeadas)</span></span>
+                <p key={k} className="flex flex-wrap items-center justify-between gap-x-3">
+                  <span>Total de {plural(k).toLowerCase()} <span className="text-xs text-muted">({r.n} de {r.all} palomeadas)</span>
+                    {k === 'Inscripción' && r.total > 0 && (
+                      Number(saveAmt[SAVINGS_BOX_KEY] ?? 0) >= r.total
+                        ? <span className="ml-2 text-xs text-ok">✓ va a la caja de ahorro</span>
+                        : <button className="ml-2 text-xs text-brand hover:underline" onClick={() => setSaveAmt({ ...saveAmt, [SAVINGS_BOX_KEY]: String(r.total) })}>Mandar al ahorro</button>
+                    )}
+                  </span>
                   <b>{cents(r.total)}</b>
                 </p>
               ))}
@@ -288,13 +297,20 @@ export default function WeeklyCut() {
 
       {loading ? <Spinner /> : (
         <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
             <StatCard label="Entró" value={cents(tot.income)} icon={TrendingUp} tone="ok" hint={byMethod.map(([m, v]) => `${METHOD_LABEL[m]} ${cents(v)}`).join(' · ') || 'Palomea las entradas para contarlas'} />
             <StatCard label="Salió" value={cents(tot.outflow)} icon={TrendingDown} tone="bad" hint="Sueldos, gastos y pagos de préstamos" />
             <StatCard label="Resultado de estas fechas" value={cents(tot.income - tot.outflow)} icon={Scale} tone={tot.income >= tot.outflow ? 'ok' : 'bad'} hint={tot.income >= tot.outflow ? 'Entró más de lo que salió (sin contar la caja chica)' : 'Salió más de lo que entró (sin contar la caja chica)'} />
-            <StatCard label="Debería haber en caja" value={cents(expected)} icon={Banknote} tone="brand" hint={`Caja chica anterior ${cents(carry)} + lo que queda`} />
-            <StatCard label="Debería haber en ahorro" value={cents(savedBefore + savingsTotal)} icon={PiggyBank} tone="ok"
-              hint={`Ya apartado ${cents(savedBefore)}${savingsTotal > 0 ? ` + hoy ${cents(savingsTotal)}` : ''} · para pagos que aún no se hacen`} />
+          </div>
+          <div className="!mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <StatCard label="Caja de ahorro" value={cents(cajaAhorro)} icon={PiggyBank} tone="ok"
+              hint={`Ahorro libre (inscripciones, etc.)${box && savedNow(box) > 0 ? ` · hoy + ${cents(savedNow(box))}` : ''}`} />
+            <StatCard label="Apartado de próximos gastos" value={cents(apartado)} icon={Vault} tone="brand"
+              hint="Regalías, renta, seguro, partes y préstamos" />
+            <StatCard label="Caja total" value={cents(cajaAhorro + apartado)} icon={Banknote}
+              hint="Caja de ahorro + apartado de próximos gastos" />
+            <StatCard label="Caja chica" value={cents(countedN)} icon={Banknote} tone={saldo < 0 ? 'bad' : undefined}
+              hint={`Efectivo que queda después del corte (antes ${cents(carry)})`} />
           </div>
 
           <div className="grid gap-6 xl:grid-cols-2">
@@ -313,6 +329,25 @@ export default function WeeklyCut() {
               <ul className="divide-y divide-ink-700">
                 {funds.map((f) => {
                   const now = savedNow(f)
+                  if (f.kind === 'ahorro') return (
+                    <li key={f.key} className="grid gap-3 bg-ok/5 px-5 py-3 md:grid-cols-[1fr_220px_150px]">
+                      <div className="min-w-0">
+                        <p className="flex flex-wrap items-center gap-2 font-medium">Caja de ahorro <Badge tone="ok">Ahorro libre</Badge></p>
+                        <p className="text-xs text-muted">Dinero que se guarda sin un pago asignado, por ejemplo las inscripciones.</p>
+                        <p className="mt-1 text-sm">Acumulado <b>{cents(f.saved)}</b>{now > 0 ? <> + {cents(now)} hoy = <b className="text-ok">{cents(f.saved + now)}</b></> : ''}</p>
+                      </div>
+                      <div className="text-sm">
+                        <p className="text-xs uppercase tracking-wider text-muted">Inscripciones de este corte</p>
+                        <p className="font-display text-2xl font-bold text-ok">{cents(inscripciones)}</p>
+                        {inscripciones > 0 && <button className="text-xs text-brand hover:underline" onClick={() => setSaveAmt({ ...saveAmt, [f.key]: String(inscripciones) })}>Mandar las inscripciones al ahorro</button>}
+                      </div>
+                      <div className="space-y-1">
+                        <Input type="number" min="0" inputMode="decimal" value={saveAmt[f.key] ?? ''} placeholder="0" aria-label="Se guarda en la caja de ahorro"
+                          onChange={(e) => setSaveAmt({ ...saveAmt, [f.key]: e.target.value })} className="h-10" />
+                        <Input value={saveNote[f.key] ?? ''} onChange={(e) => setSaveNote({ ...saveNote, [f.key]: e.target.value })} placeholder="Nota" className="h-8 text-xs" aria-label="Nota" />
+                      </div>
+                    </li>
+                  )
                   const pctBefore = f.target ? Math.min(100, (f.saved / f.target) * 100) : 0
                   const pctAfter = f.target ? Math.min(100, ((f.saved + now) / f.target) * 100) : 0
                   return (
@@ -353,7 +388,7 @@ export default function WeeklyCut() {
             )}
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-ink-600 bg-ink-900 px-5 py-3">
               <span className="flex flex-wrap items-center gap-2 text-sm text-muted">Sugerido esta semana {cents(suggestedTotal)}
-                {funds.length > 0 && <button className="text-brand hover:underline" onClick={() => setSaveAmt(Object.fromEntries(funds.map((f) => [f.key, String(f.suggested)])))}>Guardar todo lo sugerido</button>}
+                {funds.length > 1 && <button className="text-brand hover:underline" onClick={() => setSaveAmt({ ...saveAmt, ...Object.fromEntries(funds.filter((f) => f.kind !== 'ahorro').map((f) => [f.key, String(f.suggested)])) })}>Guardar todo lo sugerido</button>}
                 {Object.keys(saveAmt).length > 0 && <button className="hover:underline" onClick={() => setSaveAmt({})}>Borrar</button>}
               </span>
               <span className="font-display text-lg font-bold uppercase">Se guarda <span className="text-brand">{cents(savingsTotal)}</span></span>

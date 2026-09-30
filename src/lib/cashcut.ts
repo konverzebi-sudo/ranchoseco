@@ -114,10 +114,12 @@ export function itemTotals(items: CutItem[]) {
 }
 
 /** Algo que hay que ir juntando: un gasto grande, una parte pendiente o un pago de préstamo. */
+export const SAVINGS_BOX_KEY = 'x:caja-ahorro'
+
 export interface SavingFund {
   key: string
   name: string
-  kind: 'fijo' | 'seguro' | 'parte' | 'prestamo'
+  kind: 'fijo' | 'seguro' | 'parte' | 'prestamo' | 'ahorro'
   target: number
   due: string
   /** Lo que ya se apartó en cortes anteriores para este mismo pago */
@@ -184,6 +186,8 @@ export function savingFunds(opts: { cutDate: string; expenses: Expense[]; cuts: 
       out.push(fund({ key: `i:${next.id}`, name: `${e.name} · ${label}`, kind: 'parte', target: Number(next.amount), due: next.due_date }))
     }
   }
-  const order = { fijo: 0, seguro: 1, parte: 2, prestamo: 3 }
+  // Caja de ahorro: dinero guardado sin un pago asignado (por ejemplo, las inscripciones). Se acumula siempre.
+  out.push({ key: SAVINGS_BOX_KEY, name: 'Caja de ahorro', kind: 'ahorro', target: 0, due: '9999-12-31', saved: savedFor(SAVINGS_BOX_KEY), weeksLeft: 0, suggested: 0 })
+  const order = { fijo: 0, seguro: 1, parte: 2, prestamo: 3, ahorro: 4 }
   return out.sort((a, b) => order[a.kind] - order[b.kind] || a.due.localeCompare(b.due))
 }
