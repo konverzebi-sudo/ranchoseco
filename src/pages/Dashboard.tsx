@@ -1,11 +1,14 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { startOfMonth } from 'date-fns'
-import { Users, UserCog, ClipboardCheck, AlertTriangle, Wallet, TrendingUp, Plus, ChevronRight, Trophy, Dumbbell, HelpCircle, Scale } from 'lucide-react'
+import { endOfWeek, startOfMonth } from 'date-fns'
+import { Users, UserCog, ClipboardCheck, AlertTriangle, Wallet, TrendingUp, Plus, ChevronRight, Trophy, Dumbbell, HelpCircle, Scale, CalendarClock } from 'lucide-react'
 import { Avatar, Button, Card, ErrorState, PageHeader, Spinner, StatCard, Badge } from '@/components/ui'
 import { CollectButton } from '@/components/WhatsAppButtons'
 import FinanceModules from '@/components/FinanceModules'
-import { useAccounts, useCategories, useCoaches, useFees, useMatches, usePayments, useSiblingGroups, useExtraClasses, useStudents, useTrainings, useAttendanceDetail } from '@/lib/api'
+import { PayInstallmentModal } from '@/components/Installments'
+import { pendingInstallments } from '@/lib/finance'
+import type { Expense, ExpenseInstallment } from '@/lib/types'
+import { useAccounts, useCategories, useCoaches, useFees, useMatches, usePayments, useSiblingGroups, useExtraClasses, useStudents, useTrainings, useAttendanceDetail, useExpenses } from '@/lib/api'
 import { promoStatus } from '@/lib/siblings'
 import { date, money, time, toISODate, today } from '@/lib/format'
 import { consecutiveAbsences } from '@/lib/stats'
@@ -24,6 +27,10 @@ export default function Dashboard() {
   const upcomingMa = useMatches({ from: t })
   const siblingGroups = useSiblingGroups()
   const extraClasses = useExtraClasses()
+  const expenses = useExpenses()
+  const [paying, setPaying] = useState<{ expense: Expense; inst: ExpenseInstallment } | null>(null)
+  const weekEnd = toISODate(endOfWeek(new Date(), { weekStartsOn: 1 }))
+  const dueTasks = pendingInstallments(expenses.data ?? [], weekEnd)
   const recentAtt = useAttendanceDetail({ from: toISODate(new Date(Date.now() - 60 * 86400_000)) })
 
   const data = useMemo(() => {
@@ -71,7 +78,7 @@ export default function Dashboard() {
         actions={<>
           <Button icon={ClipboardCheck} onClick={() => nav('/asistencias')}>Pasar lista</Button>
           <Button variant="secondary" icon={Wallet} onClick={() => nav('/cobranza')}>Registrar pago</Button>
-          <Button variant="secondary" icon={Scale} onClick={() => nav('/corte')}>Corte semanal</Button>
+          <Button variant="secondary" icon={Scale} onClick={() => nav('/corte')}>Corte de caja</Button>
           <Button variant="secondary" icon={Plus} onClick={() => nav('/alumnos?nuevo=1')} className="hidden sm:inline-flex">Nuevo alumno</Button>
         </>} />
 
@@ -95,10 +102,20 @@ export default function Dashboard() {
                 <h2 className="font-display text-lg font-bold uppercase tracking-wide">Requieren atención</h2>
                 <Link to="/cobranza?f=vencido" className="text-sm text-brand hover:underline">Ver cobranza</Link>
               </div>
-              {data.overdueStudents.length === 0 && data.absent.length === 0 && data.promoAlerts.length === 0 ? (
+              {data.overdueStudents.length === 0 && data.absent.length === 0 && data.promoAlerts.length === 0 && dueTasks.length === 0 ? (
                 <p className="px-5 py-8 text-center text-sm text-muted">Todo en orden: sin pagos vencidos ni faltas seguidas.</p>
               ) : (
                 <ul className="divide-y divide-ink-700">
+                  {dueTasks.map(({ expense: e, inst, label }) => (
+                    <li key={'i' + inst.id} className="flex items-center gap-3 px-5 py-3">
+                      <div className={`rounded-full p-2 ${inst.due_date < t ? 'bg-bad/15' : 'bg-warn/15'}`}><CalendarClock className={`h-4 w-4 ${inst.due_date < t ? 'text-bad' : 'text-warn'}`} /></div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium">{e.kind === 'prestamo' ? `Pagar préstamo · ${e.lender ?? e.name}` : `Pagar ${e.name}`} · {label}</p>
+                        <p className="text-xs text-muted">{inst.due_date < t ? 'Atrasado · ' : ''}Toca el {date(inst.due_date, "EEEE d 'de' MMM")} · {money(inst.amount)}</p>
+                      </div>
+                      <Button size="sm" onClick={() => setPaying({ expense: e, inst })}>Ya se pagó</Button>
+                    </li>
+                  ))}
                   {data.promoAlerts.map((r) => (
                     <li key={'p' + r.g.id}>
                       <Link to="/becas" className="flex items-center gap-3 px-5 py-3 hover:bg-ink-700/50">
@@ -161,6 +178,7 @@ export default function Dashboard() {
             </Card>
           </div>
 
+          {paying && <PayInstallmentModal expense={paying.expense} inst={paying.inst} onClose={() => setPaying(null)} />}
           <Card>
             <div className="flex items-center justify-between border-b border-ink-600 px-5 py-4">
               <h2 className="font-display text-lg font-bold uppercase tracking-wide">Próximas actividades</h2>

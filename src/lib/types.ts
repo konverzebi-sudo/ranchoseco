@@ -61,6 +61,31 @@ export interface CoachPayHistory {
   created_at: string
 }
 
+export interface CashCut {
+  id: string
+  cut_date: string
+  period_from: string
+  period_to: string
+  income: number
+  outflow: number
+  counted: number
+  distribution: { to: string; amount: number }[]
+  notes: string | null
+  created_at: string
+}
+
+export interface ExpenseInstallment {
+  id: string
+  expense_id: string
+  /** 0 = anticipo; 1, 2, 3… = pagos */
+  n: number
+  due_date: string
+  amount: number
+  /** Fecha en que se pagó; vacía = pendiente */
+  paid_on: string | null
+  notes: string | null
+}
+
 export interface Expense {
   id: string
   name: string
@@ -74,6 +99,13 @@ export interface Expense {
   /** Día exacto en que se hizo un gasto de una sola vez (desglose día a día). */
   paid_on: string | null
   notes: string | null
+  /** Pagos de un gasto en partes (cada uno con su fecha y si ya se pagó). */
+  expense_installments?: ExpenseInstallment[]
+  /** 'prestamo' = dinero que le prestaron a Rancho Seco (sus pagos son para devolverlo) */
+  kind?: 'gasto' | 'prestamo'
+  /** Préstamos: quién prestó y cuándo llegó el dinero */
+  lender?: string | null
+  received_on?: string | null
   active: boolean
   sort_order: number
 }

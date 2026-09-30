@@ -11,6 +11,7 @@ const KIND: Record<ExpenseEntry['kind'], { label: string; tone: 'brand' | 'warn'
   sueldo: { label: 'Sueldo', tone: 'brand' },
   fijo: { label: 'Fijo', tone: 'neutral' },
   mes: { label: 'Del mes', tone: 'warn' },
+  prestamo: { label: 'Préstamo', tone: 'warn' },
 }
 const cents = (n: number) => money(Math.round(n * 100) / 100)
 
@@ -43,7 +44,7 @@ export default function ExpenseBreakdown() {
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Total del mes" value={money(Math.round(total))} icon={CalendarDays} tone="bad" />
-        <StatCard label="Sueldos de profesores" value={money(Math.round(salaries))} icon={UserCog} hint="Semanales cada sábado" />
+        <StatCard label="Sueldos de profesores" value={money(Math.round(salaries))} icon={UserCog} hint="Semanales cada miércoles" />
         <StatCard label="Gastos fijos y staff" value={money(Math.round(fixed))} icon={Receipt} hint="Mensuales el día 1 · anuales en su mes" />
         <StatCard label="Gastos del mes" value={money(Math.round(extra))} icon={Receipt} hint="En la fecha en que se capturaron" />
       </div>

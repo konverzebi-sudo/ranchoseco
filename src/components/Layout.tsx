@@ -13,7 +13,7 @@ export const NAV = [
   { to: '/cobranza', label: 'Mensualidades y pagos', short: 'Cobranza', icon: Wallet },
   { to: '/becas', label: 'Becas', icon: GraduationCap },
   { to: '/gastos', label: 'Gastos', icon: Receipt },
-  { to: '/corte', label: 'Corte semanal', short: 'Corte', icon: Scale },
+  { to: '/corte', label: 'Corte de caja', short: 'Corte', icon: Scale },
   { to: '/categorias', label: 'Categorías', icon: Layers },
   { to: '/profesores', label: 'Profesores', icon: UserCog },
   { to: '/entrenamientos', label: 'Entrenamientos', icon: Dumbbell },

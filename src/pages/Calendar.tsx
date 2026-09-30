@@ -1,9 +1,13 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { addMonths, eachDayOfInterval, endOfMonth, endOfWeek, isSameMonth, startOfMonth, startOfWeek, format } from 'date-fns'
-import { ChevronLeft, ChevronRight, Dumbbell, Trophy, Plus } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Dumbbell, Trophy, Plus, Receipt } from 'lucide-react'
 import { Button, Card, IconButton, Modal, PageHeader, Select, Spinner, cx } from '@/components/ui'
-import { useCategories, useMatches, useTrainings } from '@/lib/api'
+import { useCategories, useExpenses, useMatches, useTrainings } from '@/lib/api'
+import { PayInstallmentModal } from '@/components/Installments'
+import { installmentLabel, installmentsOf } from '@/lib/finance'
+import { money } from '@/lib/format'
+import type { Expense, ExpenseInstallment } from '@/lib/types'
 import { monthName, time, toISODate, today, date } from '@/lib/format'
 import { TrainingModal } from './Trainings'
 import { MatchModal } from './Matches'
@@ -22,6 +26,20 @@ export default function CalendarPage() {
   const range = { categoryId: cat || undefined, from: toISODate(gridStart), to: toISODate(gridEnd) }
   const trainings = useTrainings(range)
   const matches = useMatches(range)
+  const expenses = useExpenses()
+  const [paying, setPaying] = useState<{ expense: Expense; inst: ExpenseInstallment } | null>(null)
+  // Pagos de gastos en partes y préstamos (pendientes en su fecha; pagados el día que se pagaron)
+  const bills = useMemo(() => {
+    const m = new Map<string, { expense: Expense; inst: ExpenseInstallment; label: string }[]>()
+    for (const e of expenses.data ?? []) {
+      const rows = e.active ? installmentsOf(e) : null
+      for (const i of rows ?? []) {
+        const d = i.paid_on ?? i.due_date
+        m.set(d, [...(m.get(d) ?? []), { expense: e, inst: i, label: installmentLabel(i, rows!) }])
+      }
+    }
+    return m
+  }, [expenses.data])
   const t = today()
 
   const events = useMemo(() => {
@@ -54,6 +72,7 @@ export default function CalendarPage() {
             {days.map((d) => {
               const k = toISODate(d)
               const list = events.get(k) ?? []
+              const dayBills = cat ? [] : bills.get(k) ?? []
               return (
                 <button key={k} onClick={() => setDayOpen(k)}
                   className={cx('min-h-[64px] rounded-xl border p-1.5 text-left transition sm:min-h-[96px]', isSameMonth(d, cursor) ? 'border-ink-600 bg-ink-900 hover:border-ink-500' : 'border-transparent opacity-40',
@@ -66,6 +85,11 @@ export default function CalendarPage() {
                       </p>
                     ))}
                     {list.length > 3 && <p className="text-[10px] text-muted">+{list.length - 3}</p>}
+                    {dayBills.map((b) => (
+                      <p key={b.inst.id} className={cx('truncate rounded px-1 py-0.5 text-[10px] font-medium sm:text-xs', b.inst.paid_on ? 'bg-ok/20 text-ok' : 'bg-bad/20 text-bad')}>
+                        $ {b.expense.kind === 'prestamo' ? b.expense.lender ?? b.expense.name : b.expense.name}
+                      </p>
+                    ))}
                   </div>
                 </button>
               )
@@ -75,6 +99,8 @@ export default function CalendarPage() {
         <div className="mt-3 flex gap-4 text-xs text-muted">
           <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-ink-700" /> Entrenamiento</span>
           <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-brand" /> Partido</span>
+          {!cat && <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-bad/40" /> Pago pendiente</span>}
+          {!cat && <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-ok/40" /> Pago hecho</span>}
         </div>
       </Card>
 
@@ -83,6 +109,19 @@ export default function CalendarPage() {
           <Button variant="secondary" icon={Plus} onClick={() => { setCreate({ kind: 'tr', day: dayOpen! }); setDayOpen(null) }}>Entrenamiento</Button>
           <Button icon={Plus} onClick={() => { setCreate({ kind: 'ma', day: dayOpen! }); setDayOpen(null) }}>Partido</Button>
         </>}>
+        {!cat && (bills.get(dayOpen ?? '') ?? []).length > 0 && (
+          <ul className="mb-3 space-y-2">
+            {(bills.get(dayOpen ?? '') ?? []).map((b) => (
+              <li key={b.inst.id}>
+                <button onClick={() => { setPaying({ expense: b.expense, inst: b.inst }); setDayOpen(null) }} className="flex w-full items-center gap-3 rounded-xl bg-ink-900 p-3 text-left hover:bg-ink-700">
+                  <div className={cx('rounded-lg p-2', b.inst.paid_on ? 'bg-ok/15 text-ok' : 'bg-bad/15 text-bad')}><Receipt className="h-4 w-4" /></div>
+                  <div className="flex-1"><p className="font-medium">{b.expense.kind === 'prestamo' ? `Préstamo · ${b.expense.lender ?? b.expense.name}` : b.expense.name} · {b.label}</p>
+                    <p className="text-xs text-muted">{money(b.inst.amount)} · {b.inst.paid_on ? 'Pagado' : 'Pendiente: toca para marcar como pagado'}</p></div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         {(events.get(dayOpen ?? '') ?? []).length === 0 ? <p className="text-sm text-muted">Sin actividades este día.</p> : (
           <ul className="space-y-2">
             {(events.get(dayOpen ?? '') ?? []).map((e) => (
@@ -96,6 +135,7 @@ export default function CalendarPage() {
           </ul>
         )}
       </Modal>
+      {paying && <PayInstallmentModal expense={paying.expense} inst={paying.inst} onClose={() => setPaying(null)} />}
       {create?.kind === 'tr' && <TrainingModal defaultCategory={cat} defaultDate={create.day} onClose={() => setCreate(null)} />}
       {create?.kind === 'ma' && <MatchModal defaultCategory={cat} defaultDate={create.day} onClose={() => setCreate(null)} onSaved={(id) => nav(`/partidos/${id}`)} />}
     </>

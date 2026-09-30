@@ -20,7 +20,7 @@ export default function FinanceModules() {
   const fees = useFees()
 
   const d = useMemo(() => {
-    const entries = expenseEntries({ month, expenses: expenses.data ?? [], coaches: coaches.data ?? [], coachPay: pay.data ?? [] })
+    const entries = expenseEntries({ month, expenses: expenses.data ?? [], coaches: coaches.data ?? [], coachPay: pay.data ?? [] }).filter((e) => e.kind !== 'prestamo')
     const salaries = entries.filter((e) => e.kind === 'sueldo').reduce((a, e) => a + e.amount, 0)
     const total = entries.reduce((a, e) => a + e.amount, 0)
     const ins = insuranceSaving(expenses.data ?? [], month)

@@ -61,6 +61,7 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase/migrations/0014_clases_extra.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0015_registro_papas.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0016_sueldos_gastos_partidos.sql', 'utf8'))
+  await db.exec(readFileSync('supabase/migrations/0017_pagos_de_gastos.sql', 'utf8'))
   await db.exec('update academia.settings set open_mode = false') // las pruebas por rol corren con el sitio cerrado
 
   const users: [string, string, string][] = [
@@ -390,6 +391,21 @@ describe('gastos generales', () => {
     expect(await count(COACH_A, 'academia.expenses')).toBe(0)
     const r = await as(COACH_A, `update academia.expenses set amount = 1`)
     expect(r.affectedRows).toBe(0)
+  })
+  it('los gastos en partes existentes se convierten en pagos con fecha', async () => {
+    const id = (await db.query<{ id: string }>(`insert into academia.expenses (name, amount, frequency, down_payment, installments, paid_month, paid_year)
+      values ('Playeras', 7500, 'partes', 3000, 2, 9, 2026) returning id`)).rows[0].id
+    const sql = readFileSync('supabase/migrations/0017_pagos_de_gastos.sql', 'utf8')
+    const start = sql.indexOf('insert into academia.expense_installments')
+    await db.exec(sql.slice(start, sql.indexOf('-- PRÉSTAMOS', start)))
+    const rows = (await db.query<{ n: number; due_date: string; amount: string; paid_on: string | null }>(
+      `select n, due_date::text, amount::text, paid_on::text from academia.expense_installments where expense_id = $1 order by n`, [id])).rows
+    expect(rows).toEqual([
+      { n: 0, due_date: '2026-09-01', amount: '3000.00', paid_on: '2026-09-01' },
+      { n: 1, due_date: '2026-10-01', amount: '2250.00', paid_on: null },
+      { n: 2, due_date: '2026-11-01', amount: '2250.00', paid_on: null },
+    ])
+    expect(await count(COACH_A, 'academia.expense_installments')).toBe(0)
   })
 })
 

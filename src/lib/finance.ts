@@ -1,4 +1,26 @@
-import type { Category, CoachPay, Expense, FeeBalance, Payment } from './types'
+import type { Category, CoachPay, Expense, ExpenseInstallment, FeeBalance, Payment } from './types'
+
+export const isLoan = (e: Pick<Expense, 'kind'>) => e.kind === 'prestamo'
+
+/** Pagos registrados de un gasto en partes, en orden (o null si aún no tiene). */
+export function installmentsOf(e: Pick<Expense, 'expense_installments'>) {
+  const l = e.expense_installments
+  return l && l.length ? [...l].sort((a, b) => a.n - b.n) : null
+}
+/** Fecha en que cuenta un pago: cuando se pagó, o cuando toca si está pendiente. */
+export const installmentDate = (i: Pick<ExpenseInstallment, 'paid_on' | 'due_date'>) => i.paid_on ?? i.due_date
+export function installmentLabel(i: Pick<ExpenseInstallment, 'n'>, all: Pick<ExpenseInstallment, 'n'>[]) {
+  const last = Math.max(...all.map((x) => x.n))
+  return i.n === 0 ? 'Anticipo' : `Pago ${i.n} de ${last}`
+}
+
+/** Pagos de gastos en partes pendientes que vencen a más tardar en `until` (incluye atrasados). */
+export function pendingInstallments(expenses: Expense[], until: string) {
+  return expenses.flatMap((e) => {
+    const l = e.active ? installmentsOf(e) : null
+    return (l ?? []).filter((i) => !i.paid_on && i.due_date <= until).map((i) => ({ expense: e, inst: i, label: installmentLabel(i, l!) }))
+  }).sort((a, b) => a.inst.due_date.localeCompare(b.inst.due_date))
+}
 
 export const FREQUENCY_LABEL: Record<CoachPay['frequency'], string> = {
   semanal: 'por semana',
@@ -52,8 +74,9 @@ export function installmentPlan(e: Pick<Expense, 'amount' | 'down_payment' | 'in
  * Único: completo en el mes en que se pagó.
  * En partes: el anticipo o el pago que cae en ese mes.
  */
-export function expenseForMonth(e: Pick<Expense, 'amount' | 'frequency' | 'paid_month' | 'paid_year' | 'active' | 'down_payment' | 'installments'>, month: string) {
-  if (!e.active) return 0
+export function expenseForMonth(e: Pick<Expense, 'amount' | 'frequency' | 'paid_month' | 'paid_year' | 'active' | 'down_payment' | 'installments' | 'expense_installments' | 'kind'>, month: string) {
+  // Los préstamos no son gasto de operación (se devuelve dinero que ya entró)
+  if (!e.active || isLoan(e)) return 0
   const a = Number(e.amount)
   switch (e.frequency) {
     case 'semanal': return a * WEEKS_PER_MONTH
@@ -64,8 +87,11 @@ export function expenseForMonth(e: Pick<Expense, 'amount' | 'frequency' | 'paid_
       const [y, m] = month.split('-').map(Number)
       return e.paid_month === m && (!e.paid_year || e.paid_year === y) ? a : 0
     }
-    case 'partes':
+    case 'partes': {
+      const rows = installmentsOf(e)
+      if (rows) return rows.filter((i) => installmentDate(i).startsWith(month)).reduce((s, i) => s + Number(i.amount), 0)
       return installmentPlan(e, Number(month.slice(0, 4))).schedule.filter((p) => p.key === month).reduce((s, p) => s + p.amount, 0)
+    }
   }
 }
 
@@ -192,8 +218,8 @@ export function categoryResults(opts: {
 // Desglose día a día, ahorro del seguro, inscripciones y descuentos
 // ---------------------------------------------------------------------
 
-/** Día en que se pagan los sueldos semanales (6 = sábado). */
-export const PAYDAY = 6
+/** Día en que se pagan los sueldos semanales (3 = miércoles). */
+export const PAYDAY = 3
 /** Los alumnos con esta fecha de ingreso son la lista con la que arrancó la temporada. */
 export const SEASON_START = '2026-09-01'
 /** Mes en que empieza a apartarse el dinero del seguro. */
@@ -207,13 +233,15 @@ export interface ExpenseEntry {
   date: string
   name: string
   amount: number
-  kind: 'sueldo' | 'fijo' | 'mes'
+  kind: 'sueldo' | 'fijo' | 'mes' | 'prestamo'
   detail: string
+  /** Pago de gasto en partes que todavía no se hace */
+  pending?: boolean
 }
 
 /**
  * Gastos reales de un mes, día por día:
- * sueldos semanales cada sábado, quincenales el 15 y el último día,
+ * sueldos semanales cada miércoles, quincenales el 15 y el último día,
  * mensuales el día 1, anuales completos en su mes, únicos en su fecha.
  */
 export function expenseEntries(opts: {
@@ -250,10 +278,20 @@ export function expenseEntries(opts: {
         if (e.paid_month === m) out.push({ date: day(1), name: e.name, amount: a, kind: 'fijo', detail: 'Pago anual' }); break
       case 'unico':
         if (expenseForMonth(e, month) > 0) out.push({ date: day(onDay), name: e.name, amount: a, kind: 'mes', detail: 'Gasto del mes' }); break
-      case 'partes':
+      case 'partes': {
+        const rows = installmentsOf(e)
+        if (rows) {
+          for (const i of rows.filter((x) => installmentDate(x).startsWith(month)))
+            out.push({
+              date: installmentDate(i), name: isLoan(e) ? `Préstamo · ${e.lender ?? e.name}` : e.name, amount: Number(i.amount), kind: isLoan(e) ? 'prestamo' : 'mes',
+              detail: `${isLoan(e) ? 'Pago de préstamo · ' : ''}${installmentLabel(i, rows)}${i.paid_on ? '' : ' · pendiente'}`, pending: !i.paid_on,
+            })
+          break
+        }
         for (const p of installmentPlan(e, y).schedule.filter((x) => x.key === month))
           out.push({ date: day(onDay), name: e.name, amount: p.amount, kind: 'mes', detail: p.kind === 'anticipo' ? 'Anticipo' : `Pago ${p.n} de ${Number(e.installments) || 1}` })
         break
+      }
     }
   }
   return out.sort((a, b) => a.date.localeCompare(b.date) || a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name))
@@ -307,4 +345,18 @@ export function discountsFor(fees: Pick<FeeBalance, 'discount' | 'discount_reaso
     kids.add(f.student_id)
   }
   return { total: by.beca + by.hermanos + by.descuento, by, students: kids.size }
+}
+
+/** Préstamos que entraron entre dos fechas (dinero que llegó a Rancho Seco). */
+export function loansReceived(expenses: Expense[], from: string, to: string) {
+  return expenses.filter((e) => isLoan(e) && e.received_on && e.received_on >= from && e.received_on <= to)
+}
+
+/** Resumen de un préstamo: cuánto se ha devuelto, cuánto falta y el siguiente pago. */
+export function loanStatus(e: Expense) {
+  const rows = installmentsOf(e) ?? []
+  const paid = rows.filter((i) => i.paid_on).reduce((a, i) => a + Number(i.amount), 0)
+  const total = Number(e.amount)
+  const next = rows.find((i) => !i.paid_on) ?? null
+  return { total, paid, remaining: Math.max(0, total - paid), next, rows, done: rows.length > 0 && !next }
 }

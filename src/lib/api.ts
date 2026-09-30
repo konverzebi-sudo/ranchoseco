@@ -3,6 +3,7 @@ import { supabase, unwrap } from './supabase'
 import type {
   Attendance,
   AttendanceDetail,
+  CashCut,
   Category,
   Coach,
   CoachPay,
@@ -59,7 +60,7 @@ export function useCoaches() {
 export function useExpenses() {
   return useQuery({
     queryKey: ['expenses'],
-    queryFn: async () => unwrap(await supabase.from('expenses').select('*').order('sort_order').order('created_at')) as Expense[],
+    queryFn: async () => unwrap(await supabase.from('expenses').select('*, expense_installments(*)').order('sort_order').order('created_at')) as Expense[],
   })
 }
 
@@ -82,6 +83,13 @@ export function useCoachPay() {
     queryKey: ['coach_pay'],
     queryFn: async () => unwrap(await supabase.from('coach_pay').select('*')) as CoachPay[],
     staleTime: 60_000,
+  })
+}
+
+export function useCashCuts() {
+  return useQuery({
+    queryKey: ['cash_cuts'],
+    queryFn: async () => unwrap(await supabase.from('cash_cuts').select('*').order('cut_date', { ascending: false }).order('created_at', { ascending: false })) as CashCut[],
   })
 }
 
