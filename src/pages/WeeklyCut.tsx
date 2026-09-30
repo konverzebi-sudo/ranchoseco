@@ -25,6 +25,9 @@ const REPORT_TO = [
   { name: 'Junior DR', phone: '528444958824' },
 ]
 
+const SOURCE_PREFIX = 'Vino de: '
+const SOURCES = ['Préstamo de ', 'Dinero del dueño', 'Ahorro apartado', 'Banco', 'Caja chica de otro lado', 'Otro']
+
 type Review = Record<string, { approved?: boolean; adjusted?: number | null; note?: string; excluded?: boolean }>
 
 /**
@@ -87,10 +90,17 @@ export default function WeeklyCut() {
 
   // Caja
   const expected = carry + tot.income - tot.outflow
+  // Saldo después de apartar el ahorro; si es negativo, hay que decir de dónde salió lo que faltó
+  const saldo = expected - savingsTotal
+  const deficit = Math.max(0, -saldo)
+  const [sources, setSources] = useState<{ from: string; amount: string }[]>([])
+  const sourcesTotal = sources.reduce((a, r) => a + (Number(r.amount) || 0), 0)
+  const toJustify = deficit - sourcesTotal
+  const available = Math.max(0, saldo + sourcesTotal)
   const [counted, setCounted] = useState('')
-  const countedN = counted === '' ? Math.max(0, expected) : Number(counted) || 0
+  const countedN = counted === '' ? Math.round(available * 100) / 100 : Number(counted) || 0
   const [rows, setRows] = useState<{ to: string; amount: string }[]>([])
-  const assigned = savingsTotal + rows.reduce((a, r) => a + (Number(r.amount) || 0), 0)
+  const assigned = rows.reduce((a, r) => a + (Number(r.amount) || 0), 0)
   const left = countedN - assigned
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
@@ -103,19 +113,18 @@ export default function WeeklyCut() {
 
   const totals = useMemo(() => {
     const m = new Map<string, number>()
-    for (const c of cuts.data ?? []) for (const x of c.distribution) if (x.to.toLowerCase() !== CARRY_DESTINATION.toLowerCase()) m.set(x.to, (m.get(x.to) ?? 0) + Number(x.amount))
+    for (const c of cuts.data ?? []) for (const x of c.distribution) if (Number(x.amount) > 0 && x.to.toLowerCase() !== CARRY_DESTINATION.toLowerCase()) m.set(x.to, (m.get(x.to) ?? 0) + Number(x.amount))
     return [...m.entries()].sort((a, b) => b[1] - a[1])
   }, [cuts.data])
 
+  // Orígenes (lo que faltó y salió de otro lado) se guardan con monto negativo y "Vino de: …"
   const distributionNow = () => [
+    ...sources.filter((r) => r.from.trim() && Number(r.amount) > 0).map((r) => ({ to: `${SOURCE_PREFIX}${r.from.trim()}`, amount: -Number(r.amount) })),
     ...(savingsTotal > 0 ? [{ to: 'Ahorros apartados', amount: Math.round(savingsTotal * 100) / 100 }] : []),
     ...rows.filter((r) => r.to.trim() && Number(r.amount) > 0).map((r) => ({ to: r.to.trim(), amount: Number(r.amount) })),
   ]
   const save = async () => {
-    const distribution = [
-      ...(savingsTotal > 0 ? [{ to: 'Ahorros apartados', amount: Math.round(savingsTotal * 100) / 100 }] : []),
-      ...rows.filter((r) => r.to.trim() && Number(r.amount) > 0).map((r) => ({ to: r.to.trim(), amount: Number(r.amount) })),
-    ]
+    const distribution = distributionNow()
     setSaving(true)
     try {
       const row = {
@@ -133,7 +142,7 @@ export default function WeeklyCut() {
     } catch (e) { toast.error(e) } finally { setSaving(false) }
   }
   const resetDraft = () => {
-    setReview({}); setSaveAmt({}); setSaveNote({}); setCounted(''); setRows([]); setNotes(''); setEditingCut(null)
+    setReview({}); setSaveAmt({}); setSaveNote({}); setCounted(''); setRows([]); setSources([]); setNotes(''); setEditingCut(null)
     setParams({}, { replace: true })
   }
   /** Cargar un corte guardado para corregirlo */
@@ -143,7 +152,8 @@ export default function WeeklyCut() {
     setSaveAmt(Object.fromEntries((c.savings ?? []).map((s) => [s.key, String(s.saved)])))
     setSaveNote(Object.fromEntries((c.savings ?? []).filter((s) => s.note).map((s) => [s.key, s.note!])))
     setCounted(String(c.counted))
-    setRows(c.distribution.filter((x) => x.to !== 'Ahorros apartados').map((x) => ({ to: x.to, amount: String(x.amount) })))
+    setRows(c.distribution.filter((x) => x.to !== 'Ahorros apartados' && Number(x.amount) > 0).map((x) => ({ to: x.to, amount: String(x.amount) })))
+    setSources(c.distribution.filter((x) => Number(x.amount) < 0).map((x) => ({ from: x.to.replace(SOURCE_PREFIX, ''), amount: String(-Number(x.amount)) })))
     setNotes(c.notes ?? '')
     setParams({ desde: c.period_from, hasta: c.period_to }, { replace: true })
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -275,7 +285,7 @@ export default function WeeklyCut() {
             <div className="border-b border-ink-600 px-5 py-4">
               <h3 className="flex items-center gap-2 font-display text-lg font-bold uppercase tracking-wide"><PiggyBank className="h-5 w-5 text-brand" /> Sugerencia de ahorro</h3>
               <p className="text-xs text-muted">Para cada pago grande te sugerimos cuánto apartar esta semana. Escribe cuánto se guarda de verdad; si no hay dinero, déjalo en 0.
-                {countedN > 0 ? <> Hay <b className="text-white">{cents(countedN)}</b> en caja para repartir.</> : <> <b className="text-warn">Esta semana no hay dinero en caja para ahorrar.</b></>}</p>
+                {expected > 0 ? <> Hay <b className="text-white">{cents(expected)}</b> en caja para repartir.</> : <> <b className="text-warn">Esta semana no hay dinero en caja para ahorrar.</b></>}</p>
             </div>
             {funds.length === 0 ? <p className="px-5 py-6 text-center text-sm text-muted">No hay pagos grandes por juntar.</p> : (
               <ul className="divide-y divide-ink-700">
@@ -346,24 +356,42 @@ export default function WeeklyCut() {
                     lines={funds.filter((f) => savedNow(f) > 0).map((f) => [f.name, savedNow(f)])} empty="No se apartó ahorro." />
                   <div className="flex justify-between px-3 py-2.5 font-semibold">
                     <span>= Saldo final al día de hoy <span className="block text-xs font-normal text-muted">lo que queda en caja</span></span>
-                    <b className={cx('font-display text-2xl', expected - savingsTotal < 0 ? 'text-bad' : 'text-white')}>{cents(expected - savingsTotal)}</b>
+                    <b className={cx('font-display text-2xl', saldo < 0 ? 'text-bad' : 'text-white')}>{cents(saldo)}</b>
                   </div>
                 </div>
-                {expected < 0 && (
-                  <p className="rounded-xl border border-bad/40 bg-bad/10 p-3 text-sm text-bad">Salió {cents(-expected)} más de lo que había. Revisa arriba si algún pago <b>no salió de la caja</b> (lápiz ✎) o si el dinero salió de otro lado y anótalo en las notas.</p>
+                {saldo < 0 && (
+                  <p className="rounded-xl border border-bad/40 bg-bad/10 p-3 text-sm text-bad">Faltaron <b>{cents(deficit)}</b>: salió más de lo que había. Anota a la derecha <b>de dónde salió</b> ese dinero, o revisa arriba si algún pago no salió de la caja (lápiz ✎).</p>
                 )}
-                <Field label="¿Cuánto dinero hay? (contado)" hint={expected < 0 ? 'Escribe lo que de verdad hay en caja' : Math.abs(countedN - expected) > 0.5 ? `${countedN > expected ? 'Sobran' : 'Faltan'} ${cents(Math.abs(countedN - expected))} contra lo esperado` : 'Cuadra con lo esperado'}>
-                  <Input type="number" min="0" inputMode="decimal" value={counted === '' ? String(Math.max(0, Math.round(expected * 100) / 100)) : counted} onChange={(e) => setCounted(e.target.value)} />
+                <Field label="¿Cuánto dinero hay de verdad en caja? (contado)" hint={Math.abs(countedN - available) > 0.5 ? `${countedN > available ? 'Sobran' : 'Faltan'} ${cents(Math.abs(countedN - available))} contra lo que debería haber (${cents(available)})` : `Cuadra con lo que debería haber (${cents(available)})`}>
+                  <Input type="number" min="0" inputMode="decimal" value={counted === '' ? String(Math.round(available * 100) / 100) : counted} onChange={(e) => setCounted(e.target.value)} />
                 </Field>
                 <p className="text-xs text-muted">Incluye cobros por transferencia. Si ese dinero no está en efectivo, mándalo a "Banco".</p>
               </div>
-              <div>
+              <div className="space-y-5">
+                {deficit > 0 && (
+                  <div className="rounded-xl border border-bad/40 p-3">
+                    <p className="mb-2 text-sm font-semibold">Faltaron {cents(deficit)}. ¿De dónde salió ese dinero?</p>
+                    <datalist id="cut-sources">{SOURCES.map((x) => <option key={x} value={x} />)}</datalist>
+                    <div className="space-y-2">
+                      {sources.map((r, i) => (
+                        <div key={i} className="grid grid-cols-[1fr_130px_40px] gap-2">
+                          <Input value={r.from} onChange={(e) => setSources(sources.map((x, k) => (k === i ? { ...x, from: e.target.value } : x)))} list="cut-sources" placeholder="Ej. Préstamo de Marco" aria-label="De dónde salió" className="h-10" />
+                          <Input type="number" min="0" inputMode="decimal" value={r.amount} onChange={(e) => setSources(sources.map((x, k) => (k === i ? { ...x, amount: e.target.value } : x)))} aria-label="Monto" className="h-10" />
+                          <IconButton icon={Trash2} label="Quitar" onClick={() => setSources(sources.filter((_, k) => k !== i))} className="h-10 w-10" />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                      <Button size="sm" variant="ghost" icon={Plus} onClick={() => setSources([...sources, { from: '', amount: toJustify > 0 ? String(Math.round(toJustify * 100) / 100) : '' }])}>Agregar de dónde salió</Button>
+                      <span className={cx('text-sm', toJustify > 0.5 ? 'text-bad' : 'text-ok')}>{toJustify > 0.5 ? `Falta explicar ${cents(toJustify)}` : 'Cuadrado ✓'}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted">Si fue un préstamo, regístralo también en <Link to="/gastos" className="text-brand hover:underline">Gastos → Préstamos</Link> para que quede la deuda.</p>
+                  </div>
+                )}
+                <div>
+                <p className="mb-2 text-sm font-semibold">Hay {cents(countedN)} en caja. ¿A dónde se va?</p>
                 <datalist id="cut-destinations">{DESTINATIONS.map((x) => <option key={x} value={x} />)}</datalist>
                 <div className="space-y-2">
-                  <div className="grid grid-cols-[1fr_130px_40px] items-center gap-2 text-sm">
-                    <span className="rounded-xl border border-ink-600 px-3 py-2">Ahorros apartados (arriba)</span>
-                    <span className="px-3 font-semibold">{cents(savingsTotal)}</span><span />
-                  </div>
                   {rows.map((r, i) => (
                     <div key={i} className="grid grid-cols-[1fr_130px_40px] gap-2">
                       <Input value={r.to} onChange={(e) => setRows(rows.map((x, k) => (k === i ? { ...x, to: e.target.value } : x)))} list="cut-destinations" placeholder="Ej. Caja chica, Banco…" aria-label="Destino" className="h-10" />
@@ -376,7 +404,8 @@ export default function WeeklyCut() {
                   <Button size="sm" variant="ghost" icon={Plus} onClick={() => setRows([...rows, { to: rows.length ? '' : CARRY_DESTINATION, amount: left > 0 ? String(Math.round(left * 100) / 100) : '' }])}>Agregar destino</Button>
                   <span className={cx('text-sm', Math.abs(left) > 0.5 ? 'text-warn' : 'text-ok')}>{Math.abs(left) > 0.5 ? `${left > 0 ? 'Falta asignar' : 'Te pasaste por'} ${cents(Math.abs(left))}` : 'Todo asignado ✓'}</span>
                 </div>
-                <p className="mt-1 text-xs text-muted">Lo que pongas en "{CARRY_DESTINATION}" se queda en caja y es con lo que empieza el siguiente corte.</p>
+                <p className="mt-1 text-xs text-muted">Lo que pongas en "{CARRY_DESTINATION}" se queda en caja y es con lo que empieza el siguiente corte. El ahorro ya se apartó arriba.</p>
+                </div>
               </div>
             </div>
             <Field label="Notas del corte (opcional)" className="mt-4"><Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ej. Se pagó a los profes en efectivo" /></Field>
@@ -419,8 +448,9 @@ export default function WeeklyCut() {
           <div>
             <p className="mb-1 font-semibold">A dónde se va</p>
             {distributionNow().length === 0 ? <p className="text-muted">Nada asignado.</p> : (
-              <ul className="space-y-1">{distributionNow().map((x) => <li key={x.to} className="flex justify-between"><span>{x.to}</span><b>{cents(x.amount)}</b></li>)}</ul>
+              <ul className="space-y-1">{distributionNow().map((x) => <li key={x.to} className={cx('flex justify-between', x.amount < 0 && 'text-bad')}><span>{x.to}</span><b>{cents(Math.abs(x.amount))}</b></li>)}</ul>
             )}
+            {toJustify > 0.5 && <p className="mt-1 text-bad">Faltaron {cents(deficit)} y falta explicar de dónde salieron {cents(toJustify)}.</p>}
             {Math.abs(left) > 0.5 && <p className="mt-1 text-warn">{left > 0 ? 'Falta asignar' : 'Te pasaste por'} {cents(Math.abs(left))}</p>}
           </div>
           {tot.pending > 0
@@ -495,12 +525,13 @@ const shareText = (c: CashCut) => [
   }), `*Contado en caja: ${cents(Number(c.counted))}*`,
   ...((c.items ?? []).filter((i) => i.adjusted != null).length ? ['', 'Correcciones:', ...(c.items ?? []).filter((i) => i.adjusted != null).map((i) => `  · ${i.concept}: ${cents(i.amount)} → ${cents(Number(i.adjusted))}${i.note ? ` (${i.note})` : ''}`)] : []),
   ...((c.savings ?? []).some((s) => Number(s.saved) > 0) ? ['', 'Ahorro apartado:', ...(c.savings ?? []).filter((s) => Number(s.saved) > 0).map((s) => `  · ${s.name}: ${cents(Number(s.saved))}`)] : []),
-  '', 'A dónde se fue:', ...c.distribution.map((x) => `  · ${x.to}: ${cents(Number(x.amount))}`),
+  ...(c.distribution.some((x) => Number(x.amount) < 0) ? ['', 'Faltó dinero y salió de:', ...c.distribution.filter((x) => Number(x.amount) < 0).map((x) => `  · ${x.to.replace(SOURCE_PREFIX, '')}: ${cents(-Number(x.amount))}`)] : []),
+  '', 'A dónde se fue:', ...c.distribution.filter((x) => Number(x.amount) > 0).map((x) => `  · ${x.to}: ${cents(Number(x.amount))}`),
   ...(c.notes ? ['', c.notes] : []),
 ].join('\n')
 
 function CutCard({ cut: c, onEdit, onDelete }: { cut: CashCut; onEdit: () => void; onDelete: () => void }) {
-  const assigned = c.distribution.reduce((a, x) => a + Number(x.amount), 0)
+  const assigned = c.distribution.filter((x) => Number(x.amount) > 0 && x.to !== 'Ahorros apartados').reduce((a, x) => a + Number(x.amount), 0)
   const items = c.items ?? []
   const adjusted = items.filter((i) => i.adjusted != null)
   const savings = (c.savings ?? []).filter((s) => Number(s.saved) > 0)
@@ -523,7 +554,7 @@ function CutCard({ cut: c, onEdit, onDelete }: { cut: CashCut; onEdit: () => voi
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
-        {c.distribution.map((x, i) => <Badge key={i} tone={x.to.toLowerCase() === CARRY_DESTINATION.toLowerCase() ? 'brand' : 'neutral'}>{x.to} · {cents(Number(x.amount))}</Badge>)}
+        {c.distribution.map((x, i) => <Badge key={i} tone={Number(x.amount) < 0 ? 'bad' : x.to.toLowerCase() === CARRY_DESTINATION.toLowerCase() ? 'brand' : 'neutral'}>{x.to} · {cents(Math.abs(Number(x.amount)))}</Badge>)}
         {Math.abs(Number(c.counted) - assigned) > 0.5 && <Badge tone="warn">Sin asignar {cents(Number(c.counted) - assigned)}</Badge>}
       </div>
       {savings.length > 0 && <p className="mt-2 text-xs text-muted">Ahorro: {savings.map((s) => `${s.name} ${cents(Number(s.saved))}`).join(' · ')}</p>}
