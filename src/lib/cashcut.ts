@@ -105,8 +105,11 @@ export function buildItems(d: ReturnType<typeof periodSummary>, prev: CutItem[] 
   })
 }
 
+/** Sólo cuenta en el corte lo que está palomeado (✓) y sí pasó por la caja. */
+export const counts = (i: Pick<CutItem, 'approved' | 'excluded'>) => i.approved && !i.excluded
+
 export function itemTotals(items: CutItem[]) {
-  const sum = (t: CutItem['type']) => items.filter((i) => i.type === t && !i.excluded).reduce((a, i) => a + itemValue(i), 0)
+  const sum = (t: CutItem['type']) => items.filter((i) => i.type === t && counts(i)).reduce((a, i) => a + itemValue(i), 0)
   return { income: sum('entrada'), outflow: sum('salida'), pending: items.filter((i) => !i.approved).length, adjusted: items.filter((i) => i.adjusted != null).length }
 }
 

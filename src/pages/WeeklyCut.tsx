@@ -2,12 +2,12 @@ import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { startOfWeek } from 'date-fns'
-import { TrendingUp, TrendingDown, Scale, Banknote, Download, MessageCircle, Printer, Plus, Trash2, Vault, PiggyBank, Check, Pencil, CheckCheck } from 'lucide-react'
+import { TrendingUp, TrendingDown, Scale, Banknote, Download, MessageCircle, Printer, Plus, Trash2, Vault, PiggyBank, Check, Pencil, CheckCheck, X } from 'lucide-react'
 import { Badge, Button, Card, ConfirmDialog, ErrorState, Field, IconButton, Input, Modal, PageHeader, Spinner, StatCard, Textarea, cx } from '@/components/ui'
 import { useToast } from '@/components/toast'
 import { useCashCuts, useCoachPay, useCoaches, useExpenses, useFees, usePayments, useStudents } from '@/lib/api'
 import {
-  CARRY_DESTINATION, DESTINATIONS, OUT_GROUPS, buildItems, carryOver, itemTotals, itemValue, nextPeriodStart, outGroup, periodSummary, savingFunds,
+  CARRY_DESTINATION, DESTINATIONS, OUT_GROUPS, buildItems, carryOver, counts, itemTotals, itemValue, nextPeriodStart, outGroup, periodSummary, savingFunds,
   type CutItem, type SavingFund,
 } from '@/lib/cashcut'
 import { METHOD_LABEL, date, money, toISODate, today } from '@/lib/format'
@@ -61,9 +61,9 @@ export default function WeeklyCut() {
   const items: CutItem[] = useMemo(() => buildItems(d).map((i) => ({ ...i, ...review[i.key] }) as CutItem), [d, review])
   const tot = itemTotals(items)
   const setItem = (key: string, p: Review[string]) => setReview((r) => ({ ...r, [key]: { ...r[key], ...p } }))
-  const approveAll = (type: CutItem['type']) => setReview((r) => {
+  const approveAll = (type: CutItem['type'], approved: boolean) => setReview((r) => {
     const n = { ...r }
-    for (const i of items.filter((x) => x.type === type)) n[i.key] = { ...n[i.key], approved: true }
+    for (const i of items.filter((x) => x.type === type)) n[i.key] = { ...n[i.key], approved }
     return n
   })
 
@@ -87,7 +87,7 @@ export default function WeeklyCut() {
 
   const byMethod = useMemo(() => {
     const m = new Map<PaymentMethod, number>()
-    for (const p of d.ins) { const i = items.find((x) => x.key === `p:${p.id}`); m.set(p.method, (m.get(p.method) ?? 0) + (i ? itemValue(i) : Number(p.amount))) }
+    for (const p of d.ins) { const i = items.find((x) => x.key === `p:${p.id}`); if (i && counts(i)) m.set(p.method, (m.get(p.method) ?? 0) + itemValue(i)) }
     return [...m.entries()]
   }, [d.ins, items])
 
@@ -160,7 +160,9 @@ export default function WeeklyCut() {
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-600 px-5 py-4">
           <h3 className="font-display text-lg font-bold uppercase tracking-wide">{title} <span className="font-sans text-sm font-normal normal-case text-muted">· {done} de {list.length} revisadas</span></h3>
-          {list.length > 0 && done < list.length && <Button size="sm" variant="secondary" icon={CheckCheck} onClick={() => approveAll(type)}>Aprobar todas</Button>}
+          {list.length > 0 && (done < list.length
+            ? <Button size="sm" variant="secondary" icon={CheckCheck} onClick={() => approveAll(type, true)}>Aprobar todas</Button>
+            : <Button size="sm" variant="ghost" icon={X} onClick={() => approveAll(type, false)}>Desaprobar todas</Button>)}
         </div>
         {list.length === 0 ? <p className="px-5 py-6 text-center text-sm text-muted">Nada en estas fechas.</p> : (
           <ul className="divide-y divide-ink-700">
@@ -168,7 +170,7 @@ export default function WeeklyCut() {
               ? OUT_GROUPS.flatMap((g) => {
                   const inGroup = list.filter((i) => outGroup(i) === g.id)
                   if (!inGroup.length) return []
-                  const sub = inGroup.filter((i) => !i.excluded).reduce((a, i) => a + itemValue(i), 0)
+                  const sub = inGroup.filter(counts).reduce((a, i) => a + itemValue(i), 0)
                   return [{ header: g.label, sub, count: inGroup.length } as const, ...inGroup]
                 })
               : list
@@ -177,7 +179,7 @@ export default function WeeklyCut() {
                 <span>{i.header} · {i.count}</span><span className="text-white">{cents(i.sub)}</span>
               </li>
             ) : (
-              <li key={i.key} className={cx('px-4 py-2.5', i.approved && 'bg-ok/5', i.excluded && 'opacity-50')}>
+              <li key={i.key} className={cx('px-4 py-2.5', i.approved && 'bg-ok/5', (i.excluded || !i.approved) && 'opacity-60')}>
                 <div className="flex items-center gap-3">
                   <button onClick={() => setItem(i.key, { approved: !i.approved })} aria-pressed={i.approved} aria-label={i.approved ? 'Quitar aprobación' : 'Aprobar'}
                     className={cx('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-2', i.approved ? 'border-ok bg-ok text-ink' : 'border-ink-500 text-transparent hover:border-ok')}>
@@ -213,7 +215,7 @@ export default function WeeklyCut() {
           </ul>
         )}
         <div className="flex justify-between border-t border-ink-600 bg-ink-900 px-5 py-3 font-display text-lg font-bold uppercase">
-          <span>Total {title.toLowerCase()}</span><span className={type === 'entrada' ? 'text-ok' : 'text-bad'}>{cents(type === 'entrada' ? tot.income : tot.outflow)}</span>
+          <span>Total {title.toLowerCase()} <span className="font-sans text-xs font-normal normal-case text-muted">(sólo palomeadas)</span></span><span className={type === 'entrada' ? 'text-ok' : 'text-bad'}>{cents(type === 'entrada' ? tot.income : tot.outflow)}</span>
         </div>
       </Card>
     )
@@ -244,9 +246,9 @@ export default function WeeklyCut() {
       {loading ? <Spinner /> : (
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatCard label="Entró" value={cents(tot.income)} icon={TrendingUp} tone="ok" hint={byMethod.map(([m, v]) => `${METHOD_LABEL[m]} ${cents(v)}`).join(' · ') || 'Sin cobros'} />
+            <StatCard label="Entró" value={cents(tot.income)} icon={TrendingUp} tone="ok" hint={byMethod.map(([m, v]) => `${METHOD_LABEL[m]} ${cents(v)}`).join(' · ') || 'Palomea las entradas para contarlas'} />
             <StatCard label="Salió" value={cents(tot.outflow)} icon={TrendingDown} tone="bad" hint="Sueldos, gastos y pagos de préstamos" />
-            <StatCard label="Queda del periodo" value={cents(tot.income - tot.outflow)} icon={Scale} tone={tot.income >= tot.outflow ? 'ok' : 'bad'} hint={tot.adjusted ? `${tot.adjusted} montos corregidos` : 'Entró − salió'} />
+            <StatCard label="Resultado de estas fechas" value={cents(tot.income - tot.outflow)} icon={Scale} tone={tot.income >= tot.outflow ? 'ok' : 'bad'} hint={tot.income >= tot.outflow ? 'Entró más de lo que salió (sin contar la caja chica)' : 'Salió más de lo que entró (sin contar la caja chica)'} />
             <StatCard label="Debería haber en caja" value={cents(expected)} icon={Banknote} tone="brand" hint={`Caja chica anterior ${cents(carry)} + lo que queda`} />
           </div>
 
@@ -356,7 +358,7 @@ export default function WeeklyCut() {
             </div>
             <Field label="Notas del corte (opcional)" className="mt-4"><Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ej. Se pagó a los profes en efectivo" /></Field>
             <div className="mt-4 flex flex-wrap items-center justify-end gap-3">
-              {tot.pending > 0 && <span className="text-sm text-warn">{tot.pending} líneas sin revisar</span>}
+              {tot.pending > 0 && <span className="text-sm text-warn">{tot.pending} líneas sin palomear (no cuentan)</span>}
               <Button icon={Vault} onClick={() => setConfirming(true)}>{editingCut ? "Guardar corrección" : "Hacer corte"}</Button>
             </div>
           </Card>
@@ -399,7 +401,7 @@ export default function WeeklyCut() {
             {Math.abs(left) > 0.5 && <p className="mt-1 text-warn">{left > 0 ? 'Falta asignar' : 'Te pasaste por'} {cents(Math.abs(left))}</p>}
           </div>
           {tot.pending > 0
-            ? <p className="rounded-xl border border-warn/40 bg-warn/10 p-3 text-warn">Hay {tot.pending} líneas sin revisar (sin ✓). Puedes confirmar así o regresar a revisarlas.</p>
+            ? <p className="rounded-xl border border-warn/40 bg-warn/10 p-3 text-warn">Hay {tot.pending} líneas sin palomear (✓): <b>no se cuentan</b> en este corte. Puedes confirmar así o regresar a revisarlas.</p>
             : <p className="rounded-xl border border-ok/40 bg-ok/10 p-3 text-ok">Todas las entradas y salidas están revisadas ✓</p>}
           {tot.adjusted > 0 && <p className="text-muted">{tot.adjusted} montos corregidos con nota.</p>}
         </div>

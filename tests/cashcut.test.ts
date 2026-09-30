@@ -70,6 +70,7 @@ describe('revisión de líneas', () => {
     const edited = first.map((i) => i.type === 'salida' ? { ...i, approved: true, adjusted: 600, note: 'Se le pagó menos' } : i)
     const again = buildItems(d, edited)
     expect(again.find((i) => i.type === 'salida')).toMatchObject({ approved: true, adjusted: 600, note: 'Se le pagó menos' })
-    expect(itemTotals(again)).toEqual({ income: 550, outflow: 600, pending: 1, adjusted: 1 })
+    expect(itemTotals(again)).toEqual({ income: 0, outflow: 600, pending: 1, adjusted: 1 })
+    expect(itemTotals(again.map((i) => ({ ...i, approved: true }))).income).toBe(550)
   })
 })
