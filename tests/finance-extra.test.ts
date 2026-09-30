@@ -67,7 +67,7 @@ describe('pagos en partes y préstamos', () => {
     expect(expenseForMonth(p, '2026-10')).toBe(0)
   })
   it('los pendientes de la semana y los atrasados salen como tarea', () => {
-    expect(pendingInstallments([playeras, prestamo], '2026-10-04').map((x) => x.label)).toEqual(['Pago 1 de 2'])
+    expect(pendingInstallments([playeras, prestamo], '2026-10-04').map((x) => x.label)).toEqual(['Pago 2 de 3'])
     expect(pendingInstallments([playeras, prestamo], '2026-10-18').map((x) => x.expense.name)).toEqual(['Playeras', 'Préstamo'])
   })
   it('los préstamos no son gasto de operación pero sí salida en el desglose', () => {

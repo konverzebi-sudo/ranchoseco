@@ -75,6 +75,22 @@ export interface CutItem {
 }
 export const itemValue = (i: Pick<CutItem, 'amount' | 'adjusted'>) => (i.adjusted ?? i.amount)
 
+export type OutGroup = 'sueldos' | 'fijos' | 'extras' | 'prestamos'
+export const OUT_GROUPS: { id: OutGroup; label: string }[] = [
+  { id: 'sueldos', label: 'Sueldos (profes y staff)' },
+  { id: 'fijos', label: 'Gastos fijos' },
+  { id: 'extras', label: 'Extras y pagos en partes' },
+  { id: 'prestamos', label: 'Préstamos' },
+]
+/** A qué grupo pertenece una salida (se deduce del detalle; sirve también para cortes ya guardados). */
+export function outGroup(i: Pick<CutItem, 'detail'>): OutGroup {
+  const d = i.detail
+  if (d.startsWith('Sueldo') || d.includes('semanal')) return 'sueldos'
+  if (d.includes('préstamo')) return 'prestamos'
+  if (d.startsWith('Gasto fijo') || d.startsWith('Pago anual')) return 'fijos'
+  return 'extras'
+}
+
 /** Líneas del corte a partir del resumen del periodo (conserva lo ya revisado por clave). */
 export function buildItems(d: ReturnType<typeof periodSummary>, prev: CutItem[] = []): CutItem[] {
   const kept = new Map(prev.map((i) => [i.key, i]))

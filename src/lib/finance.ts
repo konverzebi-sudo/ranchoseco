@@ -9,9 +9,12 @@ export function installmentsOf(e: Pick<Expense, 'expense_installments'>) {
 }
 /** Fecha en que cuenta un pago: cuando se pagó, o cuando toca si está pendiente. */
 export const installmentDate = (i: Pick<ExpenseInstallment, 'paid_on' | 'due_date'>) => i.paid_on ?? i.due_date
+/** "Pago 2 de 3": el anticipo cuenta como el pago 1 (así se ve que ya se hizo). */
 export function installmentLabel(i: Pick<ExpenseInstallment, 'n'>, all: Pick<ExpenseInstallment, 'n'>[]) {
-  const last = Math.max(...all.map((x) => x.n))
-  return i.n === 0 ? 'Anticipo' : `Pago ${i.n} de ${last}`
+  const hasDown = all.some((x) => x.n === 0)
+  const total = Math.max(...all.map((x) => x.n)) + (hasDown ? 1 : 0)
+  const pos = i.n + (hasDown ? 1 : 0)
+  return i.n === 0 ? `Anticipo (pago 1 de ${total})` : `Pago ${pos} de ${total}`
 }
 
 /** Pagos de gastos en partes pendientes que vencen a más tardar en `until` (incluye atrasados). */
@@ -289,7 +292,7 @@ export function expenseEntries(opts: {
           break
         }
         for (const p of installmentPlan(e, y).schedule.filter((x) => x.key === month))
-          out.push({ date: day(onDay), name: e.name, amount: p.amount, kind: 'mes', detail: p.kind === 'anticipo' ? 'Anticipo' : `Pago ${p.n} de ${Number(e.installments) || 1}` })
+          out.push({ date: day(onDay), name: e.name, amount: p.amount, kind: 'mes', detail: p.kind === 'anticipo' ? 'Anticipo' : `Pago ${p.n + (Number(e.down_payment) > 0 ? 1 : 0)} de ${(Number(e.installments) || 1) + (Number(e.down_payment) > 0 ? 1 : 0)}` })
         break
       }
     }

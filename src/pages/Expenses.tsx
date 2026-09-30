@@ -295,7 +295,8 @@ function ExpenseModal({ mode, expense, defaultMonth, onClose, nextOrder, onPayIn
     const n = p.kind === 'anticipo' ? 0 : p.n
     const auto = f.day ? toISODate(addMonths(new Date(f.day + 'T12:00:00'), idx)) : ''
     const e = edits[n] ?? {}
-    return { n, label: p.kind === 'anticipo' ? 'Anticipo' : `Pago ${p.n} de ${plan.n}`, date: e.date ?? auto, amount: e.amount ?? String(Math.round(p.amount * 100) / 100) }
+    const extra = plan.down > 0 ? 1 : 0
+    return { n, label: p.kind === 'anticipo' ? `Anticipo (1 de ${plan.n + 1})` : `Pago ${p.n + extra} de ${plan.n + extra}`, date: e.date ?? auto, amount: e.amount ?? String(Math.round(p.amount * 100) / 100) }
   })
   const [saving, setSaving] = useState(false)
 

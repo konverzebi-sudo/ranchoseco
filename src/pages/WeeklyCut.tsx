@@ -7,7 +7,7 @@ import { Badge, Button, Card, ConfirmDialog, ErrorState, Field, IconButton, Inpu
 import { useToast } from '@/components/toast'
 import { useCashCuts, useCoachPay, useCoaches, useExpenses, useFees, usePayments, useStudents } from '@/lib/api'
 import {
-  CARRY_DESTINATION, DESTINATIONS, buildItems, carryOver, itemTotals, itemValue, nextPeriodStart, periodSummary, savingFunds,
+  CARRY_DESTINATION, DESTINATIONS, OUT_GROUPS, buildItems, carryOver, itemTotals, itemValue, nextPeriodStart, outGroup, periodSummary, savingFunds,
   type CutItem, type SavingFund,
 } from '@/lib/cashcut'
 import { METHOD_LABEL, date, money, toISODate, today } from '@/lib/format'
@@ -164,7 +164,19 @@ export default function WeeklyCut() {
         </div>
         {list.length === 0 ? <p className="px-5 py-6 text-center text-sm text-muted">Nada en estas fechas.</p> : (
           <ul className="divide-y divide-ink-700">
-            {list.map((i) => (
+            {(type === 'salida'
+              ? OUT_GROUPS.flatMap((g) => {
+                  const inGroup = list.filter((i) => outGroup(i) === g.id)
+                  if (!inGroup.length) return []
+                  const sub = inGroup.filter((i) => !i.excluded).reduce((a, i) => a + itemValue(i), 0)
+                  return [{ header: g.label, sub, count: inGroup.length } as const, ...inGroup]
+                })
+              : list
+            ).map((i) => 'header' in i ? (
+              <li key={'h' + i.header} className="flex items-center justify-between bg-ink-900 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted">
+                <span>{i.header} · {i.count}</span><span className="text-white">{cents(i.sub)}</span>
+              </li>
+            ) : (
               <li key={i.key} className={cx('px-4 py-2.5', i.approved && 'bg-ok/5', i.excluded && 'opacity-50')}>
                 <div className="flex items-center gap-3">
                   <button onClick={() => setItem(i.key, { approved: !i.approved })} aria-pressed={i.approved} aria-label={i.approved ? 'Quitar aprobación' : 'Aprobar'}
