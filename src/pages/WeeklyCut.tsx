@@ -235,6 +235,28 @@ export default function WeeklyCut() {
             ))}
           </ul>
         )}
+        {type === 'entrada' && list.length > 0 && (() => {
+          // Subtotales por concepto (sólo lo palomeado): inscripciones, mensualidades, etc.
+          const by = new Map<string, { n: number; all: number; total: number }>()
+          for (const i of list) {
+            const k = i.detail.split(' · ')[0] || 'Otro'
+            const r = by.get(k) ?? { n: 0, all: 0, total: 0 }
+            r.all++
+            if (counts(i)) { r.n++; r.total += itemValue(i) }
+            by.set(k, r)
+          }
+          const plural = (k: string) => (k === 'Préstamo recibido' ? 'Préstamos recibidos' : /[aeiou]$/i.test(k) ? `${k}s` : k.replace(/ón$/, 'ones').replace(/d$/, 'des'))
+          return (
+            <div className="space-y-1 border-t border-ink-600 px-5 py-3 text-sm">
+              {[...by.entries()].sort((a, b) => b[1].total - a[1].total || b[1].all - a[1].all).map(([k, r]) => (
+                <p key={k} className="flex justify-between gap-3">
+                  <span>Total de {plural(k).toLowerCase()} <span className="text-xs text-muted">({r.n} de {r.all} palomeadas)</span></span>
+                  <b>{cents(r.total)}</b>
+                </p>
+              ))}
+            </div>
+          )
+        })()}
         <div className="flex justify-between border-t border-ink-600 bg-ink-900 px-5 py-3 font-display text-lg font-bold uppercase">
           <span>Total {title.toLowerCase()} <span className="font-sans text-xs font-normal normal-case text-muted">(sólo palomeadas)</span></span><span className={type === 'entrada' ? 'text-ok' : 'text-bad'}>{cents(type === 'entrada' ? tot.income : tot.outflow)}</span>
         </div>
