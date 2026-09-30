@@ -32,6 +32,17 @@ export type StudentRow = Student & {
 export const primaryGuardian = (s: StudentRow): Guardian | null =>
   (s.student_guardians.find((g) => g.is_primary) ?? s.student_guardians[0])?.guardians ?? null
 
+export const isDad = (r: string | null | undefined) => /pap|padre/i.test(r ?? '')
+export const isMom = (r: string | null | undefined) => /mam|madre/i.test(r ?? '')
+/** Papá, mamá y otros tutores (abuela, tío…) de un alumno. */
+export function parentsOf(s: StudentRow) {
+  const all = s.student_guardians.filter((x) => x.guardians).map((x) => ({ ...x.guardians!, is_primary: x.is_primary }))
+  const papa = all.find((g) => isDad(g.relationship)) ?? null
+  const mama = all.find((g) => isMom(g.relationship)) ?? null
+  const otros = all.filter((g) => g !== papa && g !== mama)
+  return { papa, mama, otros, all }
+}
+
 export function useSettings() {
   return useQuery({
     queryKey: ['settings'],

@@ -9,7 +9,6 @@ import { isValidPhone, normalizePhone, today } from '@/lib/format'
 interface Kid { id: string; full_name: string; category: string; category_order: number; completed: boolean }
 
 const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
-const RELATIONS = ['Mamá', 'Papá', 'Abuela', 'Abuelo', 'Tía', 'Tío', 'Tutor legal', 'Otro']
 const BLOOD = ['No sé', 'O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-']
 
 /**
@@ -120,8 +119,7 @@ function KidForm({ kid, onBack, onDone }: { kid: Kid; onBack: () => void; onDone
   const [f, setF] = useState({
     birth_date: '', blood_type: 'No sé', allergies: '', conditions: '', medications: '', insurance: '', medical_notes: '',
     emergency_name: '', emergency_phone: '',
-    tutor_name: '', tutor_relationship: 'Mamá', tutor_phone: '', tutor_email: '',
-    tutor2_name: '', tutor2_relationship: 'Papá', tutor2_phone: '',
+    mama_name: '', mama_phone: '', papa_name: '', papa_phone: '', tutor_email: '', avisos: 'Mamá',
   })
   const [consent, setConsent] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -133,23 +131,31 @@ function KidForm({ kid, onBack, onDone }: { kid: Kid; onBack: () => void; onDone
     e.preventDefault()
     const errs: Record<string, string> = {}
     if (!f.birth_date) errs.birth_date = 'Escribe la fecha de nacimiento.'
-    if (!f.tutor_name.trim()) errs.tutor_name = 'Escribe tu nombre.'
-    if (!isValidPhone(normalizePhone(f.tutor_phone))) errs.tutor_phone = 'Escribe tu WhatsApp a 10 dígitos.'
+    const mamaOk = !!f.mama_name.trim() && isValidPhone(normalizePhone(f.mama_phone))
+    const papaOk = !!f.papa_name.trim() && isValidPhone(normalizePhone(f.papa_phone))
+    if (f.mama_name.trim() && !isValidPhone(normalizePhone(f.mama_phone))) errs.mama_phone = 'WhatsApp de mamá a 10 dígitos.'
+    if (f.mama_phone && !f.mama_name.trim()) errs.mama_name = 'Escribe el nombre de mamá.'
+    if (f.papa_name.trim() && !isValidPhone(normalizePhone(f.papa_phone))) errs.papa_phone = 'WhatsApp de papá a 10 dígitos.'
+    if (f.papa_phone && !f.papa_name.trim()) errs.papa_name = 'Escribe el nombre de papá.'
+    if (!mamaOk && !papaOk && !errs.mama_phone && !errs.papa_phone) errs.mama_name = 'Escribe por lo menos el nombre y WhatsApp de mamá o de papá.'
     if (f.tutor_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.tutor_email.trim())) errs.tutor_email = 'Revisa el correo.'
     if (!f.emergency_name.trim()) errs.emergency_name = 'Escribe a quién llamar en una emergencia.'
     if (!isValidPhone(normalizePhone(f.emergency_phone))) errs.emergency_phone = 'Teléfono a 10 dígitos.'
-    if (f.tutor2_phone && !isValidPhone(normalizePhone(f.tutor2_phone))) errs.tutor2_phone = 'Teléfono a 10 dígitos.'
     if (!consent) errs.consent = 'Necesitamos tu autorización para guardar los datos.'
     setErrors(errs)
     if (Object.keys(errs).length) { window.scrollTo({ top: 0, behavior: 'smooth' }); return }
     setSaving(true)
     setServerError('')
     try {
+      // El que recibe los avisos va como tutor principal; el otro, como segundo
+      const mama = f.mama_name.trim() ? { name: f.mama_name.trim(), phone: normalizePhone(f.mama_phone), rel: 'Mamá' } : null
+      const papa = f.papa_name.trim() ? { name: f.papa_name.trim(), phone: normalizePhone(f.papa_phone), rel: 'Papá' } : null
+      const [first, second] = f.avisos === 'Papá' ? [papa ?? mama, papa ? mama : null] : [mama ?? papa, mama ? papa : null]
       const payload = {
         ...f,
         blood_type: f.blood_type === 'No sé' ? '' : f.blood_type,
-        tutor_phone: normalizePhone(f.tutor_phone),
-        tutor2_phone: f.tutor2_phone ? normalizePhone(f.tutor2_phone) : '',
+        tutor_name: first!.name, tutor_phone: first!.phone, tutor_relationship: first!.rel,
+        tutor2_name: second?.name ?? '', tutor2_phone: second?.phone ?? '', tutor2_relationship: second?.rel ?? '',
         emergency_phone: normalizePhone(f.emergency_phone),
       }
       const { error } = await supabase.rpc('registro_guardar', { p_student: kid.id, p: payload })
@@ -192,21 +198,22 @@ function KidForm({ kid, onBack, onDone }: { kid: Kid; onBack: () => void; onDone
         </section>
 
         <section className="space-y-4">
-          <h2 className="font-display text-xl font-bold uppercase tracking-wide text-brand">Papá, mamá o tutor</h2>
+          <h2 className="font-display text-xl font-bold uppercase tracking-wide text-brand">Mamá y papá</h2>
+          <p className="text-sm text-muted">Llena los dos si puedes. Por lo menos uno es obligatorio.</p>
+          <div className="grid gap-4 rounded-xl border border-ink-600 p-3 sm:grid-cols-2">
+            <p className="text-sm font-semibold sm:col-span-2">Mamá</p>
+            <Field label="Nombre completo" error={errors.mama_name}><Input value={f.mama_name} onChange={set('mama_name')} /></Field>
+            <Field label="WhatsApp" error={errors.mama_phone} hint="10 dígitos"><Input value={f.mama_phone} onChange={set('mama_phone')} inputMode="tel" placeholder="81 1234 5678" /></Field>
+          </div>
+          <div className="grid gap-4 rounded-xl border border-ink-600 p-3 sm:grid-cols-2">
+            <p className="text-sm font-semibold sm:col-span-2">Papá</p>
+            <Field label="Nombre completo" error={errors.papa_name}><Input value={f.papa_name} onChange={set('papa_name')} /></Field>
+            <Field label="WhatsApp" error={errors.papa_phone} hint="10 dígitos"><Input value={f.papa_phone} onChange={set('papa_phone')} inputMode="tel" placeholder="81 1234 5678" /></Field>
+          </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Tu nombre completo *" error={errors.tutor_name}><Input value={f.tutor_name} onChange={set('tutor_name')} autoComplete="name" /></Field>
-            <Field label="Parentesco"><Select value={f.tutor_relationship} onChange={set('tutor_relationship')}>{RELATIONS.map((r) => <option key={r}>{r}</option>)}</Select></Field>
-            <Field label="Tu WhatsApp *" error={errors.tutor_phone} hint="10 dígitos"><Input value={f.tutor_phone} onChange={set('tutor_phone')} inputMode="tel" autoComplete="tel" placeholder="81 1234 5678" /></Field>
+            <Field label="¿A quién le mandamos los avisos?"><Select value={f.avisos} onChange={set('avisos')}><option>Mamá</option><option>Papá</option></Select></Field>
             <Field label="Correo (opcional)" error={errors.tutor_email}><Input type="email" value={f.tutor_email} onChange={set('tutor_email')} autoComplete="email" /></Field>
           </div>
-          <details className="rounded-xl border border-ink-600 p-3">
-            <summary className="cursor-pointer text-sm text-muted">Agregar otro papá, mamá o tutor (opcional)</summary>
-            <div className="mt-3 grid gap-4 sm:grid-cols-3">
-              <Field label="Nombre"><Input value={f.tutor2_name} onChange={set('tutor2_name')} /></Field>
-              <Field label="Parentesco"><Select value={f.tutor2_relationship} onChange={set('tutor2_relationship')}>{RELATIONS.map((r) => <option key={r}>{r}</option>)}</Select></Field>
-              <Field label="WhatsApp" error={errors.tutor2_phone}><Input value={f.tutor2_phone} onChange={set('tutor2_phone')} inputMode="tel" /></Field>
-            </div>
-          </details>
         </section>
 
         <section className="space-y-4">

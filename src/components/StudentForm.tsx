@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Camera, Save } from 'lucide-react'
 import { Button, Field, Input, Modal, Select, Textarea, Avatar } from './ui'
 import { useToast } from './toast'
-import { useCategories, useCoaches, useSettings, primaryGuardian, type StudentRow } from '@/lib/api'
+import { useCategories, useCoaches, useSettings, parentsOf, type StudentRow } from '@/lib/api'
 import { supabase, unwrap, BUCKETS } from '@/lib/supabase'
 import { isValidPhone, normalizePhone, prettyPhone, today } from '@/lib/format'
 import type { StudentStatus } from '@/lib/types'
@@ -39,7 +39,9 @@ export default function StudentForm({ student, defaultCategory, onClose, onSaved
   const { data: settings } = useSettings()
   const qc = useQueryClient()
   const toast = useToast()
-  const g = student ? primaryGuardian(student) : null
+  const par = student ? parentsOf(student) : { papa: null, mama: null, otros: [], all: [] }
+  const otro = par.otros[0] ?? null
+  const currentPrimary = par.all.find((x) => x.is_primary)
 
   const [f, setF] = useState({
     full_name: student?.full_name ?? '',
@@ -52,24 +54,38 @@ export default function StudentForm({ student, defaultCategory, onClose, onSaved
     emergency_contact_phone: student?.emergency_contact_phone ?? '',
     notes: student?.notes ?? '',
     monthly_fee: student?.monthly_fee != null ? String(student.monthly_fee) : '',
-    g_name: g?.full_name ?? '',
-    g_phone: g?.phone ?? '',
-    g_email: g?.email ?? '',
-    g_relationship: g?.relationship ?? '',
+    papa_name: par.papa?.full_name ?? '',
+    papa_phone: par.papa?.phone ?? '',
+    mama_name: par.mama?.full_name ?? '',
+    mama_phone: par.mama?.phone ?? '',
+    otro_name: otro?.full_name ?? '',
+    otro_phone: otro?.phone ?? '',
+    otro_rel: otro?.relationship ?? '',
+    email: (currentPrimary ?? par.all[0])?.email ?? '',
+    avisos: (currentPrimary && currentPrimary === par.papa ? 'papa' : currentPrimary && currentPrimary === otro ? 'otro' : par.mama || !par.papa ? 'mama' : 'papa') as 'papa' | 'mama' | 'otro',
   })
   const [photo, setPhoto] = useState<File | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF((x) => ({ ...x, [k]: e.target.value }))
   const cc = settings?.default_country_code ?? '52'
-  const gPhone = f.g_phone ? normalizePhone(f.g_phone, cc) : ''
+  const phoneOf = (v: string) => (v ? normalizePhone(v, cc) : '')
+  const slots = [
+    { key: 'papa' as const, label: 'Papá', rel: 'Papá', name: f.papa_name, phone: phoneOf(f.papa_phone), existing: par.papa },
+    { key: 'mama' as const, label: 'Mamá', rel: 'Mamá', name: f.mama_name, phone: phoneOf(f.mama_phone), existing: par.mama },
+    { key: 'otro' as const, label: 'Otro tutor', rel: f.otro_rel.trim() || 'Tutor', name: f.otro_name, phone: phoneOf(f.otro_phone), existing: otro },
+  ]
+  const [showOtro, setShowOtro] = useState(!!otro)
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     const errs: Record<string, string> = {}
     if (f.full_name.trim().length < 3) errs.full_name = 'Escribe el nombre completo.'
-    if (f.g_phone && !isValidPhone(gPhone)) errs.g_phone = 'Teléfono inválido: usa 10 dígitos.'
-    if (f.g_phone && !f.g_name.trim()) errs.g_name = 'Escribe el nombre del tutor.'
+    for (const sl of slots) {
+      if (sl.phone && !isValidPhone(sl.phone)) errs[`${sl.key}_phone`] = 'Teléfono inválido: usa 10 dígitos.'
+      if (sl.phone && !sl.name.trim()) errs[`${sl.key}_name`] = `Escribe el nombre de ${sl.label.toLowerCase()}.`
+      if (sl.name.trim() && !sl.phone) errs[`${sl.key}_phone`] = 'Escribe su WhatsApp.'
+    }
     if (f.birth_date && f.birth_date > today()) errs.birth_date = 'La fecha no puede ser futura.'
     setErrors(errs)
     if (Object.keys(errs).length) return
@@ -93,13 +109,26 @@ export default function StudentForm({ student, defaultCategory, onClose, onSaved
       if (id) unwrap(await supabase.from('students').update(payload).eq('id', id))
       else id = (unwrap(await supabase.from('students').insert(payload).select('id').single()) as { id: string }).id
 
-      if (f.g_name.trim() && gPhone) {
-        const gp = { full_name: f.g_name.trim(), phone: gPhone, email: f.g_email.trim() || null, relationship: f.g_relationship.trim() || null }
-        if (g) unwrap(await supabase.from('guardians').update(gp).eq('id', g.id))
-        else {
-          const created = unwrap(await supabase.from('guardians').insert(gp).select('id').single()) as { id: string }
-          unwrap(await supabase.from('student_guardians').insert({ student_id: id, guardian_id: created.id, is_primary: true }))
+      // Papá, mamá y otro tutor: se guardan por separado; el que recibe los avisos queda como principal
+      const ids: Record<string, string> = {}
+      for (const sl of slots) {
+        if (sl.name.trim() && sl.phone) {
+          const gp = { full_name: sl.name.trim(), phone: sl.phone, relationship: sl.rel }
+          if (sl.existing) { unwrap(await supabase.from('guardians').update(gp).eq('id', sl.existing.id)); ids[sl.key] = sl.existing.id }
+          else {
+            const created = unwrap(await supabase.from('guardians').insert(gp).select('id').single()) as { id: string }
+            unwrap(await supabase.from('student_guardians').insert({ student_id: id, guardian_id: created.id, is_primary: false }))
+            ids[sl.key] = created.id
+          }
+        } else if (sl.existing) {
+          unwrap(await supabase.from('student_guardians').delete().eq('student_id', id!).eq('guardian_id', sl.existing.id))
         }
+      }
+      const primaryId = ids[f.avisos] ?? ids.mama ?? ids.papa ?? ids.otro
+      if (primaryId) {
+        unwrap(await supabase.from('student_guardians').update({ is_primary: false }).eq('student_id', id!))
+        unwrap(await supabase.from('student_guardians').update({ is_primary: true }).eq('student_id', id!).eq('guardian_id', primaryId))
+        if (f.email.trim() !== ((currentPrimary ?? par.all[0])?.email ?? '')) unwrap(await supabase.from('guardians').update({ email: f.email.trim() || null }).eq('id', primaryId))
       }
       if (photo) await uploadStudentPhoto(id!, photo)
       await Promise.all(['students', 'student', 'accounts'].map((k) => qc.invalidateQueries({ queryKey: [k] })))
@@ -176,14 +205,29 @@ export default function StudentForm({ student, defaultCategory, onClose, onSaved
         </section>
 
         <section>
-          <h3 className="mb-3 font-display text-lg font-bold uppercase tracking-wide text-brand">Padre, madre o tutor</h3>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Nombre" error={errors.g_name}><Input value={f.g_name} onChange={set('g_name')} placeholder="Nombre del tutor" /></Field>
-            <Field label="WhatsApp" error={errors.g_phone} hint={gPhone && isValidPhone(gPhone) ? `Se guardará como ${prettyPhone(gPhone)}` : '10 dígitos; se agrega +52 automáticamente'}>
-              <Input value={f.g_phone} onChange={set('g_phone')} inputMode="tel" placeholder="81 1234 5678" />
-            </Field>
-            <Field label="Correo (opcional)"><Input type="email" value={f.g_email} onChange={set('g_email')} /></Field>
-            <Field label="Parentesco (opcional)"><Input value={f.g_relationship} onChange={set('g_relationship')} placeholder="Mamá, papá, abuela…" /></Field>
+          <h3 className="mb-3 font-display text-lg font-bold uppercase tracking-wide text-brand">Papá y mamá</h3>
+          <div className="space-y-4">
+            {slots.filter((sl) => sl.key !== 'otro' || showOtro).map((sl) => (
+              <div key={sl.key} className="grid gap-3 rounded-xl border border-ink-600 p-3 sm:grid-cols-[1fr_1fr]">
+                <p className="text-sm font-semibold sm:col-span-2">{sl.label}</p>
+                {sl.key === 'otro' && <Field label="Parentesco" className="sm:col-span-2"><Input value={f.otro_rel} onChange={set('otro_rel')} placeholder="Abuela, tío, tutor legal…" /></Field>}
+                <Field label="Nombre" error={errors[`${sl.key}_name`]}><Input value={sl.key === 'papa' ? f.papa_name : sl.key === 'mama' ? f.mama_name : f.otro_name} onChange={set(`${sl.key}_name` as keyof typeof f)} placeholder={`Nombre de ${sl.label.toLowerCase()}`} /></Field>
+                <Field label="WhatsApp" error={errors[`${sl.key}_phone`]} hint={sl.phone && isValidPhone(sl.phone) ? `Se guardará como ${prettyPhone(sl.phone)}` : '10 dígitos'}>
+                  <Input value={sl.key === 'papa' ? f.papa_phone : sl.key === 'mama' ? f.mama_phone : f.otro_phone} onChange={set(`${sl.key}_phone` as keyof typeof f)} inputMode="tel" placeholder="81 1234 5678" />
+                </Field>
+              </div>
+            ))}
+            {!showOtro && <button type="button" onClick={() => setShowOtro(true)} className="text-sm text-brand hover:underline">+ Agregar otro tutor (abuela, tío…)</button>}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="¿A quién le mandamos los avisos de pago?">
+                <Select value={f.avisos} onChange={(e) => setF({ ...f, avisos: e.target.value as 'papa' | 'mama' | 'otro' })}>
+                  <option value="mama">Mamá</option>
+                  <option value="papa">Papá</option>
+                  {showOtro && <option value="otro">Otro tutor</option>}
+                </Select>
+              </Field>
+              <Field label="Correo (opcional)"><Input type="email" value={f.email} onChange={set('email')} /></Field>
+            </div>
           </div>
         </section>
 

@@ -50,7 +50,7 @@ function QuickSearch({ onDone }: { onDone?: () => void }) {
   return (
     <form onSubmit={submit} className="relative" role="search">
       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar alumno, tutor o teléfono"
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar alumno, papá, mamá o teléfono"
         aria-label="Buscar alumno"
         className="h-10 w-full rounded-xl border border-ink-600 bg-ink-900 pl-9 pr-3 text-sm placeholder:text-ink-500 focus:border-brand focus:outline-none" />
     </form>

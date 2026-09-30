@@ -106,7 +106,7 @@ export default function Billing() {
 
   const setFilter = (f: Filter) => setParams({ f }, { replace: true })
   const doExport = () =>
-    exportCsv(`cobranza-${t}.csv`, ['Alumno', 'Categoría', 'Tutor', 'Teléfono', 'Conceptos pendientes', 'Recargo', 'Saldo', 'Estado'],
+    exportCsv(`cobranza-${t}.csv`, ['Alumno', 'Categoría', 'Avisos a (papá/mamá)', 'Teléfono', 'Conceptos pendientes', 'Recargo', 'Saldo', 'Estado'],
       rows.map((r) => {
         const g = primaryGuardian(r.s)
         return [r.s.full_name, catName(r.s.category_id), g?.full_name, g ? prettyPhone(g.phone) : '', r.open.map((f) => `${f.concept} ${monthName(f.period)}`).join('; '), r.late, r.balance, ACCOUNT_LABEL[r.status]]
@@ -172,7 +172,7 @@ export default function Billing() {
                               {catName(r.s.category_id)} · {r.open.length ? r.open.map((f) => `${f.concept} ${monthName(f.period)}`).join(', ') : 'Al corriente'}
                             </p>
                             {r.late > 0 && <p className="text-xs text-bad">Incluye {money(r.late)} de recargo</p>}
-                            {!g && r.balance > 0 && <p className="text-xs text-warn">Falta WhatsApp del tutor</p>}
+                            {!g && r.balance > 0 && <p className="text-xs text-warn">Falta WhatsApp de papá o mamá</p>}
                           </div>
                         </Link>
                         <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">

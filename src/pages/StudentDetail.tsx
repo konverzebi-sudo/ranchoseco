@@ -20,7 +20,7 @@ import { CloseTrialModal } from '@/components/TrialModals'
 import { useToast } from '@/components/toast'
 import {
   useAccounts, useAttendanceDetail, useCategories, useCoaches, useCoachCategories, useEvaluations, useFees, useMatches, useMatchPlayers,
-  useMedical, usePayments, usePortalToken, useSettings, useSiblingGroups, useStudent, useStudents, useTrainings, portalUrl, primaryGuardian, type StudentRow,
+  useMedical, usePayments, usePortalToken, useSettings, useSiblingGroups, useStudent, useStudents, useTrainings, portalUrl, primaryGuardian, parentsOf, type StudentRow,
 } from '@/lib/api'
 import {
   ACCOUNT_LABEL, ATTENDANCE_LABEL, FEE_LABEL, METHOD_LABEL, STATUS_LABEL, age, date, money, monthName, prettyPhone, shortDate, time,
@@ -178,11 +178,22 @@ function GeneralTab({ s }: { s: StudentRow }) {
 
       <div className="space-y-5">
         <Card className="p-5">
-          <h3 className="mb-2 font-display text-lg font-bold uppercase tracking-wide text-brand">Tutor y emergencias</h3>
-          <InfoRow label="Tutor">{g ? `${g.full_name}${g.relationship ? ` (${g.relationship})` : ''}` : 'Sin capturar'}</InfoRow>
-          <InfoRow label="WhatsApp">
-            {g ? <a href={waLink(g.phone, `Hola ${g.full_name.split(' ')[0]}, te escribimos de Deportivo Rancho Seco.`)} target="_blank" rel="noopener noreferrer" className="text-wa hover:underline">{prettyPhone(g.phone)}</a> : '—'}
-          </InfoRow>
+          <h3 className="mb-2 font-display text-lg font-bold uppercase tracking-wide text-brand">Papá, mamá y emergencias</h3>
+          {(() => {
+            const par = parentsOf(s)
+            const row = (label: string, p: { full_name: string; phone: string; is_primary: boolean } | null) => (
+              <InfoRow label={label}>
+                {p ? <>{p.full_name}{' '}
+                  <a href={waLink(p.phone, `Hola ${p.full_name.split(' ')[0]}, te escribimos de Deportivo Rancho Seco.`)} target="_blank" rel="noopener noreferrer" className="ml-1 text-wa hover:underline">{prettyPhone(p.phone)}</a>
+                  {p.is_primary && par.all.length > 1 && <span className="ml-1 text-xs text-muted">(recibe avisos)</span>}</> : <span className="text-muted">Sin capturar</span>}
+              </InfoRow>
+            )
+            return <>
+              {row('Papá', par.papa)}
+              {row('Mamá', par.mama)}
+              {par.otros.map((o) => <div key={o.id}>{row(o.relationship || 'Otro tutor', o)}</div>)}
+            </>
+          })()}
           {g?.email && <InfoRow label="Correo">{g.email}</InfoRow>}
           <InfoRow label="Emergencia">{s.emergency_contact_name ? <>{s.emergency_contact_name} {s.emergency_contact_phone && <a href={`tel:${s.emergency_contact_phone}`} className="ml-1 inline-flex items-center gap-1 text-brand"><Phone className="h-3.5 w-3.5" />{s.emergency_contact_phone}</a>}</> : '—'}</InfoRow>
         </Card>
@@ -308,7 +319,7 @@ function PortalLinkCard({ s }: { s: StudentRow }) {
           <div className="truncate rounded-xl bg-ink-900 px-3 py-2.5 font-mono text-xs text-muted">{url}</div>
           <div className="mt-3 flex flex-wrap gap-2">
             {g && <a href={waLink(g.phone, text)} target="_blank" rel="noopener noreferrer"
-              className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-wa px-3 text-sm font-semibold text-ink hover:brightness-110"><MessageCircle className="h-4 w-4" /> Enviar al tutor</a>}
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-wa px-3 text-sm font-semibold text-ink hover:brightness-110"><MessageCircle className="h-4 w-4" /> Enviar a papá/mamá</a>}
             <Button size="sm" variant="secondary" icon={Copy} onClick={() => navigator.clipboard.writeText(url).then(() => toast.ok('Link copiado'))}>Copiar</Button>
             <Button size="sm" variant="ghost" onClick={() => window.open(url, '_blank', 'noopener')}>Ver como papá</Button>
             <Button size="sm" variant="ghost" icon={RefreshCw} onClick={() => setConfirm(true)}>Cambiar link</Button>

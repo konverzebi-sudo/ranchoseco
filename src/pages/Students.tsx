@@ -8,7 +8,7 @@ import StudentForm from '@/components/StudentForm'
 import { ScholarshipReviewModal } from '@/components/ScholarshipReview'
 import { PauseModal, ReactivateModal } from '@/components/InactiveModals'
 import { useToast } from '@/components/toast'
-import { useAccounts, useCategories, useFees, useStudents, primaryGuardian } from '@/lib/api'
+import { useAccounts, useCategories, useFees, useStudents, primaryGuardian, parentsOf } from '@/lib/api'
 import { PaymentModal } from '@/components/PaymentForms'
 import { ACCOUNT_LABEL, STATUS_LABEL, age, money, prettyPhone } from '@/lib/format'
 import { supabase, unwrap } from '@/lib/supabase'
@@ -78,19 +78,19 @@ export default function Students() {
       if (datos === 'completos' && !s.profile_completed_at) return false
       if (datos === 'faltan' && s.profile_completed_at) return false
       if (!nq) return true
-      const g = primaryGuardian(s)
+      const { all } = parentsOf(s)
       return (
         norm(s.full_name).includes(nq) ||
         norm(catMap.get(s.category_id ?? '') ?? '').includes(nq) ||
-        (g && norm(g.full_name).includes(nq)) ||
-        (digits.length >= 4 && g?.phone.includes(digits))
+        all.some((g) => norm(g.full_name).includes(nq)) ||
+        (digits.length >= 4 && all.some((g) => g.phone.includes(digits)))
       )
     })
     const byName = (a: (typeof list)[number], b: (typeof list)[number]) => a.full_name.localeCompare(b.full_name, 'es')
     const key = (s: (typeof list)[number]): number | string => {
       switch (sortKey) {
         case 'categoria': return s.category_id ? catOrder.get(s.category_id) ?? 98 : 99
-        case 'tutor': return norm(primaryGuardian(s)?.full_name ?? '~')
+        case 'tutor': { const p = parentsOf(s); return norm((p.mama ?? p.papa ?? primaryGuardian(s))?.full_name ?? '￿') }
         case 'estatus': return STATUS_ORDER[s.status] ?? 9
         case 'cuenta': { const a = accMap.get(s.id); return (ACCOUNT_ORDER[a?.status ?? 'al_corriente'] ?? 0) * 1e7 + Number(a?.balance ?? 0) }
         default: return norm(s.full_name)
@@ -127,11 +127,14 @@ export default function Students() {
 
   const doExport = () =>
     exportCsv('alumnos-rancho-seco.csv',
-      ['Nombre', 'Categoría', 'Fecha de nacimiento', 'Estatus', 'Tutor', 'Teléfono', 'Estado de cuenta', 'Saldo'],
+      ['Nombre', 'Categoría', 'Fecha de nacimiento', 'Estatus', 'Papá', 'Tel. papá', 'Mamá', 'Tel. mamá', 'Otro tutor', 'Tel. otro', 'Estado de cuenta', 'Saldo'],
       rows.map((s) => {
-        const g = primaryGuardian(s)
+        const { papa, mama, otros } = parentsOf(s)
         const a = accMap.get(s.id)
-        return [s.full_name, catMap.get(s.category_id ?? '') ?? '', s.birth_date, STATUS_LABEL[s.status], g?.full_name, g ? prettyPhone(g.phone) : '', ACCOUNT_LABEL[a?.status ?? 'al_corriente'], a?.balance ?? 0]
+        return [s.full_name, catMap.get(s.category_id ?? '') ?? '', s.birth_date, STATUS_LABEL[s.status],
+          papa?.full_name ?? '', papa ? prettyPhone(papa.phone) : '', mama?.full_name ?? '', mama ? prettyPhone(mama.phone) : '',
+          otros[0] ? `${otros[0].full_name}${otros[0].relationship ? ` (${otros[0].relationship})` : ''}` : '', otros[0] ? prettyPhone(otros[0].phone) : '',
+          ACCOUNT_LABEL[a?.status ?? 'al_corriente'], a?.balance ?? 0]
       }))
 
   return (
@@ -167,7 +170,7 @@ export default function Students() {
       })()}
 
       <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_180px_160px_180px]">
-        <SearchInput value={q} onChange={(v) => setParam('q', v)} placeholder="Nombre, categoría, tutor o teléfono" className="sm:col-span-2 lg:col-span-1" />
+        <SearchInput value={q} onChange={(v) => setParam('q', v)} placeholder="Nombre, categoría, papá, mamá o teléfono" className="sm:col-span-2 lg:col-span-1" />
         <Select value={cat} onChange={(e) => setParam('cat', e.target.value)} aria-label="Filtrar por categoría">
           <option value="">Todas las categorías</option>
           {categories.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -198,7 +201,7 @@ export default function Students() {
         <Select value={sortKey} onChange={(e) => toggleSort(e.target.value as SortKey)} className="h-9 flex-1 text-sm" aria-label="Ordenar por">
           <option value="nombre">Ordenar por nombre</option>
           <option value="categoria">Ordenar por categoría</option>
-          <option value="tutor">Ordenar por tutor</option>
+          <option value="tutor">Ordenar por papá/mamá</option>
           <option value="estatus">Ordenar por estatus</option>
           <option value="cuenta">Ordenar por estado de cuenta</option>
         </Select>
@@ -216,11 +219,11 @@ export default function Students() {
             <Card className="hidden overflow-hidden lg:block">
               <table className="table-base">
                 <thead>
-                  <tr><SortTh k="nombre">Alumno</SortTh><SortTh k="categoria">Categoría</SortTh><SortTh k="tutor">Tutor</SortTh><SortTh k="estatus">Estatus</SortTh><SortTh k="cuenta">Estado de cuenta</SortTh><th className="text-right">Acciones</th></tr>
+                  <tr><SortTh k="nombre">Alumno</SortTh><SortTh k="categoria">Categoría</SortTh><SortTh k="tutor">Papá y mamá</SortTh><SortTh k="estatus">Estatus</SortTh><SortTh k="cuenta">Estado de cuenta</SortTh><th className="text-right">Acciones</th></tr>
                 </thead>
                 <tbody>
                   {rows.map((s) => {
-                    const g = primaryGuardian(s)
+                    const par = parentsOf(s)
                     const a = accMap.get(s.id)
                     const ag = age(s.birth_date)
                     return (
@@ -241,7 +244,13 @@ export default function Students() {
                             {categories.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                           </Select>
                         </td>
-                        <td>{g ? <><p>{g.full_name}</p><p className="text-xs text-muted">{prettyPhone(g.phone)}</p></> : <span className="text-muted">Sin capturar</span>}</td>
+                        <td className="text-sm">
+                          {par.all.length === 0 ? <span className="text-muted">Sin capturar</span> : <>
+                            {par.papa && <p><span className="text-xs text-muted">Papá:</span> {par.papa.full_name} <span className="text-xs text-muted">{prettyPhone(par.papa.phone)}</span></p>}
+                            {par.mama && <p><span className="text-xs text-muted">Mamá:</span> {par.mama.full_name} <span className="text-xs text-muted">{prettyPhone(par.mama.phone)}</span></p>}
+                            {par.otros.map((o) => <p key={o.id}><span className="text-xs text-muted">{o.relationship || 'Tutor'}:</span> {o.full_name} <span className="text-xs text-muted">{prettyPhone(o.phone)}</span></p>)}
+                          </>}
+                        </td>
                         <td>
                           <Select value={s.status} onChange={(e) => {
                               const v = e.target.value as StudentStatus
