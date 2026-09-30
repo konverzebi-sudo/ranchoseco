@@ -90,4 +90,5 @@ export const STATUS_LABEL: Record<StudentStatus, string> = {
   activo: 'Activo',
   suspendido: 'Inactivo temporal',
   baja: 'Baja',
+  muestra: 'Clase muestra',
 }

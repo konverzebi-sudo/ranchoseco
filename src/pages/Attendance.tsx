@@ -55,7 +55,7 @@ function TakeAttendance() {
   const isExtra = !!categories.data?.find((c) => c.id === cat)?.is_extra
   const roster = useMemo(() => {
     const members = new Set((extras.data ?? []).filter((x) => x.category_id === cat).map((x) => x.student_id))
-    return (students.data ?? []).filter((s) => s.status === 'activo' && (isExtra ? members.has(s.id) : s.category_id === cat))
+    return (students.data ?? []).filter((s) => (s.status === 'activo' || s.status === 'muestra') && (isExtra ? members.has(s.id) : s.category_id === cat))
   }, [students.data, cat, isExtra, extras.data])
   const saved = useMemo(() => new Map((attendance.data ?? []).map((a) => [a.student_id, a.status])), [attendance.data])
   const statusOf = (id: string) => (id in local ? local[id] : saved.get(id)) ?? undefined
@@ -168,6 +168,7 @@ function TakeAttendance() {
                     <div className="mb-2.5 flex items-center gap-3">
                       <Avatar name={s.full_name} path={s.photo_path} size={40} />
                       <Link to={`/alumnos/${s.id}`} className="min-w-0 flex-1 truncate font-medium hover:text-brand">{s.full_name}</Link>
+                      {s.status === 'muestra' && <Badge tone="info">Clase muestra</Badge>}
                       {pending.has(s.id) ? <Loader2 className="h-4 w-4 animate-spin text-muted" /> : st && <Check className="h-4 w-4 text-ok" aria-label="Guardado" />}
                     </div>
                     <div className="grid grid-cols-4 gap-1.5">

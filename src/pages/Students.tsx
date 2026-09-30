@@ -18,7 +18,7 @@ import { monthLabel } from '@/components/FinanceModules'
 import type { AccountStatus, FeeBalance, StudentStatus } from '@/lib/types'
 
 type SortKey = 'nombre' | 'categoria' | 'tutor' | 'estatus' | 'cuenta'
-const STATUS_ORDER: Record<string, number> = { activo: 0, suspendido: 1, baja: 2 }
+const STATUS_ORDER: Record<string, number> = { activo: 0, muestra: 1, suspendido: 2, baja: 3 }
 const ACCOUNT_ORDER: Record<string, number> = { al_corriente: 0, pendiente: 1, por_confirmar: 2, vencido: 3 }
 
 const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
@@ -175,6 +175,7 @@ export default function Students() {
         </Select>
         <Select value={status} onChange={(e) => setParam('st', e.target.value === 'activo' ? '' : e.target.value || 'todos')} aria-label="Filtrar por estatus">
           <option value="activo">Activos</option>
+          <option value="muestra">Clases muestra</option>
           <option value="suspendido">Inactivos temporales</option>
           <option value="baja">Bajas</option>
           <option value="">Todos</option>
@@ -249,7 +250,7 @@ export default function Students() {
                               inlineUpdate(s.id, { status: v })
                             }}
                             className="h-9 w-32 text-sm" aria-label={`Estatus de ${s.full_name}`}>
-                            <option value="activo">Activo</option><option value="suspendido">Inactivo temporal</option><option value="baja">Baja</option>
+                            <option value="activo">Activo</option><option value="muestra">Clase muestra</option><option value="suspendido">Inactivo temporal</option><option value="baja">Baja</option>
                           </Select>
                         </td>
                         <td>
@@ -292,6 +293,7 @@ export default function Students() {
                           <p className="flex items-center gap-1.5 truncate font-medium">{s.full_name}{s.profile_completed_at && <CheckCircle2 className="h-4 w-4 shrink-0 text-ok" aria-label="Datos completos" />}</p>
                           <div className="mt-1 flex flex-wrap items-center gap-1.5">
                             <span className="text-xs text-muted">{catMap.get(s.category_id ?? '') ?? 'Sin categoría'}</span>
+                            {s.status === 'muestra' && <Badge tone="info">Clase muestra</Badge>}
                             {a && a.status === 'por_confirmar' && reviewFee(s.id)
                               ? <button onClick={(e) => { e.preventDefault(); openReview(s.id, s.full_name) }}><Badge tone="warn" className="underline decoration-dotted">¿Beca? {money(a.balance)}</Badge></button>
                               : a && a.status !== 'al_corriente' && <button onClick={(e) => { e.preventDefault(); setPaying(s) }}><Badge tone={feeTone(a.status)} className="underline decoration-dotted">{money(a.balance)}</Badge></button>}

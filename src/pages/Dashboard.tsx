@@ -6,9 +6,10 @@ import { Avatar, Button, Card, ErrorState, PageHeader, Spinner, StatCard, Badge 
 import { CollectButton } from '@/components/WhatsAppButtons'
 import FinanceModules from '@/components/FinanceModules'
 import { PayInstallmentModal } from '@/components/Installments'
+import { CloseTrialModal } from '@/components/TrialModals'
 import { pendingInstallments } from '@/lib/finance'
 import type { Expense, ExpenseInstallment } from '@/lib/types'
-import { useAccounts, useCategories, useCoaches, useFees, useMatches, usePayments, useSiblingGroups, useExtraClasses, useStudents, useTrainings, useAttendanceDetail, useExpenses } from '@/lib/api'
+import { useAccounts, useCategories, useCoaches, useFees, useMatches, usePayments, useSiblingGroups, useExtraClasses, useStudents, useTrainings, useAttendanceDetail, useExpenses, type StudentRow } from '@/lib/api'
 import { promoStatus } from '@/lib/siblings'
 import { date, money, time, toISODate, today } from '@/lib/format'
 import { consecutiveAbsences } from '@/lib/stats'
@@ -29,6 +30,7 @@ export default function Dashboard() {
   const extraClasses = useExtraClasses()
   const expenses = useExpenses()
   const [paying, setPaying] = useState<{ expense: Expense; inst: ExpenseInstallment } | null>(null)
+  const [closing, setClosing] = useState<StudentRow | null>(null)
   const weekEnd = toISODate(endOfWeek(new Date(), { weekStartsOn: 1 }))
   const dueTasks = pendingInstallments(expenses.data ?? [], weekEnd)
   const recentAtt = useAttendanceDetail({ from: toISODate(new Date(Date.now() - 60 * 86400_000)) })
@@ -61,6 +63,7 @@ export default function Dashboard() {
     return { promoAlerts, active, byCategory, noCat, todayAtt, present, openFees, pendingTotal, lateFees, extras, reviewTotal, collected, overdueStudents, absent }
   }, [students.data, categories.data, recentAtt.data, fees.data, payments.data, accounts.data, t, monthStart, siblingGroups.data, extraClasses.data])
 
+  const trials = (students.data ?? []).filter((s) => s.status === 'muestra')
   const loading = students.isLoading || accounts.isLoading || fees.isLoading
   const error = students.error || accounts.error || fees.error || categories.error
   if (error) return <><PageHeader title="Dashboard" /><ErrorState error={error} onRetry={() => { students.refetch(); accounts.refetch(); fees.refetch(); categories.refetch() }} /></>
@@ -102,10 +105,20 @@ export default function Dashboard() {
                 <h2 className="font-display text-lg font-bold uppercase tracking-wide">Requieren atención</h2>
                 <Link to="/cobranza?f=vencido" className="text-sm text-brand hover:underline">Ver cobranza</Link>
               </div>
-              {data.overdueStudents.length === 0 && data.absent.length === 0 && data.promoAlerts.length === 0 && dueTasks.length === 0 ? (
+              {data.overdueStudents.length === 0 && data.absent.length === 0 && data.promoAlerts.length === 0 && dueTasks.length === 0 && trials.length === 0 ? (
                 <p className="px-5 py-8 text-center text-sm text-muted">Todo en orden: sin pagos vencidos ni faltas seguidas.</p>
               ) : (
                 <ul className="divide-y divide-ink-700">
+                  {trials.map((s) => (
+                    <li key={'m' + s.id} className="flex items-center gap-3 px-5 py-3">
+                      <Avatar name={s.full_name} path={s.photo_path} size={36} />
+                      <Link to={`/alumnos/${s.id}`} className="min-w-0 flex-1">
+                        <p className="truncate font-medium">{s.full_name}</p>
+                        <p className="text-xs text-muted">Clase muestra{s.trial_on ? ` del ${date(s.trial_on, 'd MMM')}` : ''} · {catName(s.category_id ?? '')} · pendiente de cerrar registro</p>
+                      </Link>
+                      <Button size="sm" onClick={() => setClosing(s)}>Cerrar registro</Button>
+                    </li>
+                  ))}
                   {dueTasks.map(({ expense: e, inst, label }) => (
                     <li key={'i' + inst.id} className="flex items-center gap-3 px-5 py-3">
                       <div className={`rounded-full p-2 ${inst.due_date < t ? 'bg-bad/15' : 'bg-warn/15'}`}><CalendarClock className={`h-4 w-4 ${inst.due_date < t ? 'text-bad' : 'text-warn'}`} /></div>
@@ -179,6 +192,7 @@ export default function Dashboard() {
           </div>
 
           {paying && <PayInstallmentModal expense={paying.expense} inst={paying.inst} onClose={() => setPaying(null)} />}
+          {closing && <CloseTrialModal student={closing} onClose={() => setClosing(null)} />}
           <Card>
             <div className="flex items-center justify-between border-b border-ink-600 px-5 py-4">
               <h2 className="font-display text-lg font-bold uppercase tracking-wide">Próximas actividades</h2>

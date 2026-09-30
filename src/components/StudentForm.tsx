@@ -83,6 +83,7 @@ export default function StudentForm({ student, defaultCategory, onClose, onSaved
         coach_id: f.coach_id || null,
         enrolled_at: f.enrolled_at || today(),
         status: f.status,
+        trial_on: f.status === 'muestra' ? student?.trial_on ?? f.enrolled_at ?? today() : student?.trial_on ?? null,
         emergency_contact_name: f.emergency_contact_name.trim() || null,
         emergency_contact_phone: f.emergency_contact_phone.trim() || null,
         notes: f.notes.trim() || null,
@@ -128,6 +129,17 @@ export default function StudentForm({ student, defaultCategory, onClose, onSaved
           </label>
         </div>
 
+        {!student && (
+          <div className="grid grid-cols-2 gap-2" role="group" aria-label="Tipo de alta">
+            {([['activo', 'Inscripción', 'Se queda como alumno activo'], ['muestra', 'Clase muestra', 'Viene a probar; su registro queda pendiente']] as const).map(([v, label, text]) => (
+              <button type="button" key={v} onClick={() => setF({ ...f, status: v })} aria-pressed={f.status === v}
+                className={`rounded-xl border p-3 text-left ${f.status === v ? 'border-brand bg-brand-dim' : 'border-ink-600 hover:border-ink-500'}`}>
+                <p className="font-semibold">{label}</p><p className="text-xs text-muted">{text}</p>
+              </button>
+            ))}
+          </div>
+        )}
+
         <section className="grid gap-4 sm:grid-cols-2">
           <Field label="Nombre completo *" error={errors.full_name} className="sm:col-span-2">
             <Input value={f.full_name} onChange={set('full_name')} autoFocus={!student} placeholder="Nombre y apellidos" />
@@ -147,7 +159,7 @@ export default function StudentForm({ student, defaultCategory, onClose, onSaved
               {coaches?.filter((c) => c.active || c.id === f.coach_id).map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
             </Select>
           </Field>
-          <Field label="Fecha de inscripción">
+          <Field label={f.status === 'muestra' ? 'Fecha de la clase muestra' : 'Fecha de inscripción'}>
             <Input type="date" value={f.enrolled_at} onChange={set('enrolled_at')} />
           </Field>
           <Field label="Cuota especial (beca)" hint="Vacío = cuota normal de su categoría. Ej. 300 si tiene beca parcial; 0 si es beca completa.">
@@ -158,6 +170,7 @@ export default function StudentForm({ student, defaultCategory, onClose, onSaved
               <option value="activo">Activo</option>
               <option value="suspendido">Inactivo temporal</option>
               <option value="baja">Baja</option>
+              <option value="muestra">Clase muestra (pendiente de inscribir)</option>
             </Select>
           </Field>
         </section>

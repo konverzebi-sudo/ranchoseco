@@ -62,6 +62,7 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase/migrations/0015_registro_papas.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0016_sueldos_gastos_partidos.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0017_pagos_de_gastos.sql', 'utf8'))
+  await db.exec(readFileSync('supabase/migrations/0018_clase_muestra.sql', 'utf8'))
   await db.exec('update academia.settings set open_mode = false') // las pruebas por rol corren con el sitio cerrado
 
   const users: [string, string, string][] = [
@@ -406,6 +407,16 @@ describe('gastos generales', () => {
       { n: 2, due_date: '2026-11-01', amount: '2250.00', paid_on: null },
     ])
     expect(await count(COACH_A, 'academia.expense_installments')).toBe(0)
+  })
+})
+
+describe('clase muestra', () => {
+  it('un niño en clase muestra se registra y se le puede pasar lista', async () => {
+    const id = (await db.query<{ id: string }>(`insert into academia.students (full_name, category_id, status, trial_on) values ('Niño Prueba', $1, 'muestra', '2026-09-30') returning id`, [CAT_A])).rows[0].id
+    await db.query(`insert into academia.attendance (training_id, student_id, status) values ($1, $2, 'presente')`, [TR_A, id])
+    const r = (await db.query<{ status: string }>(`select status::text from academia.students where id = $1`, [id])).rows[0]
+    expect(r.status).toBe('muestra')
+    await db.query(`delete from academia.students where id = $1`, [id])
   })
 })
 

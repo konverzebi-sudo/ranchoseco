@@ -16,6 +16,7 @@ import ReportPanel from '@/components/ReportPanel'
 import { ScholarshipReviewModal } from '@/components/ScholarshipReview'
 import { CouponModal } from '@/components/CouponModal'
 import { PauseModal, ReactivateModal } from '@/components/InactiveModals'
+import { CloseTrialModal } from '@/components/TrialModals'
 import { useToast } from '@/components/toast'
 import {
   useAccounts, useAttendanceDetail, useCategories, useCoaches, useCoachCategories, useEvaluations, useFees, useMatches, useMatchPlayers,
@@ -109,6 +110,7 @@ function GeneralTab({ s }: { s: StudentRow }) {
   const toast = useToast()
   const [confirmBaja, setConfirmBaja] = useState(false)
   const [pause, setPause] = useState<'pause' | 'back' | null>(null)
+  const [closingTrial, setClosingTrial] = useState(false)
   const [saving, setSaving] = useState(false)
   const g = primaryGuardian(s)
   const coachIds = s.coach_id ? [s.coach_id] : (cc ?? []).filter((x) => x.category_id === s.category_id).map((x) => x.coach_id)
@@ -145,6 +147,17 @@ function GeneralTab({ s }: { s: StudentRow }) {
                 }}>Permitir volver a llenar</button></span>
             : <span className="text-warn">Faltan (se llenan con el link de registro)</span>}
         </InfoRow>
+        {s.status === 'muestra' && (
+          <div className="mt-3 rounded-xl border border-info/40 bg-info/10 p-3 text-sm">
+            <p className="font-semibold text-info">Clase muestra{s.trial_on ? ` · ${date(s.trial_on)}` : ''}</p>
+            <p className="text-muted">Su registro está pendiente. No se le cobra hasta que se inscriba.</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button size="sm" onClick={() => setClosingTrial(true)}>Cerrar registro (inscribir)</Button>
+              <Button size="sm" variant="ghost" onClick={() => setConfirmBaja(true)}>No se quedó</Button>
+            </div>
+            {closingTrial && <CloseTrialModal student={s} onClose={() => setClosingTrial(false)} />}
+          </div>
+        )}
         {s.status === 'suspendido' && (
           <div className="mt-3 rounded-xl border border-warn/40 bg-warn/10 p-3 text-sm">
             <p className="font-semibold text-warn">Inactivo temporal{s.inactive_reason ? ` · ${s.inactive_reason}` : ''}</p>

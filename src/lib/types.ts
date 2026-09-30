@@ -1,4 +1,4 @@
-export type StudentStatus = 'activo' | 'suspendido' | 'baja'
+export type StudentStatus = 'activo' | 'suspendido' | 'baja' | 'muestra'
 export type AttendanceStatus = 'presente' | 'falta' | 'justificada' | 'retardo'
 export type PaymentMethod = 'efectivo' | 'transferencia' | 'tarjeta' | 'deposito' | 'otro'
 export type FeeStatus = 'pagado' | 'pendiente' | 'vencido' | 'parcial' | 'por_confirmar'
@@ -138,6 +138,8 @@ export interface Student {
   inactive_until: string | null
   inactive_reason: string | null
   profile_completed_at: string | null
+  /** Día de su clase muestra (si vino a probar) */
+  trial_on?: string | null
   profile_completed_by: string | null
   created_at: string
 }
