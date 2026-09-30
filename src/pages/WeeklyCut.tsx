@@ -74,6 +74,8 @@ export default function WeeklyCut() {
   const savedNow = (f: SavingFund) => (f.key in saveAmt ? Number(saveAmt[f.key]) || 0 : 0)
   const savingsTotal = funds.reduce((a, f) => a + savedNow(f), 0)
   const suggestedTotal = funds.reduce((a, f) => a + f.suggested, 0)
+  // Lo apartado en cortes anteriores para pagos que todavía no se hacen
+  const savedBefore = funds.reduce((a, f) => a + f.saved, 0)
 
   // Caja
   const expected = carry + tot.income - tot.outflow
@@ -245,11 +247,13 @@ export default function WeeklyCut() {
 
       {loading ? <Spinner /> : (
         <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
             <StatCard label="Entró" value={cents(tot.income)} icon={TrendingUp} tone="ok" hint={byMethod.map(([m, v]) => `${METHOD_LABEL[m]} ${cents(v)}`).join(' · ') || 'Palomea las entradas para contarlas'} />
             <StatCard label="Salió" value={cents(tot.outflow)} icon={TrendingDown} tone="bad" hint="Sueldos, gastos y pagos de préstamos" />
             <StatCard label="Resultado de estas fechas" value={cents(tot.income - tot.outflow)} icon={Scale} tone={tot.income >= tot.outflow ? 'ok' : 'bad'} hint={tot.income >= tot.outflow ? 'Entró más de lo que salió (sin contar la caja chica)' : 'Salió más de lo que entró (sin contar la caja chica)'} />
             <StatCard label="Debería haber en caja" value={cents(expected)} icon={Banknote} tone="brand" hint={`Caja chica anterior ${cents(carry)} + lo que queda`} />
+            <StatCard label="Debería haber en ahorro" value={cents(savedBefore + savingsTotal)} icon={PiggyBank} tone="ok"
+              hint={`Ya apartado ${cents(savedBefore)}${savingsTotal > 0 ? ` + hoy ${cents(savingsTotal)}` : ''} · para pagos que aún no se hacen`} />
           </div>
 
           <div className="grid gap-6 xl:grid-cols-2">
