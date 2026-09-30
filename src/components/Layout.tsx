@@ -1,10 +1,10 @@
-import { useState, useEffect, type FormEvent } from 'react'
+import { Suspense, useState, useEffect, type FormEvent } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Layers, UserCog, ClipboardCheck, Wallet, Receipt, GraduationCap, Dumbbell, Trophy, CalendarDays,
   FileText, Settings, Menu, X, Search, Scale,
 } from 'lucide-react'
-import { cx } from './ui'
+import { Spinner, cx } from './ui'
 
 export const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -90,7 +90,7 @@ export default function Layout() {
       </header>
 
       <main className="min-w-0 flex-1 px-4 pb-28 pt-5 sm:px-6 lg:px-8 lg:pb-10 lg:pt-8">
-        <div className="mx-auto max-w-7xl"><Outlet /></div>
+        <div className="mx-auto max-w-7xl"><Suspense fallback={<Spinner />}><Outlet /></Suspense></div>
       </main>
 
       {/* Barra inferior celular */}

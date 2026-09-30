@@ -1,5 +1,5 @@
 import { addDays } from 'date-fns'
-import { expenseEntries, loansReceived } from './finance'
+import { expenseEntries, installmentLabel, installmentsOf, isLoan, loanStatus, loansReceived } from './finance'
 import { toISODate } from './format'
 import type { CashCut, CoachPay, Expense, FeeBalance, Payment, PaymentMethod } from './types'
 
@@ -53,4 +53,111 @@ export function periodSummary(opts: {
     cashIn: byMethod.get('efectivo')?.total ?? 0,
     byMethod: [...byMethod.entries()], byKind: [...byKind.entries()].sort((a, b) => b[1].total - a[1].total),
   }
+}
+
+// ---------------------------------------------------------------------
+// Revisión de cada línea del corte y sugerencias de ahorro
+// ---------------------------------------------------------------------
+
+/** Una entrada o salida del corte: se aprueba con ✓ o se corrige con nota. */
+export interface CutItem {
+  key: string
+  type: 'entrada' | 'salida'
+  date: string
+  concept: string
+  detail: string
+  amount: number
+  approved: boolean
+  adjusted: number | null
+  note: string
+}
+export const itemValue = (i: Pick<CutItem, 'amount' | 'adjusted'>) => (i.adjusted ?? i.amount)
+
+/** Líneas del corte a partir del resumen del periodo (conserva lo ya revisado por clave). */
+export function buildItems(d: ReturnType<typeof periodSummary>, prev: CutItem[] = []): CutItem[] {
+  const kept = new Map(prev.map((i) => [i.key, i]))
+  const base: Omit<CutItem, 'approved' | 'adjusted' | 'note'>[] = [
+    ...d.ins.map((p) => ({ key: `p:${p.id}`, type: 'entrada' as const, date: p.day, concept: p.student, detail: `${p.concept} · ${p.method}`, amount: Number(p.amount) })),
+    ...d.loans.map((e) => ({ key: `l:${e.id}`, type: 'entrada' as const, date: e.received_on ?? '', concept: `Préstamo de ${e.lender ?? ''}`.trim(), detail: 'Préstamo recibido', amount: Number(e.amount) })),
+    ...d.outs.map((e) => ({ key: `o:${e.date}:${e.name}:${e.detail}`, type: 'salida' as const, date: e.date, concept: e.name, detail: e.detail, amount: e.amount })),
+  ]
+  return base.map((b) => {
+    const k = kept.get(b.key)
+    return { ...b, approved: k?.approved ?? false, adjusted: k?.adjusted ?? null, note: k?.note ?? '' }
+  })
+}
+
+export function itemTotals(items: CutItem[]) {
+  const sum = (t: CutItem['type']) => items.filter((i) => i.type === t).reduce((a, i) => a + itemValue(i), 0)
+  return { income: sum('entrada'), outflow: sum('salida'), pending: items.filter((i) => !i.approved).length, adjusted: items.filter((i) => i.adjusted != null).length }
+}
+
+/** Algo que hay que ir juntando: un gasto grande, una parte pendiente o un pago de préstamo. */
+export interface SavingFund {
+  key: string
+  name: string
+  kind: 'fijo' | 'seguro' | 'parte' | 'prestamo'
+  target: number
+  due: string
+  /** Lo que ya se apartó en cortes anteriores para este mismo pago */
+  saved: number
+  weeksLeft: number
+  suggested: number
+  debt?: { total: number; paid: number }
+}
+
+const DAY = 86_400_000
+const toDate = (d: string) => new Date(d + 'T12:00:00')
+
+/** Siguiente fecha de pago (después del corte) de un gasto fijo. */
+function nextDue(e: Expense, after: string): string | null {
+  const a = toDate(after)
+  const iso = (y: number, m: number, d: number) => toISODate(new Date(y, m, d, 12))
+  if (e.frequency === 'mensual') return iso(a.getFullYear(), a.getMonth() + 1, 1)
+  if (e.frequency === 'quincenal') {
+    const last = new Date(a.getFullYear(), a.getMonth() + 1, 0).getDate()
+    return a.getDate() < 15 ? iso(a.getFullYear(), a.getMonth(), 15) : a.getDate() < last ? iso(a.getFullYear(), a.getMonth(), last) : iso(a.getFullYear(), a.getMonth() + 1, 15)
+  }
+  if (e.frequency === 'anual') {
+    const m = (e.paid_month ?? 1) - 1
+    const thisYear = iso(a.getFullYear(), m, 1)
+    return thisYear > after ? thisYear : iso(a.getFullYear() + 1, m, 1)
+  }
+  return null
+}
+
+/**
+ * Sugerencias de ahorro para el corte: lo que falta de cada pago grande
+ * se reparte entre las semanas que quedan (Regalías $7,500 a 4 semanas = $1,875 por semana).
+ */
+export function savingFunds(opts: { cutDate: string; expenses: Expense[]; cuts: Pick<CashCut, 'id' | 'savings'>[]; excludeCut?: string }): SavingFund[] {
+  const { cutDate, expenses, cuts, excludeCut } = opts
+  const savedFor = (key: string) => cuts.filter((c) => c.id !== excludeCut)
+    .flatMap((c) => c.savings ?? []).filter((s) => s.key === key).reduce((a, s) => a + Number(s.saved), 0)
+  const fund = (f: Omit<SavingFund, 'saved' | 'weeksLeft' | 'suggested'>): SavingFund => {
+    const saved = savedFor(f.key)
+    const weeksLeft = Math.max(1, Math.ceil((toDate(f.due).getTime() - toDate(cutDate).getTime()) / (7 * DAY)))
+    const suggested = Math.max(0, Math.round(((f.target - saved) / weeksLeft) * 100) / 100)
+    return { ...f, saved, weeksLeft, suggested }
+  }
+  const out: SavingFund[] = []
+  for (const e of expenses) {
+    if (!e.active) continue
+    if (!isLoan(e) && ['mensual', 'quincenal', 'anual'].includes(e.frequency)) {
+      const due = nextDue(e, cutDate)
+      if (due) out.push(fund({ key: `f:${e.id}:${due}`, name: e.name, kind: /seguro/i.test(e.name) ? 'seguro' : 'fijo', target: Number(e.amount), due }))
+      continue
+    }
+    const next = (installmentsOf(e) ?? []).find((i) => !i.paid_on)
+    if (!next) continue
+    const label = installmentLabel(next, installmentsOf(e)!)
+    if (isLoan(e)) {
+      const st = loanStatus(e)
+      out.push(fund({ key: `i:${next.id}`, name: `Préstamo de ${e.lender ?? e.name} · ${label}`, kind: 'prestamo', target: Number(next.amount), due: next.due_date, debt: { total: st.total, paid: st.paid } }))
+    } else {
+      out.push(fund({ key: `i:${next.id}`, name: `${e.name} · ${label}`, kind: 'parte', target: Number(next.amount), due: next.due_date }))
+    }
+  }
+  const order = { fijo: 0, seguro: 1, parte: 2, prestamo: 3 }
+  return out.sort((a, b) => order[a.kind] - order[b.kind] || a.due.localeCompare(b.due))
 }

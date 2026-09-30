@@ -13,25 +13,26 @@ import { ToastProvider } from './components/toast'
 import { Spinner } from './components/ui'
 import { isConfigured } from './lib/supabase'
 import SetupNeeded from './pages/SetupNeeded'
-import Dashboard from './pages/Dashboard'
-import Students from './pages/Students'
-import StudentDetail from './pages/StudentDetail'
-import AttendancePage from './pages/Attendance'
-import Billing from './pages/Billing'
-import Expenses from './pages/Expenses'
-import ExpenseBreakdown from './pages/ExpenseBreakdown'
-import WeeklyCut from './pages/WeeklyCut'
-import Scholarships from './pages/Scholarships'
-import Categories from './pages/Categories'
-import Coaches from './pages/Coaches'
-import Trainings from './pages/Trainings'
-import Matches from './pages/Matches'
-import MatchDetail from './pages/MatchDetail'
-import CalendarPage from './pages/Calendar'
-import Reports from './pages/Reports'
-import SettingsPage from './pages/SettingsPage'
-import NotFound from './pages/NotFound'
 
+// Cada sección se descarga sólo cuando se abre, para que la primera carga en el celular sea rápida.
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Students = lazy(() => import('./pages/Students'))
+const StudentDetail = lazy(() => import('./pages/StudentDetail'))
+const AttendancePage = lazy(() => import('./pages/Attendance'))
+const Billing = lazy(() => import('./pages/Billing'))
+const Expenses = lazy(() => import('./pages/Expenses'))
+const ExpenseBreakdown = lazy(() => import('./pages/ExpenseBreakdown'))
+const WeeklyCut = lazy(() => import('./pages/WeeklyCut'))
+const Scholarships = lazy(() => import('./pages/Scholarships'))
+const Categories = lazy(() => import('./pages/Categories'))
+const Coaches = lazy(() => import('./pages/Coaches'))
+const Trainings = lazy(() => import('./pages/Trainings'))
+const Matches = lazy(() => import('./pages/Matches'))
+const MatchDetail = lazy(() => import('./pages/MatchDetail'))
+const CalendarPage = lazy(() => import('./pages/Calendar'))
+const Reports = lazy(() => import('./pages/Reports'))
+const SettingsPage = lazy(() => import('./pages/SettingsPage'))
+const NotFound = lazy(() => import('./pages/NotFound'))
 // El portal para padres se carga por separado para que abra rápido en el celular.
 const Portal = lazy(() => import('./pages/Portal'))
 const Registro = lazy(() => import('./pages/Registro'))

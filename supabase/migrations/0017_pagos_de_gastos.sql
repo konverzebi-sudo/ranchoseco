@@ -69,6 +69,8 @@ create table if not exists academia.cash_cuts (
   outflow       numeric(12,2) not null default 0,   -- pagos del periodo (sueldos, gastos, préstamos)
   counted       numeric(12,2) not null default 0,   -- dinero contado al hacer el corte
   distribution  jsonb not null default '[]'::jsonb, -- [{ "to": "Caja chica", "amount": 2000 }, …]
+  items         jsonb not null default '[]'::jsonb, -- entradas y salidas revisadas: aprobada, monto corregido y nota
+  savings       jsonb not null default '[]'::jsonb, -- ahorros apartados: [{ "key", "name", "target", "due", "suggested", "saved", "note" }]
   notes         text,
   created_at    timestamptz not null default now(),
   check (period_to >= period_from)
