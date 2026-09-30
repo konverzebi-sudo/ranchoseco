@@ -1,6 +1,8 @@
 import type { Category, CoachPay, Expense, ExpenseInstallment, FeeBalance, Payment } from './types'
 
 export const isLoan = (e: Pick<Expense, 'kind'>) => e.kind === 'prestamo'
+/** ¿Este gasto fijo no se paga en ese mes? (p. ej. Regalías en julio y agosto) */
+export const skipsMonth = (e: Pick<Expense, 'skip_months'>, month: number) => (e.skip_months ?? []).map(Number).includes(month)
 
 /** Pagos registrados de un gasto en partes, en orden (o null si aún no tiene). */
 export function installmentsOf(e: Pick<Expense, 'expense_installments'>) {
@@ -77,9 +79,10 @@ export function installmentPlan(e: Pick<Expense, 'amount' | 'down_payment' | 'in
  * Único: completo en el mes en que se pagó.
  * En partes: el anticipo o el pago que cae en ese mes.
  */
-export function expenseForMonth(e: Pick<Expense, 'amount' | 'frequency' | 'paid_month' | 'paid_year' | 'active' | 'down_payment' | 'installments' | 'expense_installments' | 'kind'>, month: string) {
+export function expenseForMonth(e: Pick<Expense, 'amount' | 'frequency' | 'paid_month' | 'paid_year' | 'active' | 'down_payment' | 'installments' | 'expense_installments' | 'kind' | 'skip_months'>, month: string) {
   // Los préstamos no son gasto de operación (se devuelve dinero que ya entró)
   if (!e.active || isLoan(e)) return 0
+  if (e.frequency !== 'unico' && e.frequency !== 'partes' && e.frequency !== 'anual' && skipsMonth(e, Number(month.slice(5, 7)))) return 0
   const a = Number(e.amount)
   switch (e.frequency) {
     case 'semanal': return a * WEEKS_PER_MONTH
@@ -276,7 +279,8 @@ export function expenseEntries(opts: {
     const onDay = e.paid_on && e.paid_on.startsWith(month) ? Number(e.paid_on.slice(8, 10)) : 1
     switch (e.frequency) {
       case 'semanal': case 'quincenal': case 'mensual':
-        recurring(e.name, a, e.frequency, 'fijo', 'Gasto fijo'); break
+        if (!skipsMonth(e, m)) recurring(e.name, a, e.frequency, 'fijo', 'Gasto fijo')
+        break
       case 'anual':
         if (e.paid_month === m) out.push({ date: day(1), name: e.name, amount: a, kind: 'fijo', detail: 'Pago anual' }); break
       case 'unico':

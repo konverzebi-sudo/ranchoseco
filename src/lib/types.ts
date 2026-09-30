@@ -105,6 +105,8 @@ export interface Expense {
   notes: string | null
   /** Pagos de un gasto en partes (cada uno con su fecha y si ya se pagó). */
   expense_installments?: ExpenseInstallment[]
+  /** Gastos fijos: meses (1-12) en que no se paga, p. ej. Regalías en julio y agosto */
+  skip_months?: number[]
   /** 'prestamo' = dinero que le prestaron a Rancho Seco (sus pagos son para devolverlo) */
   kind?: 'gasto' | 'prestamo'
   /** Préstamos: quién prestó y cuándo llegó el dinero */

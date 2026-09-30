@@ -85,3 +85,11 @@ describe('caja de ahorro', () => {
     expect(box.saved).toBe(1800)
   })
 })
+
+describe('ahorro con meses sin pago', () => {
+  it('en junio el siguiente pago de Regalías es septiembre', () => {
+    const regalias = exp({ id: 'r', name: 'Regalías Chivas', amount: 7500, frequency: 'mensual', skip_months: [7, 8] })
+    const [f] = savingFunds({ cutDate: '2027-06-09', expenses: [regalias], cuts: [] })
+    expect(f.due).toBe('2027-09-01')
+  })
+})

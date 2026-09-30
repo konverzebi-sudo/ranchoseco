@@ -182,7 +182,7 @@ export default function Expenses() {
                   <tr key={e.id} className={cx(!e.active && 'opacity-50')}>
                     <td><button onClick={() => setModal({ mode: 'fijo', expense: e })} className="text-left font-medium hover:text-brand">{e.name}</button>
                       {e.notes && <p className="text-xs text-muted">{e.notes}</p>}</td>
-                    <td>{money(e.amount)} <span className="text-xs text-muted">{EXPENSE_FREQUENCY[e.frequency].per}{e.frequency === 'anual' && e.paid_month ? ` · se paga en ${MONTHS[e.paid_month - 1].toLowerCase()}` : ''}</span></td>
+                    <td>{money(e.amount)} <span className="text-xs text-muted">{EXPENSE_FREQUENCY[e.frequency].per}{e.frequency === 'anual' && e.paid_month ? ` · se paga en ${MONTHS[e.paid_month - 1].toLowerCase()}` : ''}{e.skip_months?.length ? ` · no se paga en ${e.skip_months.map((m) => MONTHS[Number(m) - 1].slice(0, 3).toLowerCase()).join(', ')}` : ''}</span></td>
                     <td>{money(Math.round(monthly))}</td>
                     <td>{activeCount ? <>{cents(Number(e.amount) / activeCount)} <span className="text-xs text-muted">{EXPENSE_FREQUENCY[e.frequency].per}</span></> : '—'}</td>
                     <td>{rowActions(e, 'fijo')}</td>
@@ -281,6 +281,7 @@ function ExpenseModal({ mode, expense, defaultMonth, onClose, nextOrder, onPayIn
     paid_month: expense?.paid_month ?? Number(today().slice(5, 7)), day: initDate,
     down: expense?.down_payment != null ? String(expense.down_payment) : '', installments: String(expense?.installments ?? 2),
     notes: expense?.notes ?? '', active: expense?.active ?? true,
+    skip: (expense?.skip_months ?? []).map(Number),
   })
   // Calendario editable de un gasto nuevo en partes: fecha y monto de cada pago
   const [edits, setEdits] = useState<Record<number, { date?: string; amount?: string }>>({})
@@ -328,6 +329,7 @@ function ExpenseModal({ mode, expense, defaultMonth, onClose, nextOrder, onPayIn
           down_payment: isPlan ? Number(f.down) || 0 : null,
           installments: isPlan ? Math.round(Number(f.installments)) : null,
           notes: f.notes.trim() || null, active: f.active,
+          skip_months: ['semanal', 'quincenal', 'mensual'].includes(f.frequency) ? f.skip : [],
         }
     try {
       let id = expense?.id
@@ -376,6 +378,19 @@ function ExpenseModal({ mode, expense, defaultMonth, onClose, nextOrder, onPayIn
               </Select>
             </Field>
           </div>
+        )}
+        {['semanal', 'quincenal', 'mensual'].includes(f.frequency) && (
+          <Field label="¿En qué meses NO se paga?" hint={f.skip.length ? `Se paga ${12 - f.skip.length} meses al año` : 'Toca los meses en que no se paga (por ejemplo, julio y agosto)'}>
+            <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+              {MONTHS.map((m, i) => {
+                const off = f.skip.includes(i + 1)
+                return (
+                  <button type="button" key={m} aria-pressed={off} onClick={() => setF({ ...f, skip: off ? f.skip.filter((x) => x !== i + 1) : [...f.skip, i + 1].sort((a, b) => a - b) })}
+                    className={cx('rounded-lg border px-2 py-1.5 text-xs', off ? 'border-bad bg-bad/10 text-bad line-through' : 'border-ink-600 hover:border-ink-500')}>{m.slice(0, 3)}</button>
+                )
+              })}
+            </div>
+          </Field>
         )}
         {f.frequency === 'anual' && (
           <Field label="Mes en que se paga">

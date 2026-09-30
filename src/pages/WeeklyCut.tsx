@@ -5,6 +5,7 @@ import { startOfWeek } from 'date-fns'
 import { TrendingUp, TrendingDown, Scale, Banknote, Download, MessageCircle, Printer, Plus, Trash2, Vault, PiggyBank, Check, Pencil, CheckCheck, X } from 'lucide-react'
 import { Badge, Button, Card, ConfirmDialog, ErrorState, Field, IconButton, Input, Modal, PageHeader, Spinner, StatCard, Textarea, cx } from '@/components/ui'
 import { useToast } from '@/components/toast'
+import RangePicker from '@/components/RangePicker'
 import { useCashCuts, useCoachPay, useCoaches, useExpenses, useFees, usePayments, useStudents } from '@/lib/api'
 import {
   CARRY_DESTINATION, DESTINATIONS, OUT_GROUPS, SAVINGS_BOX_KEY, buildItems, carryOver, counts, itemTotals, itemValue, nextPeriodStart, outGroup, periodSummary, savingFunds,
@@ -289,8 +290,8 @@ export default function WeeklyCut() {
         </Card>
       )}
       <Card className="mb-5 flex flex-wrap items-end gap-3 p-4">
-        <Field label="Desde"><Input type="date" value={from} max={to} onChange={(e) => e.target.value && setRange('desde', e.target.value)} className="h-10" /></Field>
-        <Field label="Hasta (día del corte)"><Input type="date" value={to} min={from} onChange={(e) => e.target.value && setRange('hasta', e.target.value)} className="h-10" /></Field>
+        <RangePicker label="Fechas del corte (inicio y día del corte)" from={from} to={to}
+          onChange={(a, b) => { const p = new URLSearchParams(params); p.set('desde', a); p.set('hasta', b); setParams(p, { replace: true }) }} />
         <p className="pb-2 text-sm text-muted">{prev ? <>Último corte: <b className="text-white">{date(prev.cut_date)}</b> · se quedaron {cents(carry)} en caja chica</> : 'Todavía no hay cortes: el primero empieza este lunes.'}</p>
         {!editingCut && (params.get('desde') || params.get('hasta')) && <Button size="sm" variant="ghost" onClick={() => setParams({}, { replace: true })}>Desde el último corte</Button>}
       </Card>

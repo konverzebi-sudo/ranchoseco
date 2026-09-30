@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { discountsFor, expenseEntries, expenseForMonth, insuranceSaving, isNewEnrollment, loanStatus, loansReceived, pendingInstallments } from '../src/lib/finance'
+import { skipsMonth, discountsFor, expenseEntries, expenseForMonth, insuranceSaving, isNewEnrollment, loanStatus, loansReceived, pendingInstallments } from '../src/lib/finance'
 import type { Expense } from '../src/lib/types'
 
 const exp = (p: Partial<Expense>): Expense => ({ id: p.name ?? 'x', name: 'x', amount: 0, frequency: 'mensual', paid_month: null, paid_year: null, down_payment: null, installments: null, paid_on: null, notes: null, active: true, sort_order: 0, ...p })
@@ -76,5 +76,16 @@ describe('pagos en partes y préstamos', () => {
     expect(e).toMatchObject([{ date: '2026-10-15', kind: 'prestamo', amount: 5000, name: 'Préstamo · Don Pepe', pending: true }])
     expect(loanStatus(prestamo)).toMatchObject({ total: 10000, paid: 0, remaining: 10000, done: false })
     expect(loansReceived([prestamo], '2026-09-14', '2026-09-20').length).toBe(1)
+  })
+})
+
+describe('meses sin pago', () => {
+  const regalias = exp({ name: 'Regalías Chivas', amount: 7500, frequency: 'mensual', skip_months: [7, 8] })
+  it('julio y agosto no se pagan', () => {
+    expect(expenseForMonth(regalias, '2027-06')).toBe(7500)
+    expect(expenseForMonth(regalias, '2027-07')).toBe(0)
+    expect(expenseForMonth(regalias, '2027-08')).toBe(0)
+    expect(expenseEntries({ month: '2027-07', expenses: [regalias], coaches: [], coachPay: [] })).toEqual([])
+    expect(skipsMonth(regalias, 9)).toBe(false)
   })
 })

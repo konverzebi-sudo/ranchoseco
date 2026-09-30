@@ -1,5 +1,5 @@
 import { addDays } from 'date-fns'
-import { expenseEntries, installmentLabel, installmentsOf, isLoan, loanStatus, loansReceived } from './finance'
+import { expenseEntries, skipsMonth, installmentLabel, installmentsOf, isLoan, loanStatus, loansReceived } from './finance'
 import { toISODate } from './format'
 import type { CashCut, CoachPay, Expense, FeeBalance, Payment, PaymentMethod } from './types'
 
@@ -136,7 +136,14 @@ const toDate = (d: string) => new Date(d + 'T12:00:00')
 function nextDue(e: Expense, after: string): string | null {
   const a = toDate(after)
   const iso = (y: number, m: number, d: number) => toISODate(new Date(y, m, d, 12))
-  if (e.frequency === 'mensual') return iso(a.getFullYear(), a.getMonth() + 1, 1)
+  if (e.frequency === 'mensual') {
+    // El siguiente mes que sí se paga (se brinca, p. ej., julio y agosto)
+    for (let k = 1; k <= 12; k++) {
+      const d = new Date(a.getFullYear(), a.getMonth() + k, 1, 12)
+      if (!skipsMonth(e, d.getMonth() + 1)) return toISODate(d)
+    }
+    return null
+  }
   if (e.frequency === 'quincenal') {
     const last = new Date(a.getFullYear(), a.getMonth() + 1, 0).getDate()
     return a.getDate() < 15 ? iso(a.getFullYear(), a.getMonth(), 15) : a.getDate() < last ? iso(a.getFullYear(), a.getMonth(), last) : iso(a.getFullYear(), a.getMonth() + 1, 15)
