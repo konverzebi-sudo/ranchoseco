@@ -28,9 +28,10 @@ export async function uploadStudentPhoto(studentId: string, file: File) {
   return path
 }
 
-export default function StudentForm({ student, defaultCategory, onClose, onSaved }: {
+export default function StudentForm({ student, defaultCategory, defaultStatus, onClose, onSaved }: {
   student?: StudentRow
   defaultCategory?: string
+  defaultStatus?: StudentStatus
   onClose: () => void
   onSaved?: (id: string) => void
 }) {
@@ -49,7 +50,7 @@ export default function StudentForm({ student, defaultCategory, onClose, onSaved
     category_id: student?.category_id ?? defaultCategory ?? '',
     coach_id: student?.coach_id ?? '',
     enrolled_at: student?.enrolled_at ?? today(),
-    status: (student?.status ?? 'activo') as StudentStatus,
+    status: (student?.status ?? defaultStatus ?? 'activo') as StudentStatus,
     emergency_contact_name: student?.emergency_contact_name ?? '',
     emergency_contact_phone: student?.emergency_contact_phone ?? '',
     notes: student?.notes ?? '',

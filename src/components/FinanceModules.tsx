@@ -1,16 +1,25 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Receipt, ShieldCheck, UserPlus, GraduationCap } from 'lucide-react'
+import { Receipt, ShieldCheck, UserPlus, GraduationCap, Vault, PiggyBank, Banknote, Wallet } from 'lucide-react'
 import { StatCard } from '@/components/ui'
-import { useCoachPay, useCoaches, useExpenses, useFees, useStudents } from '@/lib/api'
+import { useCashCuts, useCoachPay, useCoaches, useExpenses, useFees, useStudents } from '@/lib/api'
+import { carryOver, savingFunds } from '@/lib/cashcut'
 import { DISCOUNT_LABEL, discountsFor, expenseEntries, insuranceSaving, isNewEnrollment } from '@/lib/finance'
 import { money, today } from '@/lib/format'
 
 const MONTH_NAME = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
 export const monthLabel = (month: string) => `${MONTH_NAME[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`
 
+export const monthNameOf = (month: string) => MONTH_NAME[Number(month.slice(5, 7)) - 1]
+
 /** Gastos del mes, ahorro del seguro, nuevas inscripciones y becas/descuentos. Se usa en Dashboard y Gastos. */
 export default function FinanceModules() {
+  const c = useFinanceCards()
+  return <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{c.gastos}{c.seguro}{c.nuevas}{c.becas}</div>
+}
+
+/** Las tarjetas de dinero por separado, para acomodarlas en el orden que se quiera. */
+export function useFinanceCards() {
   const nav = useNavigate()
   const month = today().slice(0, 7)
   const expenses = useExpenses()
@@ -33,19 +42,48 @@ export default function FinanceModules() {
   const discHint = (Object.keys(d.disc.by) as (keyof typeof d.disc.by)[])
     .filter((k) => d.disc.by[k] > 0).map((k) => `${DISCOUNT_LABEL[k]} ${money(d.disc.by[k])}`).join(' · ')
 
-  return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <StatCard label={`Gastos de ${MONTH_NAME[Number(month.slice(5, 7)) - 1]}`} value={money(Math.round(d.total))} icon={Receipt} tone="bad"
+  return {
+    gastos: (
+      <StatCard key="gastos" label={`Gastos de ${MONTH_NAME[Number(month.slice(5, 7)) - 1]}`} value={money(Math.round(d.total))} icon={Receipt} tone="bad"
         hint={`Sueldos ${money(Math.round(d.salaries))} · Otros ${money(Math.round(d.total - d.salaries))} · Ver día a día`} onClick={() => nav(`/gastos/desglose?mes=${month}`)} />
-      <StatCard label="Ahorro para el seguro" value={d.ins ? money(Math.round(d.ins.saved)) : '—'} icon={ShieldCheck}
+    ),
+    seguro: (
+      <StatCard key="seguro" label="Ahorro para el seguro" value={d.ins ? money(Math.round(d.ins.saved)) : '—'} icon={ShieldCheck}
         hint={!d.ins ? 'Agrega el seguro como gasto anual' : d.ins.startsIn
           ? `Empieza en ${d.ins.startsIn}: apartar ${money(Math.round(d.ins.monthly))} al mes`
           : `${d.ins.months} de 12 meses · de ${money(d.ins.total)} · se paga en ${d.ins.dueLabel}`}
         onClick={() => nav('/gastos')} />
-      <StatCard label="Nuevas inscripciones" value={d.nuevos} icon={UserPlus} tone={d.nuevos ? 'ok' : undefined}
+    ),
+    nuevas: (
+      <StatCard key="nuevas" label={`Nuevas inscripciones de ${MONTH_NAME[Number(month.slice(5, 7)) - 1]}`} value={d.nuevos} icon={UserPlus} tone={d.nuevos ? 'ok' : undefined}
         hint={`Alumnos que entraron en ${MONTH_NAME[Number(month.slice(5, 7)) - 1]}`} onClick={() => nav(`/alumnos?nuevos=${month}&st=todos`)} />
-      <StatCard label="Becas y descuentos este mes" value={money(d.disc.total)} icon={GraduationCap}
+    ),
+    becas: (
+      <StatCard key="becas" label={`Becas y descuentos de ${MONTH_NAME[Number(month.slice(5, 7)) - 1]}`} value={money(d.disc.total)} icon={GraduationCap}
         hint={`${d.disc.students} alumnos${discHint ? ' · ' + discHint : ''}`} onClick={() => nav('/becas')} />
-    </div>
-  )
+    ),
+  }
+}
+
+/** Las cajas según el último corte: caja chica, apartado de próximos gastos, caja de ahorro y total. */
+export function useCashBoxCards() {
+  const nav = useNavigate()
+  const cuts = useCashCuts()
+  const expenses = useExpenses()
+  const b = useMemo(() => {
+    const list = cuts.data ?? []
+    const last = list[0]
+    const funds = savingFunds({ cutDate: today(), expenses: expenses.data ?? [], cuts: list })
+    const ahorro = funds.find((f) => f.kind === 'ahorro')?.saved ?? 0
+    const apartado = funds.filter((f) => f.kind !== 'ahorro').reduce((a, f) => a + f.saved, 0)
+    return { last, chica: carryOver(last), ahorro, apartado }
+  }, [cuts.data, expenses.data])
+  const since = b.last ? `Al corte del ${b.last.cut_date.slice(8, 10)}/${b.last.cut_date.slice(5, 7)}` : 'Aún no hay cortes'
+  const go = () => nav('/corte')
+  return {
+    total: <StatCard key="total" label="Caja total" value={money(Math.round(b.ahorro + b.apartado))} icon={Wallet} tone="brand" hint={`Caja de ahorro + apartado · ${since}`} onClick={go} />,
+    chica: <StatCard key="chica" label="Caja chica" value={money(Math.round(b.chica))} icon={Banknote} hint={`Efectivo en caja · ${since}`} onClick={go} />,
+    apartado: <StatCard key="apartado" label="Apartado de próximos gastos" value={money(Math.round(b.apartado))} icon={Vault} hint="Regalías, renta, seguro, partes y préstamos" onClick={go} />,
+    ahorro: <StatCard key="ahorro" label="Caja de ahorro" value={money(Math.round(b.ahorro))} icon={PiggyBank} tone="ok" hint="Ahorro libre (inscripciones, etc.)" onClick={go} />,
+  }
 }

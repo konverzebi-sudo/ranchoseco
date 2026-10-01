@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { endOfWeek, startOfMonth } from 'date-fns'
-import { Users, UserCog, ClipboardCheck, AlertTriangle, Wallet, TrendingUp, Plus, ChevronRight, Trophy, Dumbbell, HelpCircle, Scale, CalendarClock } from 'lucide-react'
+import { Users, UserCog, ClipboardCheck, AlertTriangle, Wallet, TrendingUp, Plus, ChevronRight, Trophy, Dumbbell, HelpCircle, Scale, CalendarClock, UserPlus } from 'lucide-react'
 import { Avatar, Button, Card, ErrorState, PageHeader, Spinner, StatCard, Badge } from '@/components/ui'
 import { CollectButton } from '@/components/WhatsAppButtons'
-import FinanceModules from '@/components/FinanceModules'
+import { monthNameOf, useCashBoxCards, useFinanceCards } from '@/components/FinanceModules'
 import { PayInstallmentModal } from '@/components/Installments'
 import { CloseTrialModal } from '@/components/TrialModals'
 import { pendingInstallments } from '@/lib/finance'
@@ -31,6 +31,9 @@ export default function Dashboard() {
   const expenses = useExpenses()
   const [paying, setPaying] = useState<{ expense: Expense; inst: ExpenseInstallment } | null>(null)
   const [closing, setClosing] = useState<StudentRow | null>(null)
+  const fin = useFinanceCards()
+  const boxes = useCashBoxCards()
+  const mes = monthNameOf(monthStart)
   const weekEnd = toISODate(endOfWeek(new Date(), { weekStartsOn: 1 }))
   const dueTasks = pendingInstallments(expenses.data ?? [], weekEnd)
   const recentAtt = useAttendanceDetail({ from: toISODate(new Date(Date.now() - 60 * 86400_000)) })
@@ -87,15 +90,23 @@ export default function Dashboard() {
 
       {loading ? <Spinner /> : (
         <div className="space-y-6">
-          <FinanceModules />
-          <div className="!mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatCard label="Cobrado este mes" value={money(data.collected)} icon={TrendingUp} tone="ok" onClick={() => nav('/cobranza')} />
-            <StatCard label="Pendiente de cobro" value={money(data.pendingTotal)} icon={Wallet} hint={`${data.openFees.length} cargos abiertos · ${data.overdueStudents.length} alumnos atrasados`} onClick={() => nav('/cobranza?f=pendiente')} />
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {boxes.total}{boxes.chica}{boxes.apartado}{boxes.ahorro}
+            <StatCard label={`Entradas de ${mes}`} value={money(data.collected)} icon={TrendingUp} tone="ok" hint="Cobrado en el mes" onClick={() => nav('/cobranza')} />
+            {fin.gastos}
+            <StatCard label={`Pendiente de cobro a ${mes}`} value={money(data.pendingTotal)} icon={Wallet} hint={`${data.openFees.length} cargos abiertos · ${data.overdueStudents.length} alumnos atrasados`} onClick={() => nav('/cobranza?f=pendiente')} />
             <StatCard label="Recargos y extras pendientes" value={money(data.lateFees + data.extras)} icon={AlertTriangle} tone={data.lateFees + data.extras > 0 ? 'bad' : undefined}
               hint={`Recargos ${money(data.lateFees)} · Extras ${money(data.extras)}`} onClick={() => nav('/cobranza?f=vencido')} />
+            {fin.becas}
+            {fin.nuevas}
+            <StatCard label="Clases muestra" value={trials.length} icon={UserPlus} tone={trials.length ? 'brand' : undefined}
+              hint={trials.length ? 'Pendientes de cerrar registro' : 'Nadie a prueba ahorita'} onClick={() => nav('/alumnos?st=muestra')} />
             <StatCard label="Asistencia de hoy" value={data.todayAtt.length ? `${data.present}/${data.todayAtt.length}` : '—'} icon={ClipboardCheck} hint={data.todayAtt.length ? 'presentes' : 'Aún no se pasa lista'} onClick={() => nav('/asistencias')} />
+          </div>
+          <div className="!mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatCard label="Alumnos activos" value={data.active.length} icon={Users} onClick={() => nav('/alumnos')} />
             <StatCard label="Profesores" value={(coaches.data ?? []).filter((c) => c.active).length} icon={UserCog} onClick={() => nav('/profesores')} />
+            {fin.seguro}
             <StatCard label="¿Beca? Por confirmar" value={money(data.reviewTotal)} icon={HelpCircle} hint={`${data.openFees.filter((f) => f.status === 'por_confirmar').length} pagos menores a la cuota`} onClick={() => nav('/cobranza?f=por_confirmar')} />
           </div>
 

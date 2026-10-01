@@ -53,7 +53,7 @@ export default function Students() {
     if (k === sortKey && sortDir === 1) p.set('dir', 'desc'); else p.delete('dir')
     setParams(p, { replace: true })
   }
-  const [creating, setCreating] = useState(params.get('nuevo') === '1')
+  const [creating, setCreating] = useState<false | 'activo' | 'muestra'>(params.get('nuevo') === '1' ? 'activo' : params.get('nuevo') === 'muestra' ? 'muestra' : false)
 
   const setParam = (k: string, v: string) => {
     const p = new URLSearchParams(params)
@@ -142,7 +142,8 @@ export default function Students() {
       <PageHeader title="Alumnos" subtitle={students.data ? `${rows.length} de ${students.data.length} alumnos` : undefined}
         actions={<>
           <Button variant="secondary" icon={Download} onClick={doExport} disabled={!rows.length}>Exportar</Button>
-          <Button icon={Plus} onClick={() => setCreating(true)}>Nuevo alumno</Button>
+          <Button variant="secondary" icon={Plus} onClick={() => setCreating('muestra')}>Clase muestra</Button>
+          <Button icon={Plus} onClick={() => setCreating('activo')}>Nuevo alumno</Button>
         </>} />
 
       {(() => {
@@ -212,7 +213,7 @@ export default function Students() {
         students.isLoading ? <Spinner /> :
         rows.length === 0 ? (
           <Card><Empty icon={Users} title="No hay alumnos con estos filtros" text="Cambia la búsqueda o registra un alumno nuevo."
-            action={<Button icon={Plus} onClick={() => setCreating(true)}>Nuevo alumno</Button>} /></Card>
+            action={<Button icon={Plus} onClick={() => setCreating('activo')}>Nuevo alumno</Button>} /></Card>
         ) : (
           <>
             {/* Escritorio: tabla con edición directa */}
@@ -322,7 +323,7 @@ export default function Students() {
       {pausing?.mode === 'pause' && <PauseModal student={pausing.s} onClose={() => setPausing(null)} />}
       {pausing?.mode === 'back' && <ReactivateModal student={pausing.s} onClose={() => setPausing(null)} />}
       {reviewing && <ScholarshipReviewModal fee={reviewing.fee} studentName={reviewing.name} onClose={() => setReviewing(null)} />}
-      {creating && <StudentForm defaultCategory={cat && cat !== 'none' ? cat : undefined} onClose={() => setCreating(false)} onSaved={(id) => nav(`/alumnos/${id}`)} />}
+      {creating && <StudentForm defaultStatus={creating} defaultCategory={cat && cat !== 'none' ? cat : undefined} onClose={() => setCreating(false)} onSaved={(id) => nav(`/alumnos/${id}`)} />}
     </>
   )
 }
