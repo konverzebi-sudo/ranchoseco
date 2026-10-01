@@ -44,7 +44,7 @@ export default function Categories() {
                 <div className="mt-4 space-y-2 text-sm">
                   {c.is_extra
                     ? <button onClick={() => setEditing(c)} className="flex items-center gap-2 hover:text-brand"><Users className="h-4 w-4 text-brand" /> {n} alumnos inscritos (además de su categoría)</button>
-                    : <Link to={`/alumnos?cat=${c.id}`} className="flex items-center gap-2 hover:text-brand"><Users className="h-4 w-4 text-brand" /> {n} alumnos activos</Link>}
+                    : <Link to={`/alumnos?cat=${c.id}&st=activo`} className="flex items-center gap-2 hover:text-brand"><Users className="h-4 w-4 text-brand" /> {n} alumnos activos</Link>}
                   <p className="flex items-center gap-2"><Clock className="h-4 w-4 text-brand" /> {c.schedule || <span className="text-muted">Horario sin definir</span>}</p>
                   <p className="text-muted">Profesor: <span className="text-white">{coachNames.join(', ') || 'Sin asignar'}</span></p>
                   {c.is_extra

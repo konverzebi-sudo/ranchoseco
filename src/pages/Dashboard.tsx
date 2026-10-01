@@ -104,7 +104,7 @@ export default function Dashboard() {
             <StatCard label="Asistencia de hoy" value={data.todayAtt.length ? `${data.present}/${data.todayAtt.length}` : '—'} icon={ClipboardCheck} hint={data.todayAtt.length ? 'presentes' : 'Aún no se pasa lista'} onClick={() => nav('/asistencias')} />
           </div>
           <div className="!mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatCard label="Alumnos activos" value={data.active.length} icon={Users} onClick={() => nav('/alumnos')} />
+            <StatCard label="Alumnos activos" value={data.active.length} icon={Users} onClick={() => nav('/alumnos?st=activo')} />
             <StatCard label="Profesores" value={(coaches.data ?? []).filter((c) => c.active).length} icon={UserCog} onClick={() => nav('/profesores')} />
             {fin.seguro}
             <StatCard label="¿Beca? Por confirmar" value={money(data.reviewTotal)} icon={HelpCircle} hint={`${data.openFees.filter((f) => f.status === 'por_confirmar').length} pagos menores a la cuota`} onClick={() => nav('/cobranza?f=por_confirmar')} />
@@ -186,7 +186,7 @@ export default function Dashboard() {
               <ul className="space-y-3 px-5 py-4">
                 {data.byCategory.map((c) => (
                   <li key={c.id}>
-                    <Link to={`/alumnos?cat=${c.id}`} className="group block">
+                    <Link to={`/alumnos?cat=${c.id}&st=activo`} className="group block">
                       <div className="mb-1 flex justify-between text-sm">
                         <span className="group-hover:text-brand">{c.name}</span>
                         <span className="font-semibold">{c.count}</span>

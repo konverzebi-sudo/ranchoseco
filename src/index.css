@@ -79,6 +79,9 @@ input[type='search']::-webkit-search-cancel-button {
   .table-base td {
     @apply border-b border-ink-700 px-4 py-3 align-middle;
   }
+  .table-compact td {
+    @apply py-1.5;
+  }
   .table-base tbody tr {
     @apply transition-colors hover:bg-ink-700/50;
   }

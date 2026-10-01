@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Plus, Users, Download, ChevronRight, CheckCircle2, Copy, MessageCircle, ArrowUp, ArrowDown, ArrowUpDown, UserPlus, X } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Avatar, Badge, Button, Card, Empty, ErrorState, PageHeader, SearchInput, Select, Spinner, feeTone } from '@/components/ui'
+import { Avatar, Badge, Button, Card, Empty, ErrorState, IconButton, PageHeader, SearchInput, Select, Spinner, cx, feeTone } from '@/components/ui'
 import { CollectButton } from '@/components/WhatsAppButtons'
 import StudentForm from '@/components/StudentForm'
 import { ScholarshipReviewModal } from '@/components/ScholarshipReview'
@@ -18,7 +18,7 @@ import { monthLabel } from '@/components/FinanceModules'
 import type { AccountStatus, FeeBalance, StudentStatus } from '@/lib/types'
 
 type SortKey = 'nombre' | 'categoria' | 'tutor' | 'estatus' | 'cuenta'
-const STATUS_ORDER: Record<string, number> = { activo: 0, muestra: 1, suspendido: 2, baja: 3 }
+const STATUS_ORDER: Record<string, number> = { muestra: 0, activo: 1, suspendido: 2, baja: 3 }
 const ACCOUNT_ORDER: Record<string, number> = { al_corriente: 0, pendiente: 1, por_confirmar: 2, vencido: 3 }
 
 const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
@@ -40,11 +40,12 @@ export default function Students() {
   const q = params.get('q') ?? ''
   const cat = params.get('cat') ?? ''
   const stParam = params.get('st')
-  const status = stParam === 'todos' ? '' : (stParam ?? 'activo')
+  // Por defecto se ven todos: primero clase muestra, luego activos y al final los no activos
+  const status = !stParam || stParam === 'todos' ? '' : stParam
   const acct = params.get('acct') ?? ''
   const datos = params.get('datos') ?? ''
   const nuevos = /^\d{4}-\d{2}$/.test(params.get('nuevos') ?? '') ? params.get('nuevos')! : ''
-  const sortKey = (params.get('orden') as SortKey) || 'nombre'
+  const sortKey = (params.get('orden') as SortKey) || 'estatus'
   const sortDir = params.get('dir') === 'desc' ? -1 : 1
   // Primer toque: de menor a mayor; si ya estaba así, al revés
   const toggleSort = (k: SortKey) => {
@@ -177,12 +178,12 @@ export default function Students() {
           {categories.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           <option value="none">Sin categoría</option>
         </Select>
-        <Select value={status} onChange={(e) => setParam('st', e.target.value === 'activo' ? '' : e.target.value || 'todos')} aria-label="Filtrar por estatus">
-          <option value="activo">Activos</option>
+        <Select value={status} onChange={(e) => setParam('st', e.target.value)} aria-label="Filtrar por estatus">
+          <option value="">Todos (muestra, activos, inactivos)</option>
           <option value="muestra">Clases muestra</option>
+          <option value="activo">Activos</option>
           <option value="suspendido">Inactivos temporales</option>
           <option value="baja">Bajas</option>
-          <option value="">Todos</option>
         </Select>
         <Select value={acct} onChange={(e) => setParam('acct', e.target.value)} aria-label="Filtrar por estado de cuenta">
           <option value="">Cualquier estado de cuenta</option>
@@ -218,39 +219,29 @@ export default function Students() {
           <>
             {/* Escritorio: tabla con edición directa */}
             <Card className="hidden overflow-hidden lg:block">
-              <table className="table-base">
+              <table className="table-base table-compact">
                 <thead>
-                  <tr><SortTh k="nombre">Alumno</SortTh><SortTh k="categoria">Categoría</SortTh><SortTh k="tutor">Papá y mamá</SortTh><SortTh k="estatus">Estatus</SortTh><SortTh k="cuenta">Estado de cuenta</SortTh><th className="text-right">Acciones</th></tr>
+                  <tr><SortTh k="nombre">Alumno</SortTh><SortTh k="categoria">Categoría</SortTh><SortTh k="tutor">Primer contacto</SortTh><SortTh k="estatus">Estatus</SortTh><SortTh k="cuenta">Cuenta</SortTh><th className="text-right" /></tr>
                 </thead>
                 <tbody>
                   {rows.map((s) => {
                     const par = parentsOf(s)
+                    const first = par.all.find((g) => g.is_primary) ?? par.all[0]
+                    const rel = first ? (first === par.papa ? 'Papá' : first === par.mama ? 'Mamá' : first.relationship || 'Tutor') : ''
                     const a = accMap.get(s.id)
                     const ag = age(s.birth_date)
                     return (
-                      <tr key={s.id}>
-                        <td>
-                          <Link to={`/alumnos/${s.id}`} className="flex items-center gap-3 hover:text-brand">
-                            <Avatar name={s.full_name} path={s.photo_path} size={36} />
-                            <div className="min-w-0">
-                              <p className="flex items-center gap-1.5 font-medium">{s.full_name}{s.profile_completed_at && <CheckCircle2 className="h-4 w-4 text-ok" aria-label="Datos completos" />}</p>
-                              <p className="text-xs text-muted">{ag != null ? `${ag} años` : 'Sin fecha de nacimiento'}</p>
-                            </div>
+                      <tr key={s.id} className={cx(s.status === 'baja' && 'opacity-60')}>
+                        <td className="max-w-[280px]">
+                          <Link to={`/alumnos/${s.id}`} className="flex items-center gap-1.5 hover:text-brand">
+                            <span className="truncate font-medium">{s.full_name}</span>
+                            {s.profile_completed_at && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-ok" aria-label="Datos completos" />}
+                            {ag != null && <span className="shrink-0 text-xs text-muted">{ag} a</span>}
                           </Link>
                         </td>
-                        <td>
-                          <Select value={s.category_id ?? ''} onChange={(e) => inlineUpdate(s.id, { category_id: e.target.value || null })}
-                            className="h-9 w-36 text-sm" aria-label={`Categoría de ${s.full_name}`}>
-                            <option value="">Sin categoría</option>
-                            {categories.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                          </Select>
-                        </td>
-                        <td className="text-sm">
-                          {par.all.length === 0 ? <span className="text-muted">Sin capturar</span> : <>
-                            {par.papa && <p><span className="text-xs text-muted">Papá:</span> {par.papa.full_name} <span className="text-xs text-muted">{prettyPhone(par.papa.phone)}</span></p>}
-                            {par.mama && <p><span className="text-xs text-muted">Mamá:</span> {par.mama.full_name} <span className="text-xs text-muted">{prettyPhone(par.mama.phone)}</span></p>}
-                            {par.otros.map((o) => <p key={o.id}><span className="text-xs text-muted">{o.relationship || 'Tutor'}:</span> {o.full_name} <span className="text-xs text-muted">{prettyPhone(o.phone)}</span></p>)}
-                          </>}
+                        <td className="whitespace-nowrap text-sm">{catMap.get(s.category_id ?? '') ?? <span className="text-muted">Sin categoría</span>}</td>
+                        <td className="max-w-[220px] text-sm">
+                          {first ? <p className="truncate" title={prettyPhone(first.phone)}><span className="text-xs text-muted">{rel}:</span> {first.full_name}</p> : <span className="text-muted">Sin capturar</span>}
                         </td>
                         <td>
                           <Select value={s.status} onChange={(e) => {
@@ -259,12 +250,12 @@ export default function Students() {
                               if (s.status === 'suspendido' && v === 'activo') return setPausing({ s, mode: 'back' })
                               inlineUpdate(s.id, { status: v })
                             }}
-                            className="h-9 w-32 text-sm" aria-label={`Estatus de ${s.full_name}`}>
-                            <option value="activo">Activo</option><option value="muestra">Clase muestra</option><option value="suspendido">Inactivo temporal</option><option value="baja">Baja</option>
+                            className={cx('h-8 w-36 py-0 text-xs', s.status === 'muestra' && 'border-info text-info')} aria-label={`Estatus de ${s.full_name}`}>
+                            <option value="muestra">Clase muestra</option><option value="activo">Activo</option><option value="suspendido">Inactivo temporal</option><option value="baja">Baja</option>
                           </Select>
                         </td>
                         <td>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 whitespace-nowrap">
                             {a?.status === 'por_confirmar' && reviewFee(s.id) ? (
                               <button onClick={() => openReview(s.id, s.full_name)} title="Escribir cuánto es la mensualidad y cuánto paga" className="hover:opacity-80">
                                 <Badge tone="warn" className="cursor-pointer underline decoration-dotted">{ACCOUNT_LABEL.por_confirmar}</Badge>
@@ -274,13 +265,13 @@ export default function Students() {
                                 <Badge tone={feeTone(a!.status)} className="cursor-pointer underline decoration-dotted">{ACCOUNT_LABEL[a!.status]}</Badge>
                               </button>
                             ) : <Badge tone={feeTone(a?.status ?? 'al_corriente')}>{ACCOUNT_LABEL[a?.status ?? 'al_corriente']}</Badge>}
-                            {Number(a?.balance ?? 0) > 0 && <span className="font-semibold">{money(a!.balance)}</span>}
+                            {Number(a?.balance ?? 0) > 0 && <span className="text-sm font-semibold">{money(a!.balance)}</span>}
                           </div>
                         </td>
                         <td>
-                          <div className="flex justify-end gap-2">
-                            {Number(a?.balance ?? 0) > 0 && <CollectButton student={s} />}
-                            <Button variant="secondary" size="sm" onClick={() => nav(`/alumnos/${s.id}`)}>Expediente</Button>
+                          <div className="flex items-center justify-end gap-1">
+                            {Number(a?.balance ?? 0) > 0 && <CollectButton student={s} label="" />}
+                            <IconButton icon={ChevronRight} label={`Expediente de ${s.full_name}`} onClick={() => nav(`/alumnos/${s.id}`)} className="h-8 w-8" />
                           </div>
                         </td>
                       </tr>

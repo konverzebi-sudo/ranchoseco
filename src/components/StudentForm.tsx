@@ -220,7 +220,7 @@ export default function StudentForm({ student, defaultCategory, defaultStatus, o
             ))}
             {!showOtro && <button type="button" onClick={() => setShowOtro(true)} className="text-sm text-brand hover:underline">+ Agregar otro tutor (abuela, tío…)</button>}
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="¿A quién le mandamos los avisos de pago?">
+              <Field label="Primer contacto (sale en la lista y recibe los avisos)">
                 <Select value={f.avisos} onChange={(e) => setF({ ...f, avisos: e.target.value as 'papa' | 'mama' | 'otro' })}>
                   <option value="mama">Mamá</option>
                   <option value="papa">Papá</option>

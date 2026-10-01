@@ -181,11 +181,19 @@ function GeneralTab({ s }: { s: StudentRow }) {
           <h3 className="mb-2 font-display text-lg font-bold uppercase tracking-wide text-brand">Papá, mamá y emergencias</h3>
           {(() => {
             const par = parentsOf(s)
-            const row = (label: string, p: { full_name: string; phone: string; is_primary: boolean } | null) => (
+            const row = (label: string, p: { id: string; full_name: string; phone: string; is_primary: boolean } | null) => (
               <InfoRow label={label}>
                 {p ? <>{p.full_name}{' '}
                   <a href={waLink(p.phone, `Hola ${p.full_name.split(' ')[0]}, te escribimos de Deportivo Rancho Seco.`)} target="_blank" rel="noopener noreferrer" className="ml-1 text-wa hover:underline">{prettyPhone(p.phone)}</a>
-                  {p.is_primary && par.all.length > 1 && <span className="ml-1 text-xs text-muted">(recibe avisos)</span>}</> : <span className="text-muted">Sin capturar</span>}
+                  {p.is_primary && par.all.length > 1 && <span className="ml-1 text-xs text-brand">★ primer contacto</span>}
+                  {!p.is_primary && <button className="ml-2 text-xs text-muted hover:text-brand hover:underline" onClick={async () => {
+                    try {
+                      unwrap(await supabase.from('student_guardians').update({ is_primary: false }).eq('student_id', s.id))
+                      unwrap(await supabase.from('student_guardians').update({ is_primary: true }).eq('student_id', s.id).eq('guardian_id', (p as { id: string }).id))
+                      await Promise.all(['student', 'students'].map((k) => qc.invalidateQueries({ queryKey: [k] })))
+                      toast.ok(`${p.full_name} es ahora el primer contacto`)
+                    } catch (e) { toast.error(e) }
+                  }}>Hacer primer contacto</button>}</> : <span className="text-muted">Sin capturar</span>}
               </InfoRow>
             )
             return <>
