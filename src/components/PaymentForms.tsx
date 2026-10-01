@@ -10,6 +10,7 @@ import { METHOD_LABEL, date, money, monthName, toISODate, today } from '@/lib/fo
 import { TIER_LABEL, joinTier, tierAmount, tierNote, type JoinTier } from '@/lib/prorate'
 import { PROMO_REASON, memberPrice } from '@/lib/siblings'
 import { REINSCRIPTION_FEE } from '@/lib/inactive'
+import { UNIFORM_CONCEPTS, isUniformConcept } from '@/lib/uniforms'
 import type { PaymentMethod } from '@/lib/types'
 
 const PAY_KEYS = [['fees'], ['accounts'], ['payments']]
@@ -209,7 +210,8 @@ export function FeeModal({ student, onClose }: { student: StudentRow; onClose: (
   const [tierPick, setTierPick] = useState<JoinTier | null>(null)
   const tier: JoinTier = isMonthly ? (tierPick ?? autoTier) : 'completo'
   const isReinscription = norm(concept.trim()) === 'reinscripcion'
-  const suggestedFor = isInscription ? INSCRIPTION_FEE : isReinscription ? REINSCRIPTION_FEE : tierAmount(suggested, tier)
+  const uniformPrice = UNIFORM_CONCEPTS.find((u) => norm(u.concept) === norm(concept.trim()))?.price
+  const suggestedFor = isInscription ? INSCRIPTION_FEE : isReinscription ? REINSCRIPTION_FEE : uniformPrice != null ? uniformPrice : isUniformConcept(concept) ? 0 : tierAmount(suggested, tier)
   const value = amount === '' ? suggestedFor : Number(amount)
 
   const submit = async (e: FormEvent) => {
@@ -239,7 +241,7 @@ export function FeeModal({ student, onClose }: { student: StudentRow; onClose: (
         <p className="text-sm text-muted">Alumno: <span className="font-medium text-white">{student.full_name}</span></p>
         <Field label="Concepto">
           <Input value={concept} onChange={(e) => setConcept(e.target.value)} list="concepts" />
-          <datalist id="concepts">{['Mensualidad', 'Inscripción', 'Reinscripción', 'Uniforme', 'Torneo', 'Arbitraje'].map((c) => <option key={c} value={c} />)}</datalist>
+          <datalist id="concepts">{['Mensualidad', 'Inscripción', 'Reinscripción', ...UNIFORM_CONCEPTS.map((u) => u.concept), 'Torneo', 'Arbitraje'].map((c) => <option key={c} value={c} />)}</datalist>
         </Field>
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Mes"><Input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} /></Field>

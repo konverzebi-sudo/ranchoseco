@@ -1,6 +1,7 @@
 import { addDays } from 'date-fns'
 import { expenseEntries, skipsMonth, installmentLabel, installmentsOf, isLoan, loanStatus, loansReceived } from './finance'
 import { toISODate } from './format'
+import { UNIFORMS_FUND_KEY } from './uniforms'
 import type { CashCut, CoachPay, Expense, FeeBalance, Payment, PaymentMethod } from './types'
 
 /** Lo que se aparta en este destino se queda en caja para el siguiente corte. */
@@ -146,7 +147,7 @@ export const SAVINGS_BOX_KEY = 'x:caja-ahorro'
 export interface SavingFund {
   key: string
   name: string
-  kind: 'fijo' | 'seguro' | 'parte' | 'prestamo' | 'ahorro'
+  kind: 'fijo' | 'seguro' | 'parte' | 'prestamo' | 'ahorro' | 'uniformes'
   target: number
   due: string
   /** Lo que ya se apartó en cortes anteriores para este mismo pago */
@@ -222,7 +223,9 @@ export function savingFunds(opts: { cutDate: string; expenses: Expense[]; cuts: 
   }
   // Caja de ahorro: dinero guardado sin un pago asignado (por ejemplo, las inscripciones). Se acumula siempre.
   out.push({ key: SAVINGS_BOX_KEY, name: 'Caja de ahorro', kind: 'ahorro', target: 0, due: '9999-12-31', saved: savedFor(SAVINGS_BOX_KEY), weeksLeft: 0, suggested: 0 })
-  const order = { fijo: 0, seguro: 1, parte: 2, prestamo: 3, ahorro: 4 }
+  // Fondo de uniformes: lo que se cobra de playeras, altas en Chivas, uniformes y credenciales
+  out.push({ key: UNIFORMS_FUND_KEY, name: 'Fondo de uniformes', kind: 'uniformes', target: 0, due: '9999-12-31', saved: savedFor(UNIFORMS_FUND_KEY), weeksLeft: 0, suggested: 0 })
+  const order = { fijo: 0, seguro: 1, parte: 2, prestamo: 3, ahorro: 4, uniformes: 5 }
   return out.sort((a, b) => order[a.kind] - order[b.kind] || a.due.localeCompare(b.due))
 }
 

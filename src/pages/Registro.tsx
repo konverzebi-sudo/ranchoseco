@@ -4,6 +4,7 @@ import { CheckCircle2, ChevronLeft, Search, ShieldCheck, UserRound } from 'lucid
 import { Button, Field, Input, Select, Spinner, Textarea, cx } from '@/components/ui'
 import { LOGO } from '@/components/Layout'
 import { supabase } from '@/lib/supabase'
+import { SIZES } from '@/lib/uniforms'
 import { isValidPhone, normalizePhone, today } from '@/lib/format'
 
 interface Kid { id: string; full_name: string; category: string; category_order: number; completed: boolean }
@@ -119,7 +120,7 @@ function KidForm({ kid, onBack, onDone }: { kid: Kid; onBack: () => void; onDone
   const [f, setF] = useState({
     birth_date: '', blood_type: 'No sé', allergies: '', conditions: '', medications: '', insurance: '', medical_notes: '',
     emergency_name: '', emergency_phone: '',
-    mama_name: '', mama_phone: '', papa_name: '', papa_phone: '', tutor_email: '', avisos: 'Mamá',
+    mama_name: '', mama_phone: '', papa_name: '', papa_phone: '', tutor_email: '', avisos: 'Mamá', uniform_size: '',
   })
   const [consent, setConsent] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -187,6 +188,12 @@ function KidForm({ kid, onBack, onDone }: { kid: Kid; onBack: () => void; onDone
           <h2 className="font-display text-xl font-bold uppercase tracking-wide text-brand">Del niño</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Fecha de nacimiento *" error={errors.birth_date}><Input type="date" value={f.birth_date} max={today()} onChange={set('birth_date')} /></Field>
+            <Field label="Talla de uniforme" hint="Si no la sabes, déjala en blanco">
+              <Select value={f.uniform_size} onChange={set('uniform_size')}>
+                <option value="">No sé</option>
+                {SIZES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </Select>
+            </Field>
             <Field label="Tipo de sangre"><Select value={f.blood_type} onChange={set('blood_type')}>{BLOOD.map((b) => <option key={b}>{b}</option>)}</Select></Field>
           </div>
           <Field label="Alergias" hint="Medicamentos, alimentos, picaduras… Escribe «Ninguna» si no tiene."><Textarea rows={2} value={f.allergies} onChange={set('allergies')} /></Field>

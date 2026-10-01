@@ -137,6 +137,7 @@ export default function Dashboard() {
             <StatCard label="Alumnos activos" value={data.active.length} icon={Users} onClick={() => nav('/alumnos?st=activo')} />
             <StatCard label="Profesores" value={(coaches.data ?? []).filter((c) => c.active).length} icon={UserCog} onClick={() => nav('/profesores')} />
             {fin.seguro}
+            {boxes.uniformes}
             <StatCard label="¿Beca? Por confirmar" value={money(data.reviewTotal)} icon={HelpCircle} hint={`${data.openFees.filter((f) => f.status === 'por_confirmar').length} pagos menores a la cuota`} onClick={() => nav('/cobranza?f=por_confirmar')} />
           </div>
 

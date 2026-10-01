@@ -66,6 +66,7 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase/migrations/0019_meses_sin_pago.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0020_avisos.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0021_uniformes.sql', 'utf8'))
+  await db.exec(readFileSync('supabase/migrations/0022_credencial_talla.sql', 'utf8'))
   await db.exec('update academia.settings set open_mode = false') // las pruebas por rol corren con el sitio cerrado
 
   const users: [string, string, string][] = [
@@ -472,10 +473,11 @@ describe('registro de datos por los papás (link público)', () => {
     expect(Object.keys(r.rows[0]).sort()).toEqual(['category', 'category_order', 'completed', 'full_name', 'id'])
   })
   it('guarda los datos una sola vez', async () => {
-    const payload = JSON.stringify({ tutor_name: 'Mamá Dos', tutor_phone: '81 1234 5678', tutor_relationship: 'Mamá', allergies: 'Polen', birth_date: '2015-03-02' })
+    const payload = JSON.stringify({ tutor_name: 'Mamá Dos', tutor_phone: '81 1234 5678', tutor_relationship: 'Mamá', allergies: 'Polen', birth_date: '2015-03-02', uniform_size: '10' })
     await anon('select academia.registro_guardar($1, $2::jsonb)', [STU_2, payload])
-    const s = (await db.query<any>('select profile_completed_by, birth_date::text from academia.students where id = $1', [STU_2])).rows[0]
+    const s = (await db.query<any>('select profile_completed_by, birth_date::text, uniform_size from academia.students where id = $1', [STU_2])).rows[0]
     expect(s.profile_completed_by).toBe('Mamá Dos')
+    expect(s.uniform_size).toBe('10')
     expect(s.birth_date).toBe('2015-03-02')
     const m = (await db.query<any>('select allergies from academia.student_medical where student_id = $1', [STU_2])).rows[0]
     expect(m.allergies).toBe('Polen')

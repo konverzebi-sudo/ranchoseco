@@ -138,7 +138,7 @@ function GeneralTab({ s }: { s: StudentRow }) {
         <InfoRow label="Uniforme">
           <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <span>Talla <b>{s.uniform_size || '—'}</b></span>
-            {([['uniform_delivered_on', 'Uniforme entregado'], ['training_shirt_delivered_on', 'Playera de entrenamiento']] as const).map(([k, label]) => (
+            {([['uniform_delivered_on', 'Uniforme entregado'], ['training_shirt_delivered_on', 'Playera de entrenamiento'], ['credential_delivered_on', 'Credencial']] as const).map(([k, label]) => (
               <label key={k} className="flex items-center gap-1.5">
                 <input type="checkbox" checked={!!s[k]} className="h-4 w-4 accent-[#F2E30A]" onChange={async (e) => {
                   try {

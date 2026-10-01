@@ -28,6 +28,7 @@ const Billing = lazy(() => import('./pages/Billing'))
 const Expenses = lazy(() => import('./pages/Expenses'))
 const ExpenseBreakdown = lazy(() => import('./pages/ExpenseBreakdown'))
 const WeeklyCut = lazy(() => import('./pages/WeeklyCut'))
+const Uniforms = lazy(() => import('./pages/Uniforms'))
 const Scholarships = lazy(() => import('./pages/Scholarships'))
 const Categories = lazy(() => import('./pages/Categories'))
 const Coaches = lazy(() => import('./pages/Coaches'))
@@ -69,6 +70,7 @@ createRoot(document.getElementById('root')!).render(
                   <Route path="gastos" element={<Expenses />} />
                   <Route path="gastos/desglose" element={<ExpenseBreakdown />} />
                   <Route path="corte" element={<WeeklyCut />} />
+                  <Route path="uniformes" element={<Uniforms />} />
                   <Route path="becas" element={<Scholarships />} />
                   <Route path="categorias" element={<Categories />} />
                   <Route path="profesores" element={<Coaches />} />

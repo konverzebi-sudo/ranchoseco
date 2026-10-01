@@ -16,11 +16,12 @@ import { supabase, unwrap } from '@/lib/supabase'
 import { exportCsv } from '@/lib/csv'
 import { waLink } from '@/lib/whatsapp'
 import { notify } from '@/lib/notify'
+import { UNIFORMS_FUND_KEY, isUniformConcept } from '@/lib/uniforms'
 import type { CashCut, PaymentMethod } from '@/lib/types'
 
 const cents = (n: number) => money(Math.round(n * 100) / 100)
 const range = (from: string, to: string) => `${date(from, "d 'de' MMM")} al ${date(to, "d 'de' MMM yyyy")}`
-const FUND_LABEL: Record<SavingFund['kind'], string> = { fijo: 'Gasto fijo', seguro: 'Seguro y credenciales', parte: 'Pago pendiente', prestamo: 'Préstamo', ahorro: 'Ahorro libre' }
+const FUND_LABEL: Record<SavingFund['kind'], string> = { fijo: 'Gasto fijo', seguro: 'Seguro y credenciales', parte: 'Pago pendiente', prestamo: 'Préstamo', ahorro: 'Ahorro libre', uniformes: 'Fondo de uniformes' }
 /** A quién se le manda el reporte de cada corte por WhatsApp. */
 const REPORT_TO = [
   { name: 'Marco DL', phone: '528442713705' },
@@ -102,7 +103,8 @@ export default function WeeklyCut() {
   // Las cajas después de este corte
   const box = funds.find((f) => f.kind === 'ahorro')
   const cajaAhorro = box ? box.saved + savedNow(box) : 0
-  const apartado = funds.filter((f) => f.kind !== 'ahorro').reduce((a, f) => a + f.saved + savedNow(f), 0)
+  const apartado = funds.filter((f) => f.kind !== 'ahorro' && f.kind !== 'uniformes').reduce((a, f) => a + f.saved + savedNow(f), 0)
+  const uniformsIn = items.filter((i) => i.type === 'entrada' && counts(i) && isUniformConcept(i.detail.split(' · ')[0])).reduce((a, i) => a + itemValue(i), 0)
   const inscripciones = items.filter((i) => i.type === 'entrada' && counts(i) && i.detail.startsWith('Inscripción')).reduce((a, i) => a + itemValue(i), 0)
 
   // Caja
@@ -321,6 +323,11 @@ export default function WeeklyCut() {
                         ? <span className="ml-2 text-xs text-ok">✓ va al apartado del seguro y credenciales</span>
                         : <button className="ml-2 text-xs text-brand hover:underline" onClick={() => setSaveAmt({ ...saveAmt, [seg.key]: String(Number(saveAmt[seg.key] ?? 0) + r.total) })}>Mandar al seguro y credenciales</button>
                     })()}
+                    {isUniformConcept(k) && r.total > 0 && (
+                      Number(saveAmt[UNIFORMS_FUND_KEY] ?? 0) >= uniformsIn
+                        ? <span className="ml-2 text-xs text-ok">✓ va al fondo de uniformes</span>
+                        : <button className="ml-2 text-xs text-brand hover:underline" onClick={() => setSaveAmt({ ...saveAmt, [UNIFORMS_FUND_KEY]: String(uniformsIn) })}>Mandar al fondo de uniformes</button>
+                    )}
                     {k === 'Inscripción' && r.total > 0 && (
                       Number(saveAmt[SAVINGS_BOX_KEY] ?? 0) >= r.total
                         ? <span className="ml-2 text-xs text-ok">✓ va a la caja de ahorro</span>
@@ -422,6 +429,25 @@ export default function WeeklyCut() {
               <ul className="divide-y divide-ink-700">
                 {funds.map((f) => {
                   const now = savedNow(f)
+                  if (f.kind === 'uniformes') return (
+                    <li key={f.key} className="grid gap-3 bg-info/5 px-5 py-3 md:grid-cols-[1fr_220px_150px]">
+                      <div className="min-w-0">
+                        <p className="flex flex-wrap items-center gap-2 font-medium">Fondo de uniformes <Badge tone="info">Sólo para uniformes</Badge></p>
+                        <p className="text-xs text-muted">Lo que se cobra de playeras, altas en Chivas, uniformes y credenciales se guarda aquí.</p>
+                        <p className="mt-1 text-sm">Acumulado <b>{cents(f.saved)}</b>{now > 0 ? <> + {cents(now)} hoy = <b className="text-info">{cents(f.saved + now)}</b></> : ''}</p>
+                      </div>
+                      <div className="text-sm">
+                        <p className="text-xs uppercase tracking-wider text-muted">Cobrado de uniformes en este corte</p>
+                        <p className="font-display text-2xl font-bold text-info">{cents(uniformsIn)}</p>
+                        {uniformsIn > 0 && <button className="text-xs text-brand hover:underline" onClick={() => setSaveAmt({ ...saveAmt, [f.key]: String(uniformsIn) })}>Mandarlo al fondo de uniformes</button>}
+                      </div>
+                      <div className="space-y-1">
+                        <Input type="number" min="0" inputMode="decimal" value={saveAmt[f.key] ?? ''} placeholder="0" aria-label="Se guarda en el fondo de uniformes"
+                          onChange={(e) => setSaveAmt({ ...saveAmt, [f.key]: e.target.value })} className="h-10" />
+                        <Input value={saveNote[f.key] ?? ''} onChange={(e) => setSaveNote({ ...saveNote, [f.key]: e.target.value })} placeholder="Nota" className="h-8 text-xs" aria-label="Nota" />
+                      </div>
+                    </li>
+                  )
                   if (f.kind === 'ahorro') return (
                     <li key={f.key} className="grid gap-3 bg-ok/5 px-5 py-3 md:grid-cols-[1fr_220px_150px]">
                       <div className="min-w-0">
@@ -481,7 +507,7 @@ export default function WeeklyCut() {
             )}
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-ink-600 bg-ink-900 px-5 py-3">
               <span className="flex flex-wrap items-center gap-2 text-sm text-muted">Sugerido esta semana {cents(suggestedTotal)}
-                {funds.length > 1 && <button className="text-brand hover:underline" onClick={() => setSaveAmt({ ...saveAmt, ...Object.fromEntries(funds.filter((f) => f.kind !== 'ahorro').map((f) => [f.key, String(f.suggested)])) })}>Guardar todo lo sugerido</button>}
+                {funds.length > 1 && <button className="text-brand hover:underline" onClick={() => setSaveAmt({ ...saveAmt, ...Object.fromEntries(funds.filter((f) => f.kind !== 'ahorro' && f.kind !== 'uniformes').map((f) => [f.key, String(f.suggested)])) })}>Guardar todo lo sugerido</button>}
                 {Object.keys(saveAmt).length > 0 && <button className="hover:underline" onClick={() => setSaveAmt({})}>Borrar</button>}
               </span>
               <span className="font-display text-lg font-bold uppercase">Se guarda <span className="text-brand">{cents(savingsTotal)}</span></span>

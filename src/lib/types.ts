@@ -160,6 +160,7 @@ export interface Student {
   uniform_size?: string | null
   uniform_delivered_on?: string | null
   training_shirt_delivered_on?: string | null
+  credential_delivered_on?: string | null
   profile_completed_by: string | null
   created_at: string
 }

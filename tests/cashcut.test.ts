@@ -58,7 +58,7 @@ describe('sugerencia de ahorro', () => {
       exp({ name: 'Playeras', frequency: 'partes', amount: 7500, expense_installments: [inst('a', 0, '2026-09-01', 3000, '2026-09-01'), inst('b', 1, '2026-10-21', 2250, null), inst('c', 2, '2026-11-21', 2250, null)] }),
       exp({ name: 'P', kind: 'prestamo', lender: 'Pepe', frequency: 'partes', amount: 10000, expense_installments: [inst('d', 1, '2026-10-01', 5000, '2026-10-01'), inst('e', 2, '2026-11-01', 5000, null)] }),
     ] })
-    expect(f.filter((x) => x.kind !== 'ahorro').map((x) => [x.kind, x.name, x.suggested])).toEqual([['parte', 'Playeras · Pago 2 de 3', 1125], ['prestamo', 'Préstamo de Pepe · Pago 2 de 2', 1250]])
+    expect(f.filter((x) => x.kind !== 'ahorro' && x.kind !== 'uniformes').map((x) => [x.kind, x.name, x.suggested])).toEqual([['parte', 'Playeras · Pago 2 de 3', 1125], ['prestamo', 'Préstamo de Pepe · Pago 2 de 2', 1250]])
     expect(f[1].debt).toEqual({ total: 10000, paid: 5000 })
   })
 })
