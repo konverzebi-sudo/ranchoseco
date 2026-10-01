@@ -1,12 +1,13 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Save, ShieldAlert, ShieldCheck, History } from 'lucide-react'
-import { Button, Card, ErrorState, Field, Input, PageHeader, Spinner, Textarea } from '@/components/ui'
+import { Button, Card, ErrorState, Field, Input, PageHeader, Select, Spinner, Textarea } from '@/components/ui'
 import { useToast } from '@/components/toast'
 import { useSettings } from '@/lib/api'
 import { supabase, unwrap } from '@/lib/supabase'
 import { fillTemplate } from '@/lib/whatsapp'
 import { date } from '@/lib/format'
+import { useWaPreference } from '@/components/WaChooser'
 
 /** Campos de precio que dejan historial cuando cambian. */
 const TRACKED = [
@@ -24,6 +25,7 @@ export default function SettingsPage() {
   const [f, setF] = useState({ academy_name: '', default_country_code: '52', default_monthly_fee: '', due_day: '10', late_fee_amount: '', payment_instructions: '', collection_template: '', report_template: '' })
   const [saving, setSaving] = useState(false)
   const [reason, setReason] = useState('')
+  const wa = useWaPreference()
   const history = useQuery({
     queryKey: ['settings_history'],
     queryFn: async () => unwrap(await supabase.from('settings_history').select('*').order('changed_at', { ascending: false }).limit(50)) as HistoryRow[],
@@ -103,6 +105,13 @@ export default function SettingsPage() {
               </ol>
             )}
           </div>
+          <Field label="WhatsApp en este celular" hint="Con cuál app se mandan los mensajes desde este celular">
+            <Select value={wa.pref ?? ''} onChange={(e) => wa.set((e.target.value || null) as 'normal' | 'business' | null)}>
+              <option value="">Preguntar cada vez</option>
+              <option value="normal">WhatsApp</option>
+              <option value="business">WhatsApp Business</option>
+            </Select>
+          </Field>
           <Field label="Datos para pagar" hint="Se muestran a los papás en su link (cuenta, CLABE, horario de caja…)">
             <Textarea value={f.payment_instructions} onChange={(e) => setF({ ...f, payment_instructions: e.target.value })} />
           </Field>

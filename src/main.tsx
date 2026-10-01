@@ -14,6 +14,7 @@ import { ToastProvider } from './components/toast'
 import { Spinner } from './components/ui'
 import { isConfigured } from './lib/supabase'
 import ErrorBoundary, { reloadOnce } from './components/ErrorBoundary'
+import WaChooser from './components/WaChooser'
 
 // Si se publicó una versión nueva mientras la página estaba abierta, recarga sola en lugar de quedarse en blanco
 window.addEventListener('vite:preloadError', (e) => { if (reloadOnce()) e.preventDefault() })
@@ -50,6 +51,7 @@ createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
         <HashRouter>
+          <WaChooser />
           {!isConfigured ? (
             <SetupNeeded />
           ) : (

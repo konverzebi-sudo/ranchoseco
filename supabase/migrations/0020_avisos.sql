@@ -14,8 +14,10 @@ create table if not exists academia.notifications (
 );
 create index if not exists notifications_unseen_idx on academia.notifications (created_at desc) where seen_at is null;
 alter table academia.notifications enable row level security;
+drop policy if exists notifications_admin on academia.notifications;
 create policy notifications_admin on academia.notifications for all to authenticated
   using (academia.is_admin()) with check (academia.is_admin());
+drop policy if exists notifications_open_mode on academia.notifications;
 create policy notifications_open_mode on academia.notifications for all to anon
   using (academia.open_mode()) with check (academia.open_mode());
 grant select, insert, update, delete on academia.notifications to authenticated, anon;
