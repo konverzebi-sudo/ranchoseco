@@ -8,7 +8,7 @@ import { useToast } from '@/components/toast'
 import RangePicker from '@/components/RangePicker'
 import { useCashCuts, useCoachPay, useCoaches, useExpenses, useFees, usePayments, useStudents } from '@/lib/api'
 import {
-  CARRY_DESTINATION, DESTINATIONS, OUT_GROUPS, SAVINGS_BOX_KEY, buildItems, carryOver, counts, itemTotals, itemValue, nextPeriodStart, outGroup, periodSummary, savingFunds,
+  CARRY_DESTINATION, DESTINATIONS, OUT_GROUPS, SAVINGS_BOX_KEY, cutGaps, nextDay, buildItems, carryOver, counts, itemTotals, itemValue, nextPeriodStart, outGroup, periodSummary, savingFunds,
   type CutItem, type SavingFund,
 } from '@/lib/cashcut'
 import { METHOD_LABEL, date, money, toISODate, today } from '@/lib/format'
@@ -29,7 +29,7 @@ const REPORT_TO = [
 const SOURCE_PREFIX = 'Vino de: '
 const SOURCES = ['Préstamo de ', 'Dinero del dueño', 'Ahorro apartado', 'Banco', 'Caja chica de otro lado', 'Otro']
 
-type Review = Record<string, { approved?: boolean; adjusted?: number | null; note?: string; excluded?: boolean }>
+type Review = Record<string, { amount?: number; approved?: boolean; adjusted?: number | null; note?: string; excluded?: boolean }>
 
 /**
  * Corte de caja (normalmente el miércoles, cuando se paga a los profes):
@@ -152,7 +152,7 @@ export default function WeeklyCut() {
   /** Cargar un corte guardado para corregirlo */
   const startEdit = (c: CashCut) => {
     setEditingCut(c)
-    setReview(Object.fromEntries((c.items ?? []).map((i) => [i.key, { approved: i.approved, adjusted: i.adjusted, note: i.note, excluded: i.excluded }])))
+    setReview(Object.fromEntries((c.items ?? []).map((i) => [i.key, { amount: i.amount, approved: i.approved, adjusted: i.adjusted, note: i.note, excluded: i.excluded }])))
     setSaveAmt(Object.fromEntries((c.savings ?? []).map((s) => [s.key, String(s.saved)])))
     setSaveNote(Object.fromEntries((c.savings ?? []).filter((s) => s.note).map((s) => [s.key, s.note!])))
     setCounted(String(c.counted))
@@ -283,6 +283,32 @@ export default function WeeklyCut() {
           <Button icon={Vault} onClick={() => setConfirming(true)} disabled={loading}>{editingCut ? 'Guardar corrección' : 'Hacer corte ahora'}</Button>
         </>} />
 
+      {(() => {
+        // Avisos: días sin corte (cobros que no se cuentan) y fechas que se enciman con otro corte
+        const others = (cuts.data ?? []).filter((c) => c.id !== editingCut?.id)
+        const before = others.filter((c) => c.period_to < to).sort((a, b) => b.period_to.localeCompare(a.period_to))[0]
+        const overlap = others.find((c) => c.period_from <= to && c.period_to >= from)
+        const skipped = before && nextDay(before.period_to) < from ? { from: nextDay(before.period_to), to: from } : null
+        const gaps = cutGaps(cuts.data ?? [], payments.data ?? []).filter((g) => g.after.id !== editingCut?.id)
+        if (!overlap && !skipped && !gaps.length) return null
+        return (
+          <Card className="mb-3 space-y-2 border-bad/50 bg-bad/5 p-3 text-sm">
+            {skipped && (
+              <p className="flex flex-wrap items-center gap-2 text-bad">
+                <span>⚠ Te estás saltando días: el corte anterior terminó el <b>{date(before!.period_to, "d 'de' MMM")}</b>. Los cobros desde el {date(skipped.from, "d 'de' MMM")} no entrarían en ningún corte.</span>
+                <Button size="sm" variant="secondary" onClick={() => setRange('desde', skipped.from)}>Empezar el {date(skipped.from, "d 'de' MMM")}</Button>
+              </p>
+            )}
+            {overlap && <p className="text-bad">⚠ Estas fechas se enciman con el corte del {date(overlap.cut_date, "d 'de' MMM")}: algunos cobros y pagos se contarían dos veces.</p>}
+            {gaps.map((g) => (
+              <p key={g.from} className="flex flex-wrap items-center gap-2 text-bad">
+                <span>⚠ Del {date(g.from, "d 'de' MMM")} al {date(g.to, "d 'de' MMM")} no hay corte{g.income > 0 ? <>: <b>{cents(g.income)} de cobros no se están contando</b></> : ''}.</span>
+                <Button size="sm" variant="secondary" onClick={() => { startEdit(g.after); setParams({ desde: g.from, hasta: g.after.period_to }, { replace: true }) }}>Arreglar el corte del {date(g.after.cut_date, "d 'de' MMM")}</Button>
+              </p>
+            ))}
+          </Card>
+        )
+      })()}
       {editingCut && (
         <Card className="mb-3 flex flex-wrap items-center justify-between gap-2 border-brand/50 bg-brand-dim p-3">
           <p className="text-sm">Estás corrigiendo el corte del <b>{date(editingCut.cut_date, "EEEE d 'de' MMMM")}</b>. Cambia lo que necesites y pica <b>Guardar corrección</b>.</p>

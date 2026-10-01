@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildItems, carryOver, itemTotals, nextPeriodStart, periodSummary, savingFunds } from '../src/lib/cashcut'
+import { buildItems, carryOver, cutGaps, itemTotals, nextPeriodStart, periodSummary, savingFunds } from '../src/lib/cashcut'
 import type { Expense, FeeBalance, Payment } from '../src/lib/types'
 
 const exp = (p: Partial<Expense>): Expense => ({ id: p.name ?? 'x', name: 'x', amount: 0, frequency: 'mensual', paid_month: null, paid_year: null, down_payment: null, installments: null, paid_on: null, notes: null, active: true, sort_order: 0, ...p })
@@ -91,5 +91,17 @@ describe('ahorro con meses sin pago', () => {
     const regalias = exp({ id: 'r', name: 'Regalías Chivas', amount: 7500, frequency: 'mensual', skip_months: [7, 8] })
     const [f] = savingFunds({ cutDate: '2027-06-09', expenses: [regalias], cuts: [] })
     expect(f.due).toBe('2027-09-01')
+  })
+})
+
+describe('días sin corte', () => {
+  it('avisa los huecos entre cortes y cuánto se cobró en ellos', () => {
+    const cuts = [
+      { id: 'a', cut_date: '2026-09-02', period_from: '2026-08-31', period_to: '2026-09-02' },
+      { id: 'b', cut_date: '2026-09-09', period_from: '2026-09-07', period_to: '2026-09-09' },
+      { id: 'c', cut_date: '2026-09-16', period_from: '2026-09-10', period_to: '2026-09-16' },
+    ]
+    const g = cutGaps(cuts, [pay('x', '2026-09-05', 39750), pay('y', '2026-09-10', 600)])
+    expect(g.map((x) => [x.from, x.to, x.income, x.after.id])).toEqual([['2026-09-03', '2026-09-06', 39750, 'b']])
   })
 })

@@ -7,12 +7,29 @@ import type { CashCut, CoachPay, Expense, FeeBalance, Payment, PaymentMethod } f
 export const CARRY_DESTINATION = 'Caja chica'
 export const DESTINATIONS = ['Caja chica', 'Ahorro Chivas', 'Ahorro seguro', 'Banco', 'Pago a profesores', 'Pago de préstamo', 'Dueño', 'Otro']
 
-const nextDay = (d: string) => toISODate(addDays(new Date(d + 'T12:00:00'), 1))
+export const nextDay = (d: string) => toISODate(addDays(new Date(d + 'T12:00:00'), 1))
 
 /** El siguiente corte empieza el día después del último corte. */
 export function nextPeriodStart(cuts: Pick<CashCut, 'period_to'>[], fallback: string) {
   const last = cuts.reduce<string | null>((m, c) => (!m || c.period_to > m ? c.period_to : m), null)
   return last ? nextDay(last) : fallback
+}
+
+/**
+ * Días que no quedaron en ningún corte (entre un corte y el siguiente) y cuánto se cobró en ellos,
+ * para avisar que esos cobros no se están contando.
+ */
+export function cutGaps<T extends Pick<CashCut, 'id' | 'cut_date' | 'period_from' | 'period_to'>>(cuts: T[], payments: Pick<Payment, 'paid_at' | 'amount'>[]) {
+  const sorted = [...cuts].sort((a, b) => a.period_from.localeCompare(b.period_from))
+  const gaps: { from: string; to: string; income: number; before: string; after: T }[] = []
+  for (let k = 1; k < sorted.length; k++) {
+    const start = nextDay(sorted[k - 1].period_to)
+    if (start >= sorted[k].period_from) continue
+    const end = toISODate(addDays(new Date(sorted[k].period_from + 'T12:00:00'), -1))
+    const income = payments.filter((p) => p.paid_at.slice(0, 10) >= start && p.paid_at.slice(0, 10) <= end).reduce((a, p) => a + Number(p.amount), 0)
+    gaps.push({ from: start, to: end, income, before: sorted[k - 1].cut_date, after: sorted[k] })
+  }
+  return gaps
 }
 
 /** Dinero que se quedó en caja chica en el corte anterior (con qué se empieza). */
