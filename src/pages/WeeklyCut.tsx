@@ -8,13 +8,14 @@ import { useToast } from '@/components/toast'
 import RangePicker from '@/components/RangePicker'
 import { useCashCuts, useCoachPay, useCoaches, useExpenses, useFees, usePayments, useStudents } from '@/lib/api'
 import {
-  CARRY_DESTINATION, DESTINATIONS, OUT_GROUPS, SAVINGS_BOX_KEY, cutGaps, nextDay, buildItems, carryOver, counts, itemTotals, itemValue, nextPeriodStart, outGroup, periodSummary, savingFunds,
+  CARRY_DESTINATION, DESTINATIONS, OUT_GROUPS, SAVINGS_BOX_KEY, cutGaps, isManual, manualItem, nextDay, buildItems, carryOver, counts, itemTotals, itemValue, nextPeriodStart, outGroup, periodSummary, savingFunds,
   type CutItem, type SavingFund,
 } from '@/lib/cashcut'
 import { METHOD_LABEL, date, money, toISODate, today } from '@/lib/format'
 import { supabase, unwrap } from '@/lib/supabase'
 import { exportCsv } from '@/lib/csv'
 import { waLink } from '@/lib/whatsapp'
+import { notify } from '@/lib/notify'
 import type { CashCut, PaymentMethod } from '@/lib/types'
 
 const cents = (n: number) => money(Math.round(n * 100) / 100)
@@ -70,7 +71,9 @@ export default function WeeklyCut() {
   // Revisión de líneas (✓, monto corregido, nota)
   const [review, setReview] = useState<Review>({})
   const [editing, setEditing] = useState<string | null>(null)
-  const items: CutItem[] = useMemo(() => buildItems(d).map((i) => ({ ...i, ...review[i.key] }) as CutItem), [d, review])
+  const [manual, setManual] = useState<CutItem[]>([])
+  const items: CutItem[] = useMemo(() => [...buildItems(d), ...manual].map((i) => ({ ...i, ...review[i.key] }) as CutItem), [d, review, manual])
+  const [adding, setAdding] = useState<CutItem['type'] | null>(null)
   const tot = itemTotals(items)
   const setItem = (key: string, p: Review[string]) => setReview((r) => ({ ...r, [key]: { ...r[key], ...p } }))
   const approveAll = (type: CutItem['type'], approved: boolean) => setReview((r) => {
@@ -139,6 +142,16 @@ export default function WeeklyCut() {
       const savedCut = editingCut
         ? unwrap(await supabase.from('cash_cuts').update(row).eq('id', editingCut.id).select('*').single()) as CashCut
         : unwrap(await supabase.from('cash_cuts').insert(row).select('*').single()) as CashCut
+      if (editingCut) {
+        const diff = (a: number, b: number) => (Math.abs(a - b) > 0.5 ? `${cents(b)} → ${cents(a)}` : null)
+        const changes = [
+          diff(tot.income, Number(editingCut.income)) && `entró ${diff(tot.income, Number(editingCut.income))}`,
+          diff(tot.outflow, Number(editingCut.outflow)) && `salió ${diff(tot.outflow, Number(editingCut.outflow))}`,
+          diff(countedN, Number(editingCut.counted)) && `contado ${diff(countedN, Number(editingCut.counted))}`,
+        ].filter(Boolean).join(' · ')
+        await notify(`Se corrigió el corte del ${date(editingCut.cut_date, "d 'de' MMM")}`, changes || 'Se cambiaron revisiones, notas o destinos del dinero')
+        await qc.invalidateQueries({ queryKey: ['notifications'] })
+      }
       await qc.invalidateQueries({ queryKey: ['cash_cuts'] })
       resetDraft()
       setConfirming(false)
@@ -146,7 +159,7 @@ export default function WeeklyCut() {
     } catch (e) { toast.error(e) } finally { setSaving(false) }
   }
   const resetDraft = () => {
-    setReview({}); setSaveAmt({}); setSaveNote({}); setCounted(''); setRows([]); setSources([]); setNotes(''); setEditingCut(null)
+    setReview({}); setSaveAmt({}); setSaveNote({}); setCounted(''); setRows([]); setSources([]); setNotes(''); setEditingCut(null); setManual([])
     setParams({}, { replace: true })
   }
   /** Cargar un corte guardado para corregirlo */
@@ -159,6 +172,7 @@ export default function WeeklyCut() {
     setRows(c.distribution.filter((x) => x.to !== 'Ahorros apartados' && Number(x.amount) > 0).map((x) => ({ to: x.to, amount: String(x.amount) })))
     setSources(c.distribution.filter((x) => Number(x.amount) < 0).map((x) => ({ from: x.to.replace(SOURCE_PREFIX, ''), amount: String(-Number(x.amount)) })))
     setNotes(c.notes ?? '')
+    setManual((c.items ?? []).filter(isManual))
     setParams({ desde: c.period_from, hasta: c.period_to }, { replace: true })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -166,7 +180,8 @@ export default function WeeklyCut() {
     if (!deleting) return
     try {
       unwrap(await supabase.from('cash_cuts').delete().eq('id', deleting.id))
-      await qc.invalidateQueries({ queryKey: ['cash_cuts'] })
+      await notify(`Se eliminó el corte del ${date(deleting.cut_date, "d 'de' MMM")}`, `Entró ${cents(Number(deleting.income))} · salió ${cents(Number(deleting.outflow))} · contado ${cents(Number(deleting.counted))}`)
+      await Promise.all(['cash_cuts', 'notifications'].map((k) => qc.invalidateQueries({ queryKey: [k] })))
       toast.ok('Corte eliminado')
       setDeleting(null)
     } catch (e) { toast.error(e) }
@@ -185,10 +200,17 @@ export default function WeeklyCut() {
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-600 px-5 py-4">
           <h3 className="font-display text-lg font-bold uppercase tracking-wide">{title} <span className="font-sans text-sm font-normal normal-case text-muted">· {done} de {list.length} revisadas</span></h3>
-          {list.length > 0 && (done < list.length
-            ? <Button size="sm" variant="secondary" icon={CheckCheck} onClick={() => approveAll(type, true)}>Aprobar todas</Button>
-            : <Button size="sm" variant="ghost" icon={X} onClick={() => approveAll(type, false)}>Desaprobar todas</Button>)}
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="ghost" icon={Plus} onClick={() => setAdding(type)}>{type === 'entrada' ? 'Agregar pago' : 'Agregar gasto'}</Button>
+            {list.length > 0 && (done < list.length
+              ? <Button size="sm" variant="secondary" icon={CheckCheck} onClick={() => approveAll(type, true)}>Aprobar todas</Button>
+              : <Button size="sm" variant="ghost" icon={X} onClick={() => approveAll(type, false)}>Desaprobar todas</Button>)}
+          </div>
         </div>
+        {adding === type && (
+          <ManualLineForm type={type} defaultDate={to} onCancel={() => setAdding(null)}
+            onAdd={(it) => { setManual((m) => [...m, it]); setAdding(null) }} />
+        )}
         {list.length === 0 ? <p className="px-5 py-6 text-center text-sm text-muted">Nada en estas fechas.</p> : (
           <ul className="divide-y divide-ink-700">
             {(type === 'salida'
@@ -220,6 +242,7 @@ export default function WeeklyCut() {
                     {i.adjusted != null && <p className="text-xs text-muted line-through">{cents(i.amount)}</p>}
                     <p className={cx('font-semibold', i.adjusted != null && 'text-warn', i.excluded && 'line-through')}>{cents(itemValue(i))}</p>
                   </div>
+                  {isManual(i) && <IconButton icon={Trash2} label="Quitar línea agregada" onClick={() => setManual((m) => m.filter((x) => x.key !== i.key))} className="h-8 w-8" />}
                   <IconButton icon={Pencil} label="Corregir" onClick={() => setEditing(editing === i.key ? null : i.key)} className="h-8 w-8" />
                 </div>
                 {editing === i.key && (
@@ -626,7 +649,41 @@ const shareText = (c: CashCut) => [
   ...(c.notes ? ['', c.notes] : []),
 ].join('\n')
 
+/** Formulario corto para agregar un pago o un gasto que no estaba registrado. */
+function ManualLineForm({ type, defaultDate, onAdd, onCancel }: { type: CutItem['type']; defaultDate: string; onAdd: (i: CutItem) => void; onCancel: () => void }) {
+  const [f, setF] = useState({ concept: '', amount: '', date: defaultDate, note: '' })
+  const ok = f.concept.trim() && Number(f.amount) > 0
+  return (
+    <div className="grid gap-2 border-b border-ink-600 bg-ink-900 px-4 py-3 sm:grid-cols-[1fr_120px_150px]">
+      <Input value={f.concept} onChange={(e) => setF({ ...f, concept: e.target.value })} placeholder={type === 'entrada' ? '¿De quién o de qué? Ej. pago en efectivo de Juan' : '¿En qué se gastó? Ej. garrafones de agua'} className="h-10" autoFocus />
+      <Input type="number" min="0" inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} placeholder="Monto" className="h-10" />
+      <Input type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} className="h-10" />
+      <Input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} placeholder="Nota (por qué se agrega)" className="h-10 sm:col-span-2" />
+      <div className="flex gap-2">
+        <Button size="sm" variant="ghost" onClick={onCancel}>Cancelar</Button>
+        <Button size="sm" disabled={!ok} onClick={() => onAdd(manualItem(type, f.date, f.concept.trim(), Number(f.amount), f.note.trim()))}>{type === 'entrada' ? 'Agregar pago' : 'Agregar gasto'}</Button>
+      </div>
+    </div>
+  )
+}
+
 function CutCard({ cut: c, onEdit, onDelete }: { cut: CashCut; onEdit: () => void; onDelete: () => void }) {
+  const qc = useQueryClient()
+  const toast = useToast()
+  const [open, setOpen] = useState<CutItem['type'] | null>(null)
+  const [adding, setAdding] = useState(false)
+  const addLine = async (it: CutItem) => {
+    try {
+      const all = [...(c.items ?? []), it] as CutItem[]
+      const tot = itemTotals(all)
+      unwrap(await supabase.from('cash_cuts').update({ items: all, income: tot.income, outflow: tot.outflow }).eq('id', c.id))
+      await notify(`${it.type === 'entrada' ? 'Se agregó un pago' : 'Se agregó un gasto'} al corte del ${date(c.cut_date, "d 'de' MMM")}`,
+        `${it.concept}: ${cents(it.amount)}${it.note ? ` · ${it.note}` : ''} · ahora ${it.type === 'entrada' ? `entró ${cents(tot.income)}` : `salió ${cents(tot.outflow)}`}`)
+      await Promise.all(['cash_cuts', 'notifications'].map((k) => qc.invalidateQueries({ queryKey: [k] })))
+      toast.ok(it.type === 'entrada' ? 'Pago agregado al corte' : 'Gasto agregado al corte')
+      setAdding(false)
+    } catch (e) { toast.error(e) }
+  }
   const assigned = c.distribution.filter((x) => Number(x.amount) > 0 && x.to !== 'Ahorros apartados').reduce((a, x) => a + Number(x.amount), 0)
   const items = c.items ?? []
   const adjusted = items.filter((i) => i.adjusted != null)
@@ -639,8 +696,8 @@ function CutCard({ cut: c, onEdit, onDelete }: { cut: CashCut; onEdit: () => voi
           <p className="text-xs text-muted">Del {range(c.period_from, c.period_to)}{items.length ? ` · ${items.filter((i) => i.approved).length} de ${items.length} revisadas` : ''}</p>
         </div>
         <div className="flex gap-5 text-sm">
-          <span>Entró <b className="text-ok">{cents(Number(c.income))}</b></span>
-          <span>Salió <b className="text-bad">{cents(Number(c.outflow))}</b></span>
+          <button onClick={() => { setOpen(open === 'entrada' ? null : 'entrada'); setAdding(false) }} className="hover:underline">Entró <b className="text-ok">{cents(Number(c.income))}</b> <span className="text-xs text-muted">{open === 'entrada' ? '▾' : '▸'}</span></button>
+          <button onClick={() => { setOpen(open === 'salida' ? null : 'salida'); setAdding(false) }} className="hover:underline">Salió <b className="text-bad">{cents(Number(c.outflow))}</b> <span className="text-xs text-muted">{open === 'salida' ? '▾' : '▸'}</span></button>
           <span>Contado <b className="text-brand">{cents(Number(c.counted))}</b></span>
         </div>
         <div className="flex flex-wrap items-center gap-1">
@@ -656,6 +713,31 @@ function CutCard({ cut: c, onEdit, onDelete }: { cut: CashCut; onEdit: () => voi
       {savings.length > 0 && <p className="mt-2 text-xs text-muted">Ahorro: {savings.map((s) => `${s.name} ${cents(Number(s.saved))}`).join(' · ')}</p>}
       {adjusted.length > 0 && <p className="mt-1 text-xs text-warn">Correcciones: {adjusted.map((i) => `${i.concept} ${cents(i.amount)} → ${cents(Number(i.adjusted))}${i.note ? ` (${i.note})` : ''}`).join(' · ')}</p>}
       {c.notes && <p className="mt-2 text-sm text-muted">{c.notes}</p>}
+      {open && (() => {
+        const l = items.filter((i) => i.type === open && counts(i))
+        const groupOf = (i: CutItem) => (open === 'salida' ? OUT_GROUPS.find((g) => g.id === outGroup(i))!.label : (i.detail.split(' · ')[0] || 'Otro'))
+        const groups = [...new Set(l.map(groupOf))]
+        return (
+          <div className="mt-3 rounded-xl bg-ink-900 p-3">
+            <div className="space-y-0.5 font-mono text-xs text-muted">
+              {l.length === 0 && <p>Nada.</p>}
+              {groups.map((g) => {
+                const gl = l.filter((i) => groupOf(i) === g)
+                return (
+                  <div key={g}>
+                    <p className="flex justify-between pt-1.5 font-semibold text-white"><span>{g.toUpperCase()} ({gl.length})</span><span>{cents(gl.reduce((a, i) => a + itemValue(i), 0))}</span></p>
+                    {gl.map((i) => <p key={i.key} className="flex justify-between gap-3"><span className="truncate">· {i.concept}{isManual(i) ? ' (agregado a mano)' : ''}{i.note ? ` — ${i.note}` : ''}</span><span>{cents(itemValue(i))}</span></p>)}
+                  </div>
+                )
+              })}
+              <p className="flex justify-between border-t border-ink-600 pt-1.5 font-semibold text-white"><span>TOTAL</span><span>{cents(open === 'entrada' ? Number(c.income) : Number(c.outflow))}</span></p>
+            </div>
+            {adding
+              ? <div className="mt-3 overflow-hidden rounded-xl border border-ink-600"><ManualLineForm type={open} defaultDate={c.cut_date} onCancel={() => setAdding(false)} onAdd={addLine} /></div>
+              : <Button size="sm" variant="ghost" icon={Plus} className="mt-2" onClick={() => setAdding(true)}>{open === 'entrada' ? 'Agregar un pago para cuadrar' : 'Agregar un gasto para cuadrar'}</Button>}
+          </div>
+        )
+      })()}
     </Card>
   )
 }

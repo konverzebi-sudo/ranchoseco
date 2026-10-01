@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { endOfWeek, startOfMonth } from 'date-fns'
-import { Users, UserCog, ClipboardCheck, AlertTriangle, Wallet, TrendingUp, Plus, ChevronRight, Trophy, Dumbbell, HelpCircle, Scale, CalendarClock, UserPlus } from 'lucide-react'
+import { Users, UserCog, ClipboardCheck, AlertTriangle, Wallet, TrendingUp, Plus, ChevronRight, Trophy, Dumbbell, HelpCircle, Scale, CalendarClock, UserPlus, Bell } from 'lucide-react'
 import { Avatar, Button, Card, ErrorState, PageHeader, Spinner, StatCard, Badge } from '@/components/ui'
 import { CollectButton } from '@/components/WhatsAppButtons'
 import { monthNameOf, useCashBoxCards, useFinanceCards } from '@/components/FinanceModules'
@@ -9,7 +9,9 @@ import { PayInstallmentModal } from '@/components/Installments'
 import { CloseTrialModal } from '@/components/TrialModals'
 import { pendingInstallments } from '@/lib/finance'
 import type { Expense, ExpenseInstallment } from '@/lib/types'
-import { useAccounts, useCategories, useCoaches, useFees, useMatches, usePayments, useSiblingGroups, useExtraClasses, useStudents, useTrainings, useAttendanceDetail, useExpenses, type StudentRow } from '@/lib/api'
+import { useAccounts, useCategories, useCoaches, useFees, useMatches, usePayments, useSiblingGroups, useExtraClasses, useStudents, useTrainings, useAttendanceDetail, useExpenses, useNotifications, type StudentRow } from '@/lib/api'
+import { supabase, unwrap } from '@/lib/supabase'
+import { useQueryClient } from '@tanstack/react-query'
 import { promoStatus } from '@/lib/siblings'
 import { date, money, time, toISODate, today } from '@/lib/format'
 import { consecutiveAbsences } from '@/lib/stats'
@@ -32,6 +34,14 @@ export default function Dashboard() {
   const [paying, setPaying] = useState<{ expense: Expense; inst: ExpenseInstallment } | null>(null)
   const [closing, setClosing] = useState<StudentRow | null>(null)
   const fin = useFinanceCards()
+  const notes = useNotifications()
+  const qc = useQueryClient()
+  const markSeen = async (ids: string[]) => {
+    try {
+      unwrap(await supabase.from('notifications').update({ seen_at: new Date().toISOString() }).in('id', ids))
+      await qc.invalidateQueries({ queryKey: ['notifications'] })
+    } catch { /* se reintenta la próxima vez */ }
+  }
   const boxes = useCashBoxCards()
   const mes = monthNameOf(monthStart)
   const weekEnd = toISODate(endOfWeek(new Date(), { weekStartsOn: 1 }))
@@ -90,6 +100,26 @@ export default function Dashboard() {
 
       {loading ? <Spinner /> : (
         <div className="space-y-6">
+          {!!notes.data?.length && (
+            <Card className="border-warn/50">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-600 px-5 py-3">
+                <h2 className="flex items-center gap-2 font-display text-lg font-bold uppercase tracking-wide"><Bell className="h-5 w-5 text-warn" /> Cambios en la caja ({notes.data.length})</h2>
+                <Button size="sm" variant="ghost" onClick={() => markSeen(notes.data!.map((n) => n.id))}>Marcar todos como vistos</Button>
+              </div>
+              <ul className="divide-y divide-ink-700">
+                {notes.data.map((n) => (
+                  <li key={n.id} className="flex items-start gap-3 px-5 py-2.5">
+                    <Link to={n.link ?? '/corte'} className="min-w-0 flex-1 hover:text-brand">
+                      <p className="font-medium">{n.title}</p>
+                      {n.body && <p className="text-xs text-muted">{n.body}</p>}
+                      <p className="text-xs text-muted">{date(n.created_at.slice(0, 10), "d 'de' MMM")} · {new Date(n.created_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</p>
+                    </Link>
+                    <Button size="sm" variant="secondary" onClick={() => markSeen([n.id])}>Visto</Button>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {boxes.total}{boxes.chica}{boxes.apartado}{boxes.ahorro}
             <StatCard label={`Entradas de ${mes}`} value={money(data.collected)} icon={TrendingUp} tone="ok" hint="Cobrado en el mes" onClick={() => nav('/cobranza')} />

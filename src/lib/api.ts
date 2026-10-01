@@ -3,6 +3,7 @@ import { supabase, unwrap } from './supabase'
 import type {
   Attendance,
   AttendanceDetail,
+  AppNotification,
   CashCut,
   Category,
   Coach,
@@ -94,6 +95,13 @@ export function useCoachPay() {
     queryKey: ['coach_pay'],
     queryFn: async () => unwrap(await supabase.from('coach_pay').select('*')) as CoachPay[],
     staleTime: 60_000,
+  })
+}
+
+export function useNotifications() {
+  return useQuery({
+    queryKey: ['notifications'],
+    queryFn: async () => unwrap(await supabase.from('notifications').select('*').is('seen_at', null).order('created_at', { ascending: false }).limit(30)) as AppNotification[],
   })
 }
 

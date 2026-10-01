@@ -61,6 +61,16 @@ export interface CoachPayHistory {
   created_at: string
 }
 
+export interface AppNotification {
+  id: string
+  kind: string
+  title: string
+  body: string | null
+  link: string | null
+  created_at: string
+  seen_at: string | null
+}
+
 export interface CashCut {
   id: string
   cut_date: string

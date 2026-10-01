@@ -125,6 +125,12 @@ export function buildItems(d: ReturnType<typeof periodSummary>, prev: CutItem[] 
 /** Sólo cuenta en el corte lo que está palomeado (✓) y sí pasó por la caja. */
 export const counts = (i: Pick<CutItem, 'approved' | 'excluded'>) => i.approved && !i.excluded
 
+/** Línea agregada a mano para cuadrar el corte (un pago o un gasto que no estaba registrado). */
+export const isManual = (i: Pick<CutItem, 'key'>) => i.key.startsWith('m:')
+export function manualItem(type: CutItem['type'], date: string, concept: string, amount: number, note: string): CutItem {
+  return { key: `m:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`, type, date, concept, detail: 'Agregado a mano', amount, approved: true, adjusted: null, note, excluded: false }
+}
+
 export function itemTotals(items: CutItem[]) {
   const sum = (t: CutItem['type']) => items.filter((i) => i.type === t && counts(i)).reduce((a, i) => a + itemValue(i), 0)
   return { income: sum('entrada'), outflow: sum('salida'), pending: items.filter((i) => !i.approved).length, adjusted: items.filter((i) => i.adjusted != null).length }
