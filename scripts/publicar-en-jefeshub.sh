@@ -9,8 +9,10 @@ npm test
 npm run build
 tmp="$(mktemp -d)"
 git clone -q --depth 1 https://github.com/konverzebi-sudo/hub-jany.git "$tmp/hub"
-rm -rf "$tmp/hub/ranchoseco"
-mkdir -p "$tmp/hub/ranchoseco"
+# Se conservan los archivos de versiones anteriores (assets/) para que quien tenga la
+# página abierta pueda seguir cambiando de sección sin que se quede en blanco.
+mkdir -p "$tmp/hub/ranchoseco/assets"
+find "$tmp/hub/ranchoseco" -maxdepth 1 -type f -delete
 cp -r dist/. "$tmp/hub/ranchoseco/"
 cd "$tmp/hub"
 git add -A ranchoseco

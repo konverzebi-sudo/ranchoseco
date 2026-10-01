@@ -5,6 +5,7 @@ import {
   FileText, Settings, Menu, X, Search, Scale,
 } from 'lucide-react'
 import { Spinner, cx } from './ui'
+import ErrorBoundary from './ErrorBoundary'
 
 export const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -90,7 +91,7 @@ export default function Layout() {
       </header>
 
       <main className="min-w-0 flex-1 px-4 pb-28 pt-5 sm:px-6 lg:px-8 lg:pb-10 lg:pt-8">
-        <div className="mx-auto max-w-7xl"><Suspense fallback={<Spinner />}><Outlet /></Suspense></div>
+        <div className="mx-auto max-w-7xl"><ErrorBoundary resetKey={loc.pathname}><Suspense fallback={<Spinner />}><Outlet /></Suspense></ErrorBoundary></div>
       </main>
 
       {/* Barra inferior celular */}

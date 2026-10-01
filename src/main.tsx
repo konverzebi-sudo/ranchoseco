@@ -13,6 +13,10 @@ import Dashboard from './pages/Dashboard'
 import { ToastProvider } from './components/toast'
 import { Spinner } from './components/ui'
 import { isConfigured } from './lib/supabase'
+import ErrorBoundary, { reloadOnce } from './components/ErrorBoundary'
+
+// Si se publicó una versión nueva mientras la página estaba abierta, recarga sola en lugar de quedarse en blanco
+window.addEventListener('vite:preloadError', (e) => { if (reloadOnce()) e.preventDefault() })
 import SetupNeeded from './pages/SetupNeeded'
 
 // Cada sección se descarga sólo cuando se abre, para que la primera carga en el celular sea rápida.
@@ -49,6 +53,7 @@ createRoot(document.getElementById('root')!).render(
           {!isConfigured ? (
             <SetupNeeded />
           ) : (
+            <ErrorBoundary>
             <Suspense fallback={<Spinner />}>
               <Routes>
                 <Route path="/p/:token" element={<Portal />} />
@@ -75,6 +80,7 @@ createRoot(document.getElementById('root')!).render(
                 </Route>
               </Routes>
             </Suspense>
+            </ErrorBoundary>
           )}
         </HashRouter>
       </ToastProvider>
