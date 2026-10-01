@@ -89,6 +89,10 @@ export interface CutItem {
   note: string
   /** No salió (o no entró) por la caja: se pagó por otro lado, no cuenta en el corte */
   excluded?: boolean
+  /** Sueldo que no se pagó: queda pendiente para el siguiente corte */
+  pending?: boolean
+  /** Vacaciones pagadas por adelantado hasta esta fecha */
+  prepaidUntil?: string
 }
 export const itemValue = (i: Pick<CutItem, 'amount' | 'adjusted'>) => (i.adjusted ?? i.amount)
 
@@ -220,4 +224,45 @@ export function savingFunds(opts: { cutDate: string; expenses: Expense[]; cuts: 
   out.push({ key: SAVINGS_BOX_KEY, name: 'Caja de ahorro', kind: 'ahorro', target: 0, due: '9999-12-31', saved: savedFor(SAVINGS_BOX_KEY), weeksLeft: 0, suggested: 0 })
   const order = { fijo: 0, seguro: 1, parte: 2, prestamo: 3, ahorro: 4 }
   return out.sort((a, b) => order[a.kind] - order[b.kind] || a.due.localeCompare(b.due))
+}
+
+// ---------------------------------------------------------------------
+// Sueldos pendientes y vacaciones pagadas por adelantado
+// ---------------------------------------------------------------------
+
+/** ¿La salida es un sueldo (profes o staff semanal)? */
+export const isSalary = (i: Pick<CutItem, 'type' | 'detail'>) => i.type === 'salida' && outGroup(i) === 'sueldos'
+
+/**
+ * Sueldos que no se pagaron en un corte anterior y se dejaron pendientes:
+ * aparecen en el siguiente corte hasta que se pagan (palomeados ahí).
+ */
+export function pendingSalaries(cuts: Pick<CashCut, 'id' | 'cut_date' | 'items'>[], excludeCut?: string): CutItem[] {
+  const others = cuts.filter((c) => c.id !== excludeCut)
+  const settled = new Set(others.flatMap((c) => (c.items ?? []).filter((i) => i.approved && !i.excluded).map((i) => i.key)))
+  return others.flatMap((c) => (c.items ?? []).filter((i) => i.pending).map((i) => ({ i, c })))
+    .filter(({ i }) => !settled.has(`pend:${i.key}`))
+    .map(({ i, c }) => ({
+      key: `pend:${i.key}`, type: 'salida' as const, date: c.cut_date,
+      concept: `${i.concept} (pendiente del ${Number(c.cut_date.slice(8, 10))}/${Number(c.cut_date.slice(5, 7))})`,
+      detail: 'Sueldo · pendiente', amount: i.adjusted ?? i.amount, approved: false, adjusted: null, note: i.note, excluded: false,
+    }))
+}
+
+/** Hasta qué fecha ya se le pagaron vacaciones a cada quien (por nombre). */
+export function prepaidUntil(cuts: Pick<CashCut, 'id' | 'items'>[], excludeCut?: string) {
+  const m = new Map<string, string>()
+  for (const c of cuts) if (c.id !== excludeCut) for (const i of c.items ?? []) {
+    if (i.prepaidUntil && i.approved && !i.excluded && (m.get(i.concept) ?? '') < i.prepaidUntil) m.set(i.concept, i.prepaidUntil)
+  }
+  return m
+}
+
+/** Líneas para pagar por adelantado N semanas de vacaciones a cada sueldo de este corte. */
+export function vacationItems(items: CutItem[], weeks: number, until: string): CutItem[] {
+  return items.filter((i) => isSalary(i) && counts(i) && !i.key.startsWith('pend:') && !i.prepaidUntil).map((i) => ({
+    key: `vac:${i.concept}:${until}`, type: 'salida' as const, date: i.date, concept: i.concept,
+    detail: `Sueldo · vacaciones (${weeks} ${weeks === 1 ? 'semana' : 'semanas'})`, amount: itemValue(i) * weeks,
+    approved: true, adjusted: null, note: `Vacaciones pagadas hasta el ${Number(until.slice(8, 10))}/${Number(until.slice(5, 7))}`, excluded: false, prepaidUntil: until,
+  }))
 }

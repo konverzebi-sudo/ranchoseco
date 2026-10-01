@@ -55,6 +55,9 @@ export default function StudentForm({ student, defaultCategory, defaultStatus, o
     emergency_contact_phone: student?.emergency_contact_phone ?? '',
     notes: student?.notes ?? '',
     monthly_fee: student?.monthly_fee != null ? String(student.monthly_fee) : '',
+    uniform_size: student?.uniform_size ?? '',
+    uniform_delivered_on: student?.uniform_delivered_on ?? '',
+    training_shirt_delivered_on: student?.training_shirt_delivered_on ?? '',
     papa_name: par.papa?.full_name ?? '',
     papa_phone: par.papa?.phone ?? '',
     mama_name: par.mama?.full_name ?? '',
@@ -105,6 +108,9 @@ export default function StudentForm({ student, defaultCategory, defaultStatus, o
         emergency_contact_phone: f.emergency_contact_phone.trim() || null,
         notes: f.notes.trim() || null,
         monthly_fee: f.monthly_fee === '' ? null : Number(f.monthly_fee),
+        uniform_size: f.uniform_size.trim() || null,
+        uniform_delivered_on: f.uniform_delivered_on || null,
+        training_shirt_delivered_on: f.training_shirt_delivered_on || null,
       }
       let id = student?.id
       if (id) unwrap(await supabase.from('students').update(payload).eq('id', id))
@@ -192,6 +198,20 @@ export default function StudentForm({ student, defaultCategory, defaultStatus, o
           <Field label={f.status === 'muestra' ? 'Fecha de la clase muestra' : 'Fecha de inscripción'}>
             <Input type="date" value={f.enrolled_at} onChange={set('enrolled_at')} />
           </Field>
+          <div className="grid gap-3 rounded-xl border border-ink-600 p-3 sm:col-span-2 sm:grid-cols-3">
+            <Field label="Talla de uniforme">
+              <Input value={f.uniform_size} onChange={set('uniform_size')} list="uniform-sizes" placeholder="Ej. 10, CH, M" />
+            </Field>
+            <datalist id="uniform-sizes">{['4', '6', '8', '10', '12', '14', '16', 'XCH', 'CH', 'M', 'G', 'XG'].map((t) => <option key={t} value={t} />)}</datalist>
+            <label className="flex items-center gap-2 self-end pb-2.5 text-sm">
+              <input type="checkbox" checked={!!f.uniform_delivered_on} onChange={(e) => setF({ ...f, uniform_delivered_on: e.target.checked ? today() : '' })} className="h-5 w-5 accent-[#F2E30A]" />
+              Uniforme entregado{f.uniform_delivered_on && <span className="text-xs text-muted">({f.uniform_delivered_on.slice(8, 10)}/{f.uniform_delivered_on.slice(5, 7)})</span>}
+            </label>
+            <label className="flex items-center gap-2 self-end pb-2.5 text-sm">
+              <input type="checkbox" checked={!!f.training_shirt_delivered_on} onChange={(e) => setF({ ...f, training_shirt_delivered_on: e.target.checked ? today() : '' })} className="h-5 w-5 accent-[#F2E30A]" />
+              Playera de entrenamiento entregada{f.training_shirt_delivered_on && <span className="text-xs text-muted">({f.training_shirt_delivered_on.slice(8, 10)}/{f.training_shirt_delivered_on.slice(5, 7)})</span>}
+            </label>
+          </div>
           <Field label="Cuota especial (beca)" hint="Vacío = cuota normal de su categoría. Ej. 300 si tiene beca parcial; 0 si es beca completa.">
             <Input type="number" min="0" inputMode="decimal" value={f.monthly_fee} onChange={set('monthly_fee')} placeholder="Cuota normal" />
           </Field>

@@ -81,7 +81,7 @@ export interface CashCut {
   counted: number
   distribution: { to: string; amount: number }[]
   /** Entradas y salidas revisadas (✓ aprobada, monto corregido y nota) */
-  items?: { key: string; type: 'entrada' | 'salida'; date: string; concept: string; detail: string; amount: number; approved: boolean; adjusted: number | null; note: string; excluded?: boolean }[]
+  items?: { key: string; type: 'entrada' | 'salida'; date: string; concept: string; detail: string; amount: number; approved: boolean; adjusted: number | null; note: string; excluded?: boolean; pending?: boolean; prepaidUntil?: string }[]
   /** Ahorros apartados en este corte */
   savings?: { key: string; name: string; target: number; due: string; suggested: number; saved: number; note?: string }[]
   notes: string | null
@@ -156,6 +156,10 @@ export interface Student {
   profile_completed_at: string | null
   /** Día de su clase muestra (si vino a probar) */
   trial_on?: string | null
+  /** Uniforme: talla y fechas de entrega del uniforme y de la playera de entrenamiento */
+  uniform_size?: string | null
+  uniform_delivered_on?: string | null
+  training_shirt_delivered_on?: string | null
   profile_completed_by: string | null
   created_at: string
 }

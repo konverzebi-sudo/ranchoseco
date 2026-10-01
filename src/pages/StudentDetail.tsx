@@ -23,7 +23,7 @@ import {
   useMedical, usePayments, usePortalToken, useSettings, useSiblingGroups, useStudent, useStudents, useTrainings, portalUrl, primaryGuardian, parentsOf, type StudentRow,
 } from '@/lib/api'
 import {
-  ACCOUNT_LABEL, ATTENDANCE_LABEL, FEE_LABEL, METHOD_LABEL, STATUS_LABEL, age, date, money, monthName, prettyPhone, shortDate, time,
+  ACCOUNT_LABEL, ATTENDANCE_LABEL, FEE_LABEL, METHOD_LABEL, STATUS_LABEL, age, date, money, monthName, prettyPhone, shortDate, time, today,
 } from '@/lib/format'
 import { attendanceRate, consecutiveAbsences, overallAverage } from '@/lib/stats'
 import { supabase, unwrap, signedUrl, BUCKETS } from '@/lib/supabase'
@@ -135,6 +135,22 @@ function GeneralTab({ s }: { s: StudentRow }) {
         <InfoRow label="Profesor">{coachNames || '—'}</InfoRow>
         <InfoRow label="Inscripción">{date(s.enrolled_at)}</InfoRow>
         <InfoRow label="Estatus">{STATUS_LABEL[s.status]}</InfoRow>
+        <InfoRow label="Uniforme">
+          <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <span>Talla <b>{s.uniform_size || '—'}</b></span>
+            {([['uniform_delivered_on', 'Uniforme entregado'], ['training_shirt_delivered_on', 'Playera de entrenamiento']] as const).map(([k, label]) => (
+              <label key={k} className="flex items-center gap-1.5">
+                <input type="checkbox" checked={!!s[k]} className="h-4 w-4 accent-[#F2E30A]" onChange={async (e) => {
+                  try {
+                    unwrap(await supabase.from('students').update({ [k]: e.target.checked ? today() : null }).eq('id', s.id))
+                    await Promise.all(['student', 'students'].map((q) => qc.invalidateQueries({ queryKey: [q] })))
+                  } catch (err) { toast.error(err) }
+                }} />
+                <span className={s[k] ? 'text-ok' : ''}>{label}{s[k] ? ` · ${date(s[k], 'd MMM')}` : ''}</span>
+              </label>
+            ))}
+          </span>
+        </InfoRow>
         <InfoRow label="Datos de la familia">
           {s.profile_completed_at
             ? <span className="text-ok">Completos · {s.profile_completed_by} · {date(s.profile_completed_at.slice(0, 10))}

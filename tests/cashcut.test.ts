@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildItems, carryOver, cutGaps, itemTotals, nextPeriodStart, periodSummary, savingFunds } from '../src/lib/cashcut'
+import { buildItems, carryOver, cutGaps, pendingSalaries, prepaidUntil, vacationItems, itemTotals, nextPeriodStart, periodSummary, savingFunds } from '../src/lib/cashcut'
 import type { Expense, FeeBalance, Payment } from '../src/lib/types'
 
 const exp = (p: Partial<Expense>): Expense => ({ id: p.name ?? 'x', name: 'x', amount: 0, frequency: 'mensual', paid_month: null, paid_year: null, down_payment: null, installments: null, paid_on: null, notes: null, active: true, sort_order: 0, ...p })
@@ -103,5 +103,22 @@ describe('días sin corte', () => {
     ]
     const g = cutGaps(cuts, [pay('x', '2026-09-05', 39750), pay('y', '2026-09-10', 600)])
     expect(g.map((x) => [x.from, x.to, x.income, x.after.id])).toEqual([['2026-09-03', '2026-09-06', 39750, 'b']])
+  })
+})
+
+describe('sueldos pendientes y vacaciones', () => {
+  const sal = (concept: string, amount: number, extra = {}) => ({ key: `o:2026-09-16:${concept}:Sueldo profesor · semanal`, type: 'salida' as const, date: '2026-09-16', concept, detail: 'Sueldo profesor · semanal', amount, approved: false, adjusted: null, note: '', excluded: true, ...extra })
+  it('un sueldo que no se pagó aparece en el siguiente corte hasta pagarse', () => {
+    const c1 = { id: 'c1', cut_date: '2026-09-16', items: [sal('Juan de Dios', 700, { pending: true })] }
+    const p = pendingSalaries([c1])
+    expect(p).toMatchObject([{ key: 'pend:o:2026-09-16:Juan de Dios:Sueldo profesor · semanal', concept: 'Juan de Dios (pendiente del 16/9)', amount: 700 }])
+    const c2 = { id: 'c2', cut_date: '2026-09-23', items: [{ ...p[0], approved: true }] }
+    expect(pendingSalaries([c1, c2])).toEqual([])
+  })
+  it('vacaciones: paga N semanas por adelantado y recuerda hasta cuándo', () => {
+    const items = [sal('Tonny', 1400, { approved: true, excluded: false }), sal('Javier', 900, { approved: true, excluded: false })]
+    const v = vacationItems(items, 2, '2026-12-30')
+    expect(v.map((i) => [i.concept, i.amount, i.prepaidUntil])).toEqual([['Tonny', 2800, '2026-12-30'], ['Javier', 1800, '2026-12-30']])
+    expect(prepaidUntil([{ id: 'x', items: v }]).get('Tonny')).toBe('2026-12-30')
   })
 })

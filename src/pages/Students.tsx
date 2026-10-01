@@ -44,6 +44,7 @@ export default function Students() {
   const status = !stParam || stParam === 'todos' ? '' : stParam
   const acct = params.get('acct') ?? ''
   const datos = params.get('datos') ?? ''
+  const unif = params.get('unif') ?? ''
   const nuevos = /^\d{4}-\d{2}$/.test(params.get('nuevos') ?? '') ? params.get('nuevos')! : ''
   const sortKey = (params.get('orden') as SortKey) || 'estatus'
   const sortDir = params.get('dir') === 'desc' ? -1 : 1
@@ -78,6 +79,9 @@ export default function Students() {
       if (acct && (accMap.get(s.id)?.status ?? 'al_corriente') !== acct) return false
       if (datos === 'completos' && !s.profile_completed_at) return false
       if (datos === 'faltan' && s.profile_completed_at) return false
+      if (unif === 'uniforme' && s.uniform_delivered_on) return false
+      if (unif === 'playera' && s.training_shirt_delivered_on) return false
+      if (unif === 'talla' && s.uniform_size) return false
       if (!nq) return true
       const { all } = parentsOf(s)
       return (
@@ -102,7 +106,7 @@ export default function Students() {
       const c = typeof ka === 'number' && typeof kb === 'number' ? ka - kb : String(ka).localeCompare(String(kb), 'es')
       return c * sortDir || byName(a, b)
     })
-  }, [students.data, q, cat, status, acct, datos, nuevos, accMap, catMap, catOrder, sortKey, sortDir])
+  }, [students.data, q, cat, status, acct, datos, unif, nuevos, accMap, catMap, catOrder, sortKey, sortDir])
 
   const SortTh = ({ k, children, className }: { k: SortKey; children: string; className?: string }) => {
     const on = sortKey === k
@@ -171,7 +175,7 @@ export default function Students() {
         )
       })()}
 
-      <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_180px_160px_180px]">
+      <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_170px_170px_170px_170px]">
         <SearchInput value={q} onChange={(v) => setParam('q', v)} placeholder="Nombre, categoría, papá, mamá o teléfono" className="sm:col-span-2 lg:col-span-1" />
         <Select value={cat} onChange={(e) => setParam('cat', e.target.value)} aria-label="Filtrar por categoría">
           <option value="">Todas las categorías</option>
@@ -188,6 +192,12 @@ export default function Students() {
         <Select value={acct} onChange={(e) => setParam('acct', e.target.value)} aria-label="Filtrar por estado de cuenta">
           <option value="">Cualquier estado de cuenta</option>
           {(Object.keys(ACCOUNT_LABEL) as AccountStatus[]).map((k) => <option key={k} value={k}>{ACCOUNT_LABEL[k]}</option>)}
+        </Select>
+        <Select value={unif} onChange={(e) => setParam('unif', e.target.value)} aria-label="Uniformes">
+          <option value="">Uniformes: todos</option>
+          <option value="uniforme">Falta entregar uniforme</option>
+          <option value="playera">Falta entregar playera</option>
+          <option value="talla">Sin talla</option>
         </Select>
       </div>
 

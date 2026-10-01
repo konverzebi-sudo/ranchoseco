@@ -8,7 +8,7 @@ import { useToast } from '@/components/toast'
 import RangePicker from '@/components/RangePicker'
 import { useCashCuts, useCoachPay, useCoaches, useExpenses, useFees, usePayments, useStudents } from '@/lib/api'
 import {
-  CARRY_DESTINATION, DESTINATIONS, OUT_GROUPS, SAVINGS_BOX_KEY, cutGaps, isManual, manualItem, nextDay, buildItems, carryOver, counts, itemTotals, itemValue, nextPeriodStart, outGroup, periodSummary, savingFunds,
+  CARRY_DESTINATION, DESTINATIONS, OUT_GROUPS, SAVINGS_BOX_KEY, cutGaps, isManual, isSalary, manualItem, nextDay, pendingSalaries, prepaidUntil, vacationItems, buildItems, carryOver, counts, itemTotals, itemValue, nextPeriodStart, outGroup, periodSummary, savingFunds,
   type CutItem, type SavingFund,
 } from '@/lib/cashcut'
 import { METHOD_LABEL, date, money, toISODate, today } from '@/lib/format'
@@ -20,7 +20,7 @@ import type { CashCut, PaymentMethod } from '@/lib/types'
 
 const cents = (n: number) => money(Math.round(n * 100) / 100)
 const range = (from: string, to: string) => `${date(from, "d 'de' MMM")} al ${date(to, "d 'de' MMM yyyy")}`
-const FUND_LABEL: Record<SavingFund['kind'], string> = { fijo: 'Gasto fijo', seguro: 'Seguro anual', parte: 'Pago pendiente', prestamo: 'Préstamo', ahorro: 'Ahorro libre' }
+const FUND_LABEL: Record<SavingFund['kind'], string> = { fijo: 'Gasto fijo', seguro: 'Seguro y credenciales', parte: 'Pago pendiente', prestamo: 'Préstamo', ahorro: 'Ahorro libre' }
 /** A quién se le manda el reporte de cada corte por WhatsApp. */
 const REPORT_TO = [
   { name: 'Marco DL', phone: '528442713705' },
@@ -30,7 +30,7 @@ const REPORT_TO = [
 const SOURCE_PREFIX = 'Vino de: '
 const SOURCES = ['Préstamo de ', 'Dinero del dueño', 'Ahorro apartado', 'Banco', 'Caja chica de otro lado', 'Otro']
 
-type Review = Record<string, { amount?: number; approved?: boolean; adjusted?: number | null; note?: string; excluded?: boolean }>
+type Review = Record<string, { amount?: number; approved?: boolean; adjusted?: number | null; note?: string; excluded?: boolean; pending?: boolean }>
 
 /**
  * Corte de caja (normalmente el miércoles, cuando se paga a los profes):
@@ -72,7 +72,17 @@ export default function WeeklyCut() {
   const [review, setReview] = useState<Review>({})
   const [editing, setEditing] = useState<string | null>(null)
   const [manual, setManual] = useState<CutItem[]>([])
-  const items: CutItem[] = useMemo(() => [...buildItems(d), ...manual].map((i) => ({ ...i, ...review[i.key] }) as CutItem), [d, review, manual])
+  const items: CutItem[] = useMemo(() => {
+    // Sueldos que quedaron pendientes en cortes anteriores y vacaciones ya pagadas por adelantado
+    const pend = pendingSalaries(cuts.data ?? [], editingCut?.id)
+    const prepaid = prepaidUntil(cuts.data ?? [], editingCut?.id)
+    return [...buildItems(d), ...pend, ...manual].map((i) => {
+      const paidAhead = isSalary(i) && !i.prepaidUntil && !i.key.startsWith('pend:') && (prepaid.get(i.concept) ?? '') >= i.date
+      const base = paidAhead ? { ...i, approved: true, excluded: true, note: `Ya se pagó en vacaciones (hasta el ${Number(prepaid.get(i.concept)!.slice(8, 10))}/${Number(prepaid.get(i.concept)!.slice(5, 7))})` } : i
+      return { ...base, ...review[i.key] } as CutItem
+    })
+  }, [d, review, manual, cuts.data, editingCut])
+  const [vacation, setVacation] = useState<{ weeks: string; until: string } | null>(null)
   const [adding, setAdding] = useState<CutItem['type'] | null>(null)
   const tot = itemTotals(items)
   const setItem = (key: string, p: Review[string]) => setReview((r) => ({ ...r, [key]: { ...r[key], ...p } }))
@@ -172,7 +182,7 @@ export default function WeeklyCut() {
     setRows(c.distribution.filter((x) => x.to !== 'Ahorros apartados' && Number(x.amount) > 0).map((x) => ({ to: x.to, amount: String(x.amount) })))
     setSources(c.distribution.filter((x) => Number(x.amount) < 0).map((x) => ({ from: x.to.replace(SOURCE_PREFIX, ''), amount: String(-Number(x.amount)) })))
     setNotes(c.notes ?? '')
-    setManual((c.items ?? []).filter(isManual))
+    setManual((c.items ?? []).filter((i) => isManual(i) || i.key.startsWith('vac:')))
     setParams({ desde: c.period_from, hasta: c.period_to }, { replace: true })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -202,11 +212,33 @@ export default function WeeklyCut() {
           <h3 className="font-display text-lg font-bold uppercase tracking-wide">{title} <span className="font-sans text-sm font-normal normal-case text-muted">· {done} de {list.length} revisadas</span></h3>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="ghost" icon={Plus} onClick={() => setAdding(type)}>{type === 'entrada' ? 'Agregar pago' : 'Agregar gasto'}</Button>
+            {type === 'salida' && <Button size="sm" variant="ghost" onClick={() => setVacation(vacation ? null : { weeks: '2', until: '' })}>🏖 Vacaciones</Button>}
             {list.length > 0 && (done < list.length
               ? <Button size="sm" variant="secondary" icon={CheckCheck} onClick={() => approveAll(type, true)}>Aprobar todas</Button>
               : <Button size="sm" variant="ghost" icon={X} onClick={() => approveAll(type, false)}>Desaprobar todas</Button>)}
           </div>
         </div>
+        {type === 'salida' && vacation && (
+          <div className="space-y-2 border-b border-ink-600 bg-ink-900 px-4 py-3 text-sm">
+            <p className="font-semibold">Pagar vacaciones por adelantado</p>
+            <p className="text-xs text-muted">A cada profe y staff de este corte se le paga su semana normal más las semanas de vacaciones. En los cortes de esas semanas su sueldo ya no se vuelve a cobrar.</p>
+            <div className="grid gap-2 sm:grid-cols-[160px_200px_auto]">
+              <Field label="Semanas de vacaciones"><Input type="number" min="1" max="8" inputMode="numeric" value={vacation.weeks} onChange={(e) => setVacation({ ...vacation, weeks: e.target.value })} className="h-10" /></Field>
+              <Field label="Regresan a trabajar el"><Input type="date" value={vacation.until} onChange={(e) => setVacation({ ...vacation, until: e.target.value })} className="h-10" /></Field>
+              <div className="flex items-end gap-2">
+                <Button size="sm" variant="ghost" onClick={() => setVacation(null)}>Cancelar</Button>
+                <Button size="sm" disabled={!(Number(vacation.weeks) >= 1) || !vacation.until} onClick={() => {
+                  // Se paga hasta el día antes de regresar
+                  const back = new Date(vacation.until + 'T12:00:00'); back.setDate(back.getDate() - 1)
+                  const v = vacationItems(items, Math.round(Number(vacation.weeks)), toISODate(back))
+                  if (!v.length) { toast.error('Primero palomea los sueldos de esta semana.'); return }
+                  setManual((m) => [...m.filter((x) => !x.key.startsWith('vac:')), ...v]); setVacation(null)
+                  toast.ok(`Se agregaron ${v.length} pagos de vacaciones`)
+                }}>Agregar pagos de vacaciones</Button>
+              </div>
+            </div>
+          </div>
+        )}
         {adding === type && (
           <ManualLineForm type={type} defaultDate={to} onCancel={() => setAdding(null)}
             onAdd={(it) => { setManual((m) => [...m, it]); setAdding(null) }} />
@@ -235,14 +267,14 @@ export default function WeeklyCut() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium">{i.concept}</p>
                     <p className="truncate text-xs text-muted">{i.date ? date(i.date, 'EEE d MMM') : ''} · {i.detail.replace(/ · (efectivo|transferencia|tarjeta|deposito|otro)$/, (m) => ` · ${METHOD_LABEL[m.slice(3) as PaymentMethod] ?? m.slice(3)}`)}</p>
-                    {i.excluded && <p className="text-xs text-info">No salió de la caja (no cuenta)</p>}
+                    {i.pending ? <p className="text-xs text-warn">No se pagó: queda pendiente para el siguiente corte</p> : i.excluded && <p className="text-xs text-info">No salió de la caja (no cuenta)</p>}
                     {i.note && <p className="text-xs text-warn">Nota: {i.note}</p>}
                   </div>
                   <div className="text-right">
                     {i.adjusted != null && <p className="text-xs text-muted line-through">{cents(i.amount)}</p>}
                     <p className={cx('font-semibold', i.adjusted != null && 'text-warn', i.excluded && 'line-through')}>{cents(itemValue(i))}</p>
                   </div>
-                  {isManual(i) && <IconButton icon={Trash2} label="Quitar línea agregada" onClick={() => setManual((m) => m.filter((x) => x.key !== i.key))} className="h-8 w-8" />}
+                  {(isManual(i) || i.key.startsWith('vac:')) && <IconButton icon={Trash2} label="Quitar línea agregada" onClick={() => setManual((m) => m.filter((x) => x.key !== i.key))} className="h-8 w-8" />}
                   <IconButton icon={Pencil} label="Corregir" onClick={() => setEditing(editing === i.key ? null : i.key)} className="h-8 w-8" />
                 </div>
                 {editing === i.key && (
@@ -252,6 +284,10 @@ export default function WeeklyCut() {
                     <Input defaultValue={i.note} placeholder="¿Por qué se corrige? (nota)" aria-label="Nota" className="h-10" onBlur={(e) => setItem(i.key, { note: e.target.value })} />
                     <label className="flex items-center gap-2 text-xs sm:col-span-3"><input type="checkbox" checked={!!i.excluded} onChange={(e) => setItem(i.key, { excluded: e.target.checked })} className="h-4 w-4 accent-[#F2E30A]" />
                       {type === 'salida' ? 'No salió de la caja (se pagó por otro lado, por ejemplo transferencia)' : 'No entró a la caja (por ejemplo, transferencia al banco)'}</label>
+                    {isSalary(i) && !i.prepaidUntil && (
+                      <label className="flex items-center gap-2 text-xs sm:col-span-3"><input type="checkbox" checked={!!i.pending} onChange={(e) => setItem(i.key, { pending: e.target.checked, excluded: e.target.checked, approved: true })} className="h-4 w-4 accent-[#F2E30A]" />
+                        No se le pagó esta semana: queda <b>pendiente</b> y le aparece en el siguiente corte</label>
+                    )}
                     <div className="flex gap-2">
                       {i.adjusted != null && <Button size="sm" variant="ghost" onClick={() => setItem(i.key, { adjusted: null })}>Deshacer</Button>}
                       <Button size="sm" onClick={() => { setItem(i.key, { approved: true }); setEditing(null) }}>Listo</Button>
@@ -278,6 +314,13 @@ export default function WeeklyCut() {
               {[...by.entries()].sort((a, b) => b[1].total - a[1].total || b[1].all - a[1].all).map(([k, r]) => (
                 <p key={k} className="flex flex-wrap items-center justify-between gap-x-3">
                   <span>Total de {plural(k).toLowerCase()} <span className="text-xs text-muted">({r.n} de {r.all} palomeadas)</span>
+                    {k === 'Reinscripción' && r.total > 0 && (() => {
+                      const seg = funds.find((f) => f.kind === 'seguro')
+                      if (!seg) return <span className="ml-2 text-xs text-muted">(agrega el seguro en Gastos para apartarlo)</span>
+                      return Number(saveAmt[seg.key] ?? 0) >= r.total
+                        ? <span className="ml-2 text-xs text-ok">✓ va al apartado del seguro y credenciales</span>
+                        : <button className="ml-2 text-xs text-brand hover:underline" onClick={() => setSaveAmt({ ...saveAmt, [seg.key]: String(Number(saveAmt[seg.key] ?? 0) + r.total) })}>Mandar al seguro y credenciales</button>
+                    })()}
                     {k === 'Inscripción' && r.total > 0 && (
                       Number(saveAmt[SAVINGS_BOX_KEY] ?? 0) >= r.total
                         ? <span className="ml-2 text-xs text-ok">✓ va a la caja de ahorro</span>
