@@ -136,7 +136,11 @@ export function PaymentModal({ student: fixed, feeId, onClose }: { student?: Stu
           : { student_id: student.id, concept: x.concept.trim(), period: x.period, amount: Number(x.amount), due_date: paidAt }).select('id').single()) as { id: string }
         rows.push({ ...base, fee_id: created.id, amount: Number(x.amount) })
       }
-      unwrap(await supabase.from('payments').insert(rows))
+      // Si la base de datos todavía no tiene la columna "quién recibió", se guarda en las notas
+      const first = await supabase.from('payments').insert(rows)
+      if (first.error && /received_by/.test(first.error.message)) {
+        unwrap(await supabase.from('payments').insert(rows.map(({ received_by, ...r }) => ({ ...r, notes: [r.notes, `Recibió: ${received_by}`].filter(Boolean).join(' · ') }))))
+      } else unwrap(first)
       saveReceiver(receiver.trim())
       await refresh(qc)
       const left = owed - debtTotal
@@ -288,7 +292,10 @@ export function EditPaymentModal({ payment, student, onClose }: { payment: Payme
     if (!(amount > 0)) return toast.error('El monto debe ser mayor a cero.')
     setSaving(true)
     try {
-      unwrap(await supabase.from('payments').update({ amount, paid_at: f.paid_at, method: f.method, fee_id: f.fee_id, notes: f.notes.trim() || null, received_by: f.received_by.trim() || null }).eq('id', payment.id))
+      const upd = { amount, paid_at: f.paid_at, method: f.method, fee_id: f.fee_id, notes: f.notes.trim() || null }
+      const r1 = await supabase.from('payments').update({ ...upd, received_by: f.received_by.trim() || null }).eq('id', payment.id)
+      if (r1.error && /received_by/.test(r1.error.message)) unwrap(await supabase.from('payments').update(upd).eq('id', payment.id))
+      else unwrap(r1)
       if (f.fee_id !== payment.fee_id) await cleanupAdvance(payment.fee_id)
       const changes = [
         amount !== Number(payment.amount) && `monto ${money(payment.amount)} → ${money(amount)}`,
