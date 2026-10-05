@@ -140,7 +140,7 @@ export default function Uniforms() {
               </tbody>
             </table>
           </Card>
-          <p className="text-xs text-muted">Para cobrar una playera ($290), un alta en Chivas ($100) u otro concepto de uniforme: en el expediente del niño → Pagos → Nuevo cargo. Ese dinero se manda al fondo de uniformes en el corte de caja.</p>
+          <p className="text-xs text-muted">Para cobrar una playera de entrenamiento ($250), la credencial Chivas ($150) u otro concepto de uniforme: en el expediente del niño → Pagos → Nuevo cargo. Ese dinero se manda al fondo de uniformes en el corte de caja.</p>
         </div>
       )}
     </>

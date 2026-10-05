@@ -10,10 +10,13 @@ export const SIZES = ['4', '6', '8', '10', '12', '14', '16', 'XCH', 'CH', 'M', '
 
 /** Conceptos de cobro de uniformes: ese dinero se guarda aparte, en el fondo de uniformes. */
 export const UNIFORM_CONCEPTS: { concept: string; price: number | null }[] = [
-  { concept: 'Playera de entrenamiento', price: 290 },
+  { concept: 'Playera de entrenamiento', price: 250 },
+  { concept: 'Credencial Chivas', price: 150 },
   { concept: 'Alta en Chivas (uniforme y credencial)', price: 100 },
   { concept: 'Uniforme', price: null },
-  { concept: 'Credencial', price: null },
 ]
+/** La credencial de Chivas se cobra junto con la inscripción. */
+export const CREDENTIAL_CONCEPT = 'Credencial Chivas'
+export const CREDENTIAL_FEE = 150
 export const isUniformConcept = (concept: string) => /uniform|playera|credencial|alta en chivas/i.test(concept)
 export const UNIFORMS_FUND_KEY = 'x:uniformes'

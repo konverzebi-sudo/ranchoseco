@@ -10,7 +10,7 @@ import {
 } from '@/components/ui'
 import StudentForm from '@/components/StudentForm'
 import { CollectButton } from '@/components/WhatsAppButtons'
-import { PaymentModal, FeeModal } from '@/components/PaymentForms'
+import { PaymentModal, FeeModal, EditPaymentModal } from '@/components/PaymentForms'
 import { EvaluationModal, EvolutionChart, GroupSummary, SkillRadar } from '@/components/Evaluation'
 import ReportPanel from '@/components/ReportPanel'
 import { ScholarshipReviewModal } from '@/components/ScholarshipReview'
@@ -29,7 +29,7 @@ import { attendanceRate, consecutiveAbsences, overallAverage } from '@/lib/stats
 import { supabase, unwrap, signedUrl, BUCKETS } from '@/lib/supabase'
 import { waLink } from '@/lib/whatsapp'
 import { memberPrice, ordinal, promoStatus } from '@/lib/siblings'
-import { SKILL_GROUPS, type AttendanceStatus, type Evaluation, type FeeBalance, type SkillKey } from '@/lib/types'
+import { SKILL_GROUPS, type AttendanceStatus, type Evaluation, type FeeBalance, type Payment, type SkillKey } from '@/lib/types'
 
 type Tab = 'general' | 'asistencias' | 'pagos' | 'seguimiento' | 'actividad' | 'reportes'
 const TABS: { id: Tab; label: string; icon: typeof User }[] = [
@@ -469,6 +469,7 @@ function PaymentsTab({ s }: { s: StudentRow }) {
   const [waive, setWaive] = useState<FeeBalance | null>(null)
   const [review, setReview] = useState<FeeBalance | null>(null)
   const [coupon, setCoupon] = useState<FeeBalance | null>(null)
+  const [editPay, setEditPay] = useState<Payment | null>(null)
   const [waiving, setWaiving] = useState(false)
   const qc = useQueryClient()
   const doWaive = async () => {
@@ -557,6 +558,7 @@ function PaymentsTab({ s }: { s: StudentRow }) {
                     <p className="text-xs text-muted">{date(p.paid_at)}{f ? ` · ${f.concept} ${monthName(f.period)}` : ''}{p.notes ? ` · ${p.notes}` : ''}</p>
                   </div>
                   {p.receipt_path && <Button size="sm" variant="ghost" onClick={() => openReceipt(p.receipt_path!)}>Comprobante</Button>}
+                  <Button size="sm" variant="ghost" icon={Pencil} onClick={() => setEditPay(p)} aria-label="Corregir pago">Corregir</Button>
                 </li>
               )
             })}
@@ -567,6 +569,7 @@ function PaymentsTab({ s }: { s: StudentRow }) {
       {newFee && <FeeModal student={s} onClose={() => setNewFee(false)} />}
       {review && <ScholarshipReviewModal fee={review} onClose={() => setReview(null)} />}
       {coupon && <CouponModal fee={coupon} studentName={s.full_name} onClose={() => setCoupon(null)} />}
+      {editPay && <EditPaymentModal payment={editPay} student={s} onClose={() => setEditPay(null)} />}
       <ConfirmDialog open={!!waive} onClose={() => setWaive(null)} onConfirm={doWaive} loading={waiving} title="Perdonar recargo" confirmLabel="Perdonar"
         text={waive ? <>Se perdonan <b className="text-white">{money(waive.late_fee)}</b> de recargo de {waive.concept} {monthName(waive.period)}. Si el pago sigue pendiente, a partir de mañana el recargo vuelve a correr.</> : null} />
     </div>
