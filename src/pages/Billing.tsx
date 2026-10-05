@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { startOfMonth, addDays } from 'date-fns'
-import { Wallet, Download, CalendarPlus, AlertTriangle, TrendingUp, CheckCircle2, Receipt, GraduationCap, HelpCircle, Eraser } from 'lucide-react'
+import { Wallet, Download, AlertTriangle, TrendingUp, CheckCircle2, Receipt, GraduationCap, HelpCircle, Eraser } from 'lucide-react'
 import { Avatar, Badge, Button, Card, Empty, ErrorState, PageHeader, SearchInput, Segmented, Select, Spinner, StatCard, feeTone } from '@/components/ui'
 import { CollectButton } from '@/components/WhatsAppButtons'
 import { PaymentModal, GenerateMonthModal } from '@/components/PaymentForms'
@@ -104,9 +104,8 @@ export default function Billing() {
     <>
       <PageHeader title="Mensualidades y pagos"
         actions={<>
-          {lateTotal > 0 && <Button variant="secondary" icon={Eraser} onClick={() => setWaiveAll(true)}>Perdonar recargos…</Button>}
+          <Button variant="secondary" icon={Eraser} onClick={() => setWaiveAll(true)}>Perdonar recargos y adeudos…</Button>
           <Button icon={Wallet} onClick={() => setNewPayment(true)}>Generar pago</Button>
-          <Button variant="secondary" icon={CalendarPlus} onClick={() => setGenerating(true)}>Crear mensualidades del mes</Button>
           <Button variant="secondary" icon={Download} onClick={doExport} disabled={!rows.length}>Exportar</Button>
         </>} />
 
@@ -144,7 +143,7 @@ export default function Billing() {
             {rows.length === 0 ? (
               <Card><Empty icon={CheckCircle2} title={filter === 'vencido' ? 'Nadie tiene pagos vencidos' : 'Sin resultados'}
                 text={(fees.data ?? []).length === 0 ? 'Aún no hay mensualidades. Genera las del mes con un clic.' : 'Prueba con otro filtro.'}
-                action={(fees.data ?? []).length === 0 ? <Button icon={CalendarPlus} onClick={() => setGenerating(true)}>Generar mensualidades</Button> : undefined} /></Card>
+ /></Card>
             ) : (
               <ul className="space-y-2">
                 {rows.map((r) => {
@@ -194,7 +193,7 @@ export default function Billing() {
       {paying && <PaymentModal student={paying} onClose={() => setPaying(null)} />}
       {newPayment && <PaymentModal onClose={() => setNewPayment(false)} />}
       {reviewing && <ScholarshipReviewModal fee={reviewing.fee} studentName={reviewing.name} onClose={() => setReviewing(null)} />}
-      {waiveAll && <WaiveLateFeesModal fees={totals.lateFees} names={new Map((students.data ?? []).map((x) => [x.id, x.full_name]))} onClose={() => setWaiveAll(false)} />}
+      {waiveAll && <WaiveLateFeesModal fees={totals.open} names={new Map((students.data ?? []).map((x) => [x.id, x.full_name]))} onClose={() => setWaiveAll(false)} />}
       {generating && <GenerateMonthModal students={students.data ?? []} onClose={() => setGenerating(false)} />}
     </>
   )

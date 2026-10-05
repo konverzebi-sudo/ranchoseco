@@ -471,6 +471,50 @@ export function FeeModal({ student, onClose }: { student: StudentRow; onClose: (
  * Genera la mensualidad de un mes para todos los alumnos activos que aún no la tengan.
  * Usa el importe de su categoría o el general. No duplica cargos existentes.
  */
+/**
+ * Mensualidades que faltan de un mes: a cada alumno activo con su precio (promo de hermanos,
+ * cuota especial o beca, y mitad / $100 si entró a medio mes).
+ */
+export function monthlyPlan(opts: {
+  fees: FeeBalance[]; students: StudentRow[]; categories: { id: string; monthly_fee: number | null }[] | undefined
+  settings: { default_monthly_fee?: number | null; sibling_prices?: (number | string)[] | null } | undefined
+  periodDate: string; tierOverride?: Record<string, JoinTier>
+}) {
+  const { fees, students, categories, settings, periodDate, tierOverride = {} } = opts
+  const existing = new Set(fees.filter((f) => f.period === periodDate && f.concept === 'Mensualidad').map((f) => f.student_id))
+  const active = students.filter((s) => s.status === 'activo')
+  const rows = active.filter((s) => !existing.has(s.id)).map((s) => {
+    const cat = categories?.find((c) => c.id === s.category_id)
+    const regular = Number(cat?.monthly_fee ?? settings?.default_monthly_fee ?? 0)
+    const auto = joinTier(s.enrolled_at, periodDate)
+    const tier: JoinTier = tierOverride[s.id] ?? auto ?? 'completo'
+    const amount = tierAmount(regular, tier)
+    // Promo hermanos (en mes completo) o cuota especial / beca individual
+    // Candado: la promo sólo aplica si todos los hermanos del grupo siguen inscritos
+    const group = s.sibling_group_id ? students.filter((x) => x.sibling_group_id === s.sibling_group_id) : []
+    const promoValid = group.length >= 2 && group.every((x) => x.status !== 'baja')
+    const promo = promoValid ? memberPrice(s, s.sibling_order ?? 1, settings?.sibling_prices?.map(Number)) : null
+    const reason = promo != null ? PROMO_REASON : 'Beca'
+    const target = promo ?? (s.monthly_fee != null ? Number(s.monthly_fee) : null)
+    const discount = target != null && tier === 'completo' ? Math.max(0, regular - target) : 0
+    return { s, auto, tier, regular, amount, discount, reason }
+  }).filter((r) => r.auto !== null) // si se inscribe después de ese mes, ese mes no paga
+  return { toCreate: rows.filter((r) => r.amount > 0), noAmount: rows.filter((r) => !(r.amount > 0)), already: existing.size }
+}
+
+/** Crea en la base de datos las mensualidades que faltan de un mes. */
+export async function createMonthlyFees(plan: ReturnType<typeof monthlyPlan>, periodDate: string, dueDay: number) {
+  const payload = plan.toCreate.map(({ s, amount, discount, tier, reason }) => ({
+    student_id: s.id, concept: 'Mensualidad', period: periodDate, amount, due_date: dueDateForStudent(periodDate, dueDay, s.enrolled_at),
+    discount, discount_reason: discount > 0 ? reason : null,
+    notes: tierNote(tier),
+  }))
+  for (let i = 0; i < payload.length; i += 200) {
+    unwrap(await supabase.from('fees').upsert(payload.slice(i, i + 200), { onConflict: 'student_id,concept,period', ignoreDuplicates: true }))
+  }
+  return payload.length
+}
+
 export function GenerateMonthModal({ students, onClose }: { students: StudentRow[]; onClose: () => void }) {
   const { data: settings } = useSettings()
   const { data: categories } = useCategories()
@@ -482,41 +526,14 @@ export function GenerateMonthModal({ students, onClose }: { students: StudentRow
   const [tierOverride, setTierOverride] = useState<Record<string, JoinTier>>({})
   const periodDate = `${period}-01`
 
-  const plan = useMemo(() => {
-    const existing = new Set((fees ?? []).filter((f) => f.period === periodDate && f.concept === 'Mensualidad').map((f) => f.student_id))
-    const active = students.filter((s) => s.status === 'activo')
-    const rows = active.filter((s) => !existing.has(s.id)).map((s) => {
-      const cat = categories?.find((c) => c.id === s.category_id)
-      const regular = Number(cat?.monthly_fee ?? settings?.default_monthly_fee ?? 0)
-      const auto = joinTier(s.enrolled_at, periodDate)
-      const tier: JoinTier = tierOverride[s.id] ?? auto ?? 'completo'
-      const amount = tierAmount(regular, tier)
-      // Promo hermanos (en mes completo) o cuota especial / beca individual
-      // Candado: la promo sólo aplica si todos los hermanos del grupo siguen inscritos
-      const group = s.sibling_group_id ? students.filter((x) => x.sibling_group_id === s.sibling_group_id) : []
-      const promoValid = group.length >= 2 && group.every((x) => x.status !== 'baja')
-      const promo = promoValid ? memberPrice(s, s.sibling_order ?? 1, settings?.sibling_prices?.map(Number)) : null
-      const reason = promo != null ? PROMO_REASON : 'Beca'
-      const target = promo ?? (s.monthly_fee != null ? Number(s.monthly_fee) : null)
-      const discount = target != null && tier === 'completo' ? Math.max(0, regular - target) : 0
-      return { s, auto, tier, regular, amount, discount, reason }
-    }).filter((r) => r.auto !== null) // si se inscribe después de ese mes, ese mes no paga
-    return { toCreate: rows.filter((r) => r.amount > 0), noAmount: rows.filter((r) => !(r.amount > 0)), already: existing.size }
-  }, [fees, students, categories, settings, periodDate, tierOverride])
+  const plan = useMemo(() => monthlyPlan({ fees: fees ?? [], students, categories, settings, periodDate, tierOverride }), [fees, students, categories, settings, periodDate, tierOverride])
 
   const run = async () => {
     setSaving(true)
     try {
-      const payload = plan.toCreate.map(({ s, amount, discount, tier, reason }) => ({
-        student_id: s.id, concept: 'Mensualidad', period: periodDate, amount, due_date: dueDateForStudent(periodDate, settings?.due_day ?? 10, s.enrolled_at),
-        discount, discount_reason: discount > 0 ? reason : null,
-        notes: tierNote(tier),
-      }))
-      for (let i = 0; i < payload.length; i += 200) {
-        unwrap(await supabase.from('fees').upsert(payload.slice(i, i + 200), { onConflict: 'student_id,concept,period', ignoreDuplicates: true }))
-      }
+      const n = await createMonthlyFees(plan, periodDate, settings?.due_day ?? 10)
       await refresh(qc)
-      toast.ok(`${payload.length} mensualidades de ${monthName(periodDate)} creadas`)
+      toast.ok(`${n} mensualidades de ${monthName(periodDate)} creadas`)
       onClose()
     } catch (err) {
       toast.error(err)
