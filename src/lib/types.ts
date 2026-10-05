@@ -212,6 +212,8 @@ export interface Payment {
   method: PaymentMethod
   receipt_path: string | null
   notes: string | null
+  /** Quién del equipo Rancho Seco recibió el pago */
+  received_by?: string | null
   created_at: string
 }
 

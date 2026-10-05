@@ -544,7 +544,7 @@ function PaymentsTab({ s }: { s: StudentRow }) {
                   <Receipt className="h-5 w-5 shrink-0 text-ok" />
                   <div className="min-w-0 flex-1">
                     <p className="font-medium">{money(p.amount)} · {METHOD_LABEL[p.method]}</p>
-                    <p className="text-xs text-muted">{date(p.paid_at)}{f ? ` · ${f.concept} ${monthName(f.period)}` : ''}{p.notes ? ` · ${p.notes}` : ''}</p>
+                    <p className="text-xs text-muted">{date(p.paid_at)}{f ? ` · ${f.concept} ${monthName(f.period)}` : ''}{p.received_by ? ` · recibió ${p.received_by}` : ''}{p.notes ? ` · ${p.notes}` : ''}</p>
                   </div>
                   {p.receipt_path && <Button size="sm" variant="ghost" onClick={() => openReceipt(p.receipt_path!)}>Comprobante</Button>}
                   <Button size="sm" variant="ghost" icon={Pencil} onClick={() => setEditPay(p)} aria-label="Corregir pago">Corregir</Button>

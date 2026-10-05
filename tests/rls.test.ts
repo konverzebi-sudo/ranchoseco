@@ -67,6 +67,7 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase/migrations/0020_avisos.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0021_uniformes.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0022_credencial_talla.sql', 'utf8'))
+  await db.exec(readFileSync('supabase/migrations/0023_quien_recibe.sql', 'utf8'))
   await db.exec('update academia.settings set open_mode = false') // las pruebas por rol corren con el sitio cerrado
 
   const users: [string, string, string][] = [

@@ -31,7 +31,11 @@ export default function Billing() {
   const categories = useCategories()
   const fees = useFees()
   const monthStart = toISODate(startOfMonth(new Date()))
-  const payments = usePayments(undefined, view === 'pagos' ? undefined : monthStart)
+  // Mes que se está viendo (se cambia en "Pagos recibidos" y mueve también las tarjetas de arriba)
+  const [month, setMonth] = useState(monthStart.slice(0, 7))
+  const monthFrom = `${month}-01`
+  const payments = usePayments()
+  const [newPayment, setNewPayment] = useState(false)
   const t = today()
   const soon = toISODate(addDays(new Date(), 7))
 
@@ -76,15 +80,15 @@ export default function Billing() {
     return {
       review: open.filter((f) => f.status === 'por_confirmar').reduce((a, f) => a + Number(f.balance), 0),
       reviewCount: open.filter((f) => f.status === 'por_confirmar').length,
-      scholarshipMonth: (fees.data ?? []).filter((f) => f.period === monthStart).reduce((a, f) => a + Number(f.discount), 0),
+      scholarshipMonth: (fees.data ?? []).filter((f) => f.period === monthFrom).reduce((a, f) => a + Number(f.discount), 0),
       scholarshipAll: (fees.data ?? []).reduce((a, f) => a + Number(f.discount), 0),
       lateFees: open.filter((f) => Number(f.late_fee) > 0),
       pending: open.reduce((a, f) => a + Number(f.balance), 0),
       overdue: open.filter((f) => f.status === 'vencido').reduce((a, f) => a + Number(f.balance), 0),
-      collected: (payments.data ?? []).filter((p) => p.paid_at >= monthStart).reduce((a, p) => a + Number(p.amount), 0),
+      collected: (payments.data ?? []).filter((p) => p.paid_at.startsWith(month)).reduce((a, p) => a + Number(p.amount), 0),
       open,
     }
-  }, [fees.data, students.data, payments.data, soon, monthStart])
+  }, [fees.data, students.data, payments.data, soon, month, monthFrom])
 
   const lateTotal = totals.lateFees.reduce((a, f) => a + Number(f.late_fee), 0)
   const setFilter = (f: Filter) => setParams({ f }, { replace: true })
@@ -101,15 +105,16 @@ export default function Billing() {
       <PageHeader title="Mensualidades y pagos"
         actions={<>
           {lateTotal > 0 && <Button variant="secondary" icon={Eraser} onClick={() => setWaiveAll(true)}>Perdonar recargos…</Button>}
-          <Button variant="secondary" icon={CalendarPlus} onClick={() => setGenerating(true)}>Generar mensualidades</Button>
+          <Button icon={Wallet} onClick={() => setNewPayment(true)}>Generar pago</Button>
+          <Button variant="secondary" icon={CalendarPlus} onClick={() => setGenerating(true)}>Crear mensualidades del mes</Button>
           <Button variant="secondary" icon={Download} onClick={doExport} disabled={!rows.length}>Exportar</Button>
         </>} />
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <StatCard label="Cobrado este mes" value={money(totals.collected)} icon={TrendingUp} tone="ok" onClick={() => setView('pagos')} />
+        <StatCard label={`Cobrado en ${monthName(monthFrom).split(' ')[0].toLowerCase()}`} value={money(totals.collected)} icon={TrendingUp} tone="ok" onClick={() => setView('pagos')} />
         <StatCard label="Vencido" value={money(totals.overdue)} icon={AlertTriangle} tone={totals.overdue ? 'bad' : undefined} hint={lateTotal > 0 ? `Incluye ${money(lateTotal)} de recargos` : undefined} onClick={() => { setView('alumnos'); setFilter('vencido') }} />
         <StatCard label="¿Beca? Por confirmar" value={money(totals.review)} icon={HelpCircle} hint={`${totals.reviewCount} cargos por revisar`} onClick={() => { setView('alumnos'); setFilter('por_confirmar') }} />
-        <StatCard label="Becado este mes" value={money(totals.scholarshipMonth)} icon={GraduationCap} hint={`Temporada: ${money(totals.scholarshipAll)}`} onClick={() => setView('resumen')} />
+        <StatCard label={`Becado en ${monthName(monthFrom).split(' ')[0].toLowerCase()}`} value={money(totals.scholarshipMonth)} icon={GraduationCap} hint={`Temporada: ${money(totals.scholarshipAll)}`} onClick={() => setView('resumen')} />
         <StatCard label="Total pendiente" value={money(totals.pending)} icon={Wallet} onClick={() => { setView('alumnos'); setFilter('pendiente') }} />
       </div>
 
@@ -183,10 +188,11 @@ export default function Billing() {
             )}
           </>
         ) : view === 'resumen' ? <Summary open={totals.open} all={fees.data ?? []} students={students.data ?? []} catName={catName} /> : (
-          <PaymentsList students={students.data ?? []} fees={fees.data ?? []} />
+          <PaymentsList students={students.data ?? []} fees={fees.data ?? []} month={month} setMonth={setMonth} />
         )}
 
       {paying && <PaymentModal student={paying} onClose={() => setPaying(null)} />}
+      {newPayment && <PaymentModal onClose={() => setNewPayment(false)} />}
       {reviewing && <ScholarshipReviewModal fee={reviewing.fee} studentName={reviewing.name} onClose={() => setReviewing(null)} />}
       {waiveAll && <WaiveLateFeesModal fees={totals.lateFees} names={new Map((students.data ?? []).map((x) => [x.id, x.full_name]))} onClose={() => setWaiveAll(false)} />}
       {generating && <GenerateMonthModal students={students.data ?? []} onClose={() => setGenerating(false)} />}
@@ -261,9 +267,8 @@ function Summary({ open, all, students, catName }: { open: FeeBalance[]; all: Fe
   )
 }
 
-function PaymentsList({ students, fees }: { students: StudentRow[]; fees: FeeBalance[] }) {
+function PaymentsList({ students, fees, month, setMonth }: { students: StudentRow[]; fees: FeeBalance[]; month: string; setMonth: (m: string) => void }) {
   const payments = usePayments()
-  const [month, setMonth] = useState(toISODate(startOfMonth(new Date())).slice(0, 7))
   const list = (payments.data ?? []).filter((p) => p.paid_at.startsWith(month))
   const total = list.reduce((a, p) => a + Number(p.amount), 0)
   const name = (id: string) => students.find((s) => s.id === id)?.full_name ?? '—'
@@ -273,15 +278,15 @@ function PaymentsList({ students, fees }: { students: StudentRow[]; fees: FeeBal
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-600 px-5 py-4">
         <h3 className="font-display text-lg font-bold uppercase tracking-wide">Pagos de {monthName(month + '-01')} · <span className="text-ok">{money(total)}</span></h3>
         <div className="flex gap-2">
-          <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="h-9 rounded-xl border border-ink-600 bg-ink-900 px-3 text-sm" aria-label="Mes" />
+          <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className="h-9 rounded-xl border border-ink-600 bg-ink-900 px-3 text-sm" aria-label="Mes" />
           <Button size="sm" variant="secondary" icon={Download} disabled={!list.length}
-            onClick={() => exportCsv(`pagos-${month}.csv`, ['Fecha', 'Alumno', 'Concepto', 'Importe', 'Método', 'Notas'],
-              list.map((p) => { const f = fee(p.fee_id); return [p.paid_at, name(p.student_id), f ? `${f.concept} ${monthName(f.period)}` : '', p.amount, METHOD_LABEL[p.method], p.notes] }))}>Exportar</Button>
+            onClick={() => exportCsv(`pagos-${month}.csv`, ['Fecha', 'Alumno', 'Concepto', 'Importe', 'Método', 'Recibió', 'Notas'],
+              list.map((p) => { const f = fee(p.fee_id); return [p.paid_at, name(p.student_id), f ? `${f.concept} ${monthName(f.period)}` : '', p.amount, METHOD_LABEL[p.method], p.received_by ?? '', p.notes] }))}>Exportar</Button>
         </div>
       </div>
       {payments.isLoading ? <Spinner /> : (
         <table className="table-base min-w-[560px]">
-          <thead><tr><th>Fecha</th><th>Alumno</th><th>Concepto</th><th>Método</th><th className="text-right">Importe</th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Alumno</th><th>Concepto</th><th>Método</th><th>Recibió</th><th className="text-right">Importe</th></tr></thead>
           <tbody>
             {list.map((p) => {
               const f = fee(p.fee_id)
@@ -291,11 +296,12 @@ function PaymentsList({ students, fees }: { students: StudentRow[]; fees: FeeBal
                   <td><Link to={`/alumnos/${p.student_id}?tab=pagos`} className="hover:text-brand">{name(p.student_id)}</Link></td>
                   <td className="text-muted">{f ? `${f.concept} ${monthName(f.period)}` : ''}</td>
                   <td>{METHOD_LABEL[p.method]}</td>
+                  <td className="text-sm">{p.received_by ?? <span className="text-muted">—</span>}</td>
                   <td className="text-right font-semibold">{money(p.amount)}</td>
                 </tr>
               )
             })}
-            {!list.length && <tr><td colSpan={5} className="py-8 text-center text-muted">Sin pagos en {date(month + '-01', 'MMMM yyyy')}.</td></tr>}
+            {!list.length && <tr><td colSpan={6} className="py-8 text-center text-muted">Sin pagos en {date(month + '-01', 'MMMM yyyy')}.</td></tr>}
           </tbody>
         </table>
       )}

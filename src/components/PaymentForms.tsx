@@ -1,17 +1,17 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Save, Paperclip } from 'lucide-react'
 import { addDays, addMonths, startOfMonth, setDate } from 'date-fns'
 import { Button, ConfirmDialog, Field, Input, Modal, Select, Textarea, cx } from './ui'
 import { useToast } from './toast'
-import { useCategories, useFees, useSettings, useStudents, type StudentRow } from '@/lib/api'
+import { useCategories, useCoaches, useFees, useSettings, useStudents, type StudentRow } from '@/lib/api'
 import { supabase, unwrap, BUCKETS } from '@/lib/supabase'
-import { METHOD_LABEL, date, money, monthName, toISODate, today } from '@/lib/format'
+import { METHOD_LABEL, date, money, monthName, shortDate, toISODate, today } from '@/lib/format'
 import { TIER_LABEL, joinTier, tierAmount, tierNote, type JoinTier } from '@/lib/prorate'
 import { PROMO_REASON, memberPrice } from '@/lib/siblings'
 import { REINSCRIPTION_FEE } from '@/lib/inactive'
 import { CREDENTIAL_CONCEPT, CREDENTIAL_FEE, UNIFORM_CONCEPTS, isUniformConcept } from '@/lib/uniforms'
-import type { Payment, PaymentMethod } from '@/lib/types'
+import type { FeeBalance, Payment, PaymentMethod } from '@/lib/types'
 import { allocatePayment, payOrder } from '@/lib/allocate'
 import { notify } from '@/lib/notify'
 
@@ -38,68 +38,86 @@ export function useMonthlyPrice(student: StudentRow) {
   return { regular, discount, toPay: regular - discount, reason: promo != null ? PROMO_REASON : discount > 0 ? 'Beca' : null, dueDay: settings?.due_day ?? 8 }
 }
 
-const ADV = 'adv:'
+const normName = (x: string) => x.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+const RECEIVER_KEY = 'rs-last-receiver'
+const readReceiver = () => { try { return localStorage.getItem(RECEIVER_KEY) ?? '' } catch { return '' } }
+const saveReceiver = (v: string) => { try { localStorage.setItem(RECEIVER_KEY, v) } catch { /* sin almacenamiento */ } }
+type Extra = { key: string; concept: string; amount: string; on: boolean; period: string; editable?: boolean }
 
 /**
- * Registrar un pago. Por defecto se aplica a lo que debe, primero lo más antiguo
- * (y lo que sobre se abona al siguiente mes por adelantado). También se puede elegir
- * a qué cargo corresponde.
+ * Generar pago: se elige al niño, aparece lo que debe (del más antiguo al más nuevo) y se marca
+ * a qué corresponde el dinero; también se pueden cobrar en el mismo pago uniforme, playera,
+ * credencial, un adelanto u otro concepto. Se anota quién del equipo recibió el pago.
  */
-export function PaymentModal({ student, feeId, onClose }: { student: StudentRow; feeId?: string; onClose: () => void }) {
-  const fees = useFees(student.id)
-  const price = useMonthlyPrice(student)
+export function PaymentModal({ student: fixed, feeId, onClose }: { student?: StudentRow; feeId?: string; onClose: () => void }) {
+  const students = useStudents()
+  const allFees = useFees()
+  const coaches = useCoaches()
   const qc = useQueryClient()
   const toast = useToast()
-  const open = useMemo(() => (fees.data ?? []).filter((f) => Number(f.balance) > 0).sort(payOrder), [fees.data])
-  const credit = useMemo(() => (fees.data ?? []).filter((f) => Number(f.balance) < 0), [fees.data])
+  const [sid, setSid] = useState(fixed?.id ?? '')
+  const [search, setSearch] = useState('')
+  const student = fixed ?? (students.data ?? []).find((s) => s.id === sid)
+  const price = useMonthlyPrice((student ?? { id: '', category_id: null, sibling_group_id: null, sibling_order: null, monthly_fee: null }) as StudentRow)
+  const fees = useMemo(() => (allFees.data ?? []).filter((f) => f.student_id === student?.id), [allFees.data, student?.id])
+  const open = useMemo(() => fees.filter((f) => Number(f.balance) > 0).sort(payOrder), [fees])
+  const credit = fees.filter((f) => Number(f.balance) < 0)
   const owed = open.reduce((a, f) => a + Number(f.balance), 0)
-  // Próximos 3 meses que aún no tienen mensualidad: se pueden pagar por adelantado
-  const advance = useMemo(() => {
-    const taken = new Set((fees.data ?? []).filter((f) => f.concept === 'Mensualidad').map((f) => f.period.slice(0, 10)))
-    const out: string[] = []
-    for (let i = 0; out.length < 3 && i < 12; i++) {
-      const p = toISODate(startOfMonth(addMonths(new Date(), i)))
-      if (!taken.has(p)) out.push(p)
-    }
-    return out
-  }, [fees.data])
-  const [mode, setMode] = useState<'auto' | 'pick'>(feeId ? 'pick' : 'auto')
-  const [selected, setSelected] = useState(feeId ?? '')
-  const current = selected || (open[0]?.id ?? (advance[0] ? ADV + advance[0] : ''))
-  const advPeriod = current.startsWith(ADV) ? current.slice(ADV.length) : null
-  const existing = open.find((f) => f.id === current)
-  const fee = existing ?? (advPeriod ? { id: '', concept: 'Mensualidad', period: advPeriod, balance: price.toPay, late_fee: 0 } : undefined)
-  const [amount, setAmount] = useState('')
+  const nextMonth = useMemo(() => {
+    const taken = new Set(fees.filter((f) => f.concept === 'Mensualidad').map((f) => f.period.slice(0, 10)))
+    for (let i = 0; i < 12; i++) { const p = toISODate(startOfMonth(addMonths(new Date(), i))); if (!taken.has(p)) return p }
+    return null
+  }, [fees])
+  const thisPeriod = toISODate(startOfMonth(new Date()))
+
+  // Lo que debe: casilla + cuánto se abona a cada cargo
+  const [sel, setSel] = useState<Record<string, { on: boolean; amount: string }>>(feeId ? { [feeId]: { on: true, amount: '' } } : {})
+  const [extras, setExtras] = useState<Extra[]>([])
+  useEffect(() => {
+    // Al elegir al niño se preparan los conceptos extra con su precio
+    setExtras([
+      ...UNIFORM_CONCEPTS.map((u) => ({ key: u.concept, concept: u.concept, amount: u.price != null ? String(u.price) : '', on: false, period: thisPeriod })),
+      ...(nextMonth ? [{ key: 'adv', concept: `Mensualidad ${monthName(nextMonth)} (adelanto)`, amount: String(price.toPay), on: false, period: nextMonth }] : []),
+      { key: 'otro', concept: '', amount: '', on: false, period: thisPeriod, editable: true },
+    ])
+    if (!feeId) setSel({})
+  }, [student?.id, nextMonth, price.toPay]) // eslint-disable-line react-hooks/exhaustive-deps
+  const [paid, setPaid] = useState('')
   const [method, setMethod] = useState<PaymentMethod>('efectivo')
   const [paidAt, setPaidAt] = useState(today())
+  const [receiver, setReceiver] = useState(readReceiver)
   const [notes, setNotes] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
-  const auto = mode === 'auto' && open.length > 0
-  const value = amount === '' ? (auto ? owed : Number(fee?.balance ?? 0)) : Number(amount)
-  const plan = auto ? allocatePayment(open, value) : null
-  const restPeriod = advance[0] ?? null
 
-  const createAdvance = async (period: string) => {
-    const created = unwrap(await supabase.from('fees').insert({
-      student_id: student.id, concept: 'Mensualidad', period, amount: price.regular,
-      due_date: dueDateFor(period, price.dueDay), discount: price.discount, discount_reason: price.reason,
-      notes: 'Pagada por adelantado',
-    }).select('id').single()) as { id: string }
-    return created.id
+  const amountOf = (f: FeeBalance) => { const r = sel[f.id]; return r?.on ? (r.amount === '' ? Number(f.balance) : Number(r.amount) || 0) : 0 }
+  const debtTotal = open.reduce((a, f) => a + amountOf(f), 0)
+  const extraTotal = extras.filter((x) => x.on).reduce((a, x) => a + (Number(x.amount) || 0), 0)
+  const total = Math.round((debtTotal + extraTotal) * 100) / 100
+  const paidN = paid === '' ? null : Number(paid)
+
+  /** Al escribir cuánto pagó se marca solo lo que debe, del más antiguo al más nuevo. */
+  const distribute = (v: string) => {
+    setPaid(v)
+    const n = Number(v)
+    if (!(n > 0)) return
+    const plan = allocatePayment(open, n)
+    setSel(Object.fromEntries(open.map((f) => {
+      const p = plan.parts.find((x) => x.fee.id === f.id)
+      return [f.id, { on: !!p, amount: p ? String(p.amount) : '' }]
+    })))
   }
+
+  const receivers = useMemo(() => [...new Set([...(coaches.data ?? []).filter((c) => c.active).map((c) => c.full_name), receiver].filter(Boolean))], [coaches.data, receiver])
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
-    if (!(value > 0)) return toast.error('El importe debe ser mayor a cero.')
-    if (!auto) {
-      if (!fee) return
-      if (advPeriod && !(price.regular > 0)) return toast.error('Configura la mensualidad en Categorías o Configuración.')
-      if (value > Number(fee.balance)) return toast.error(`El importe excede el saldo de ${money(fee.balance)}. Usa "Aplicar a lo que debe" para repartirlo.`)
-    }
-    if (auto && plan!.rest > 0 && (!restPeriod || plan!.rest > price.toPay)) {
-      return toast.error(`Sobran ${money(plan!.rest)} después de liquidar todo. Revisa el importe.`)
-    }
+    if (!student) return toast.error('Escoge al niño.')
+    if (!(total > 0)) return toast.error('Marca a qué corresponde el pago.')
+    for (const f of open) if (sel[f.id]?.on && amountOf(f) > Number(f.balance) + 0.001) return toast.error(`A ${f.concept} ${monthName(f.period)} le abonas más de lo que debe (${money(f.balance)}).`)
+    if (extras.some((x) => x.on && (!(Number(x.amount) > 0) || !x.concept.trim()))) return toast.error('Escribe el concepto y el monto de lo que agregaste.')
+    if (!receiver.trim()) return toast.error('Escribe quién recibió el pago.')
+    if (paidN != null && Math.abs(paidN - total) > 0.5 && !window.confirm(`Pagó ${money(paidN)} pero marcaste ${money(total)}. ¿Registrar ${money(total)}?`)) return
     setSaving(true)
     try {
       let receipt_path: string | null = null
@@ -109,124 +127,140 @@ export function PaymentModal({ student, feeId, onClose }: { student: StudentRow;
         const { error } = await supabase.storage.from(BUCKETS.receipts).upload(receipt_path, file, { contentType: file.type })
         if (error) throw new Error('No se pudo subir el comprobante: ' + error.message)
       }
-      const base = { student_id: student.id, paid_at: paidAt, method, notes: notes.trim() || null, receipt_path }
-      if (auto) {
-        const rows = plan!.parts.map((p) => ({ ...base, fee_id: p.fee.id, amount: p.amount }))
-        if (plan!.rest > 0) rows.push({ ...base, fee_id: await createAdvance(restPeriod!), amount: plan!.rest })
-        unwrap(await supabase.from('payments').insert(rows))
-        await refresh(qc)
-        const left = owed - value
-        toast.ok(left > 0 ? `Pago registrado. Todavía debe ${money(left)}.` : plan!.rest > 0 ? `Pago registrado. Quedó al corriente y abonó ${money(plan!.rest)} a ${monthName(restPeriod!)}.` : 'Pago registrado. Quedó al corriente.')
-      } else {
-        const feeIdToPay = advPeriod ? await createAdvance(advPeriod) : fee!.id
-        unwrap(await supabase.from('payments').insert({ ...base, fee_id: feeIdToPay, amount: value }))
-        await refresh(qc)
-        toast.ok(value >= Number(fee!.balance) ? `Pago registrado. ${fee!.concept} liquidada.` : `Pago parcial registrado. Resta ${money(Number(fee!.balance) - value)}.`)
+      const base = { student_id: student.id, paid_at: paidAt, method, notes: notes.trim() || null, receipt_path, received_by: receiver.trim() }
+      const rows: Record<string, unknown>[] = open.filter((f) => sel[f.id]?.on && amountOf(f) > 0).map((f) => ({ ...base, fee_id: f.id, amount: amountOf(f) }))
+      for (const x of extras.filter((y) => y.on)) {
+        const isAdv = x.key === 'adv'
+        const created = unwrap(await supabase.from('fees').insert(isAdv
+          ? { student_id: student.id, concept: 'Mensualidad', period: x.period, amount: price.regular, discount: price.discount, discount_reason: price.reason, due_date: dueDateFor(x.period, price.dueDay), notes: 'Pagada por adelantado' }
+          : { student_id: student.id, concept: x.concept.trim(), period: x.period, amount: Number(x.amount), due_date: paidAt }).select('id').single()) as { id: string }
+        rows.push({ ...base, fee_id: created.id, amount: Number(x.amount) })
       }
+      unwrap(await supabase.from('payments').insert(rows))
+      saveReceiver(receiver.trim())
+      await refresh(qc)
+      const left = owed - debtTotal
+      toast.ok(`Pago de ${money(total)} registrado${left > 0.5 ? `. Todavía debe ${money(left)}` : open.length ? '. Quedó al corriente' : ''}.`)
       onClose()
-    } catch (err) {
-      toast.error(err)
-    } finally {
-      setSaving(false)
-    }
+    } catch (err) { toast.error(err) } finally { setSaving(false) }
   }
 
+  const list = (students.data ?? []).filter((s) => s.status !== 'baja' && (!search || normName(s.full_name).includes(normName(search)))).slice(0, 8)
+
   return (
-    <Modal open onClose={onClose} title="Registrar pago"
-      footer={open.length || advance.length ? <>
-        <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-        <Button type="submit" form="pay-form" icon={Save} loading={saving}>Registrar {money(value)}</Button>
-      </> : undefined}>
-      {fees.isLoading ? null : open.length === 0 && advance.length === 0 ? (
-        <p className="text-sm text-muted">{student.full_name} no tiene pagos pendientes ni meses por adelantar.</p>
-      ) : (
-        <form id="pay-form" onSubmit={submit} className="space-y-4">
-          <p className="text-sm text-muted">Alumno: <span className="font-medium text-white">{student.full_name}</span>
-            {open.length > 0 ? <> · debe <b className="text-bad">{money(owed)}</b></> : <> · <span className="text-ok">está al corriente</span></>}</p>
-          {credit.length > 0 && (
-            <p className="rounded-xl border border-info/40 bg-info/10 p-2.5 text-xs text-info">
-              Tiene saldo a favor: {credit.map((f) => `${f.concept} ${monthName(f.period)} ${money(-Number(f.balance))}`).join(' · ')}. Si fue un error (por ejemplo, el precio cambió por promo), corrígelo en su expediente.
-            </p>
-          )}
-
-          {open.length > 0 && (
-            <div className="grid grid-cols-2 gap-2" role="group" aria-label="Cómo aplicar el pago">
-              <button type="button" onClick={() => { setMode('auto'); setAmount('') }} aria-pressed={mode === 'auto'}
-                className={cx('rounded-xl border p-2.5 text-left text-sm', mode === 'auto' ? 'border-brand bg-brand-dim' : 'border-ink-600')}>
-                <b>Aplicar a lo que debe</b><span className="block text-xs text-muted">Primero lo más antiguo</span>
-              </button>
-              <button type="button" onClick={() => { setMode('pick'); setAmount('') }} aria-pressed={mode === 'pick'}
-                className={cx('rounded-xl border p-2.5 text-left text-sm', mode === 'pick' ? 'border-brand bg-brand-dim' : 'border-ink-600')}>
-                <b>Elegir a qué corresponde</b><span className="block text-xs text-muted">Inscripción, un mes, adelanto…</span>
-              </button>
-            </div>
-          )}
-
-          {!auto && (
-            <Field label="Concepto a pagar">
-              <Select value={current} onChange={(e) => { setSelected(e.target.value); setAmount('') }}>
-                {open.length > 0 && (
-                  <optgroup label="Pendientes (del más antiguo al más reciente)">
-                    {open.map((f) => <option key={f.id} value={f.id}>{f.concept} {monthName(f.period)} — saldo {money(f.balance)}</option>)}
-                  </optgroup>
+    <Modal open onClose={onClose} title="Generar pago" wide
+      footer={student ? <><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button type="submit" form="pay-form" icon={Save} loading={saving} disabled={!(total > 0)}>Registrar {money(total)}</Button></> : undefined}>
+      <form id="pay-form" onSubmit={submit} className="space-y-4">
+        {/* 1. Niño */}
+        {!fixed && (
+          <div>
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted">1. ¿De qué niño?</p>
+            {student ? (
+              <div className="flex items-center justify-between rounded-xl border border-brand bg-brand-dim px-3 py-2">
+                <b>{student.full_name}</b>
+                <button type="button" className="text-sm text-brand hover:underline" onClick={() => { setSid(''); setSearch(''); setPaid('') }}>Cambiar</button>
+              </div>
+            ) : (
+              <>
+                <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Escribe el nombre del niño" autoFocus />
+                {search && (
+                  <ul className="mt-1 divide-y divide-ink-700 rounded-xl border border-ink-600">
+                    {list.length === 0 ? <li className="px-3 py-2 text-sm text-muted">No se encontró.</li> : list.map((s) => (
+                      <li key={s.id}><button type="button" onClick={() => setSid(s.id)} className="w-full px-3 py-2 text-left text-sm hover:bg-ink-700">{s.full_name}</button></li>
+                    ))}
+                  </ul>
                 )}
-                {advance.length > 0 && (
-                  <optgroup label="Pagar por adelantado">
-                    {advance.map((p) => <option key={p} value={ADV + p}>Mensualidad {monthName(p)} — {money(price.toPay)}</option>)}
-                  </optgroup>
-                )}
-              </Select>
-            </Field>
-          )}
-          {!auto && open.length > 0 && current !== open[0].id && (
-            <p className="-mt-2 text-xs text-warn">Ojo: todavía debe {open[0].concept} {monthName(open[0].period)} ({money(open[0].balance)}), que es más antiguo.</p>
-          )}
-          {!auto && advPeriod && price.discount > 0 && (
-            <p className="-mt-2 text-xs text-muted">Precio normal {money(price.regular)} − {price.reason} {money(price.discount)} = {money(price.toPay)}</p>
-          )}
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Importe que pagó" hint={auto ? `Debe ${money(owed)}. Escribe lo que pagó y se reparte solo.` : `Saldo: ${money(fee?.balance)}${Number(fee?.late_fee) > 0 ? ` (incluye ${money(fee?.late_fee)} de recargo)` : ''}.`}>
-              <Input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder={String(auto ? owed : fee?.balance ?? '')} value={amount} onChange={(e) => setAmount(e.target.value)} />
-            </Field>
-            <Field label="Fecha de pago"><Input type="date" value={paidAt} max={today()} onChange={(e) => setPaidAt(e.target.value)} /></Field>
+              </>
+            )}
           </div>
+        )}
 
-          {auto && plan && value > 0 && (
-            <div className="rounded-xl bg-ink-900 p-3 text-sm">
-              <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted">Así se aplica</p>
-              {plan.parts.map((p) => (
-                <p key={p.fee.id} className="flex justify-between gap-3">
-                  <span>{p.fee.concept} {monthName(p.fee.period)} {p.settles ? <span className="text-ok">· queda pagada</span> : <span className="text-warn">· resta {money(Number(p.fee.balance) - p.amount)}</span>}</span>
-                  <b>{money(p.amount)}</b>
-                </p>
-              ))}
-              {plan.rest > 0 && (
-                restPeriod && plan.rest <= price.toPay
-                  ? <p className="flex justify-between gap-3 text-info"><span>Adelanto a Mensualidad {monthName(restPeriod)}</span><b>{money(plan.rest)}</b></p>
-                  : <p className="text-bad">Sobran {money(plan.rest)}: es más de lo que debe más un mes de adelanto.</p>
+        {student && (
+          <>
+            {/* 2. Lo que debe */}
+            <div>
+              <div className="mb-1.5 flex flex-wrap items-end justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted">2. Lo que debe (del más antiguo al más nuevo)</p>
+                <span className="text-sm">Debe <b className={owed > 0 ? 'text-bad' : 'text-ok'}>{money(owed)}</b></span>
+              </div>
+              {credit.length > 0 && <p className="mb-2 rounded-xl border border-info/40 bg-info/10 p-2 text-xs text-info">Saldo a favor: {credit.map((f) => `${f.concept} ${monthName(f.period)} ${money(-Number(f.balance))}`).join(' · ')}</p>}
+              {open.length === 0 ? <p className="rounded-xl border border-ink-600 px-3 py-2 text-sm text-ok">Está al corriente.</p> : (
+                <>
+                  <Field label="¿Cuánto pagó?" hint="Al escribirlo se marca solo lo que debe, empezando por lo más antiguo. Puedes cambiarlo abajo.">
+                    <Input type="number" min="0" inputMode="decimal" value={paid} onChange={(e) => distribute(e.target.value)} placeholder={String(owed)} />
+                  </Field>
+                  <ul className="mt-2 divide-y divide-ink-700 rounded-xl border border-ink-600">
+                    {open.map((f) => {
+                      const r = sel[f.id]
+                      return (
+                        <li key={f.id} className={cx('flex flex-wrap items-center gap-3 px-3 py-2 text-sm', r?.on && 'bg-brand-dim')}>
+                          <input type="checkbox" checked={!!r?.on} onChange={(e) => setSel({ ...sel, [f.id]: { on: e.target.checked, amount: r?.amount ?? '' } })} className="h-5 w-5 accent-[#F2E30A]" aria-label={`${f.concept} ${monthName(f.period)}`} />
+                          <span className="min-w-0 flex-1">
+                            <b>{f.concept} {monthName(f.period)}</b>
+                            <span className="block text-xs text-muted">Debe {money(f.balance)}{Number(f.late_fee) > 0 ? ` (incluye ${money(f.late_fee)} de recargo)` : ''} · vence {shortDate(f.due_date)}</span>
+                          </span>
+                          {r?.on && (
+                            <Input type="number" min="0" inputMode="decimal" value={r.amount} placeholder={String(f.balance)} aria-label="Cuánto se abona"
+                              onChange={(e) => setSel({ ...sel, [f.id]: { on: true, amount: e.target.value } })} className="h-9 w-28" />
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                  {paidN != null && paidN > owed + 0.5 && <p className="mt-1 text-xs text-info">Sobran {money(paidN - owed)}: márcalo abajo (adelanto, uniforme…).</p>}
+                </>
               )}
             </div>
-          )}
 
-          <Field label="Método de pago">
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-              {(Object.keys(METHOD_LABEL) as PaymentMethod[]).map((m) => (
-                <button type="button" key={m} onClick={() => setMethod(m)}
-                  className={`rounded-xl border px-2 py-2.5 text-sm font-medium ${method === m ? 'border-brand bg-brand text-ink' : 'border-ink-600 bg-ink-900 text-muted hover:text-white'}`}>
-                  {METHOD_LABEL[m]}
-                </button>
-              ))}
+            {/* 3. Otros conceptos */}
+            <div>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted">3. ¿Paga algo más? (uniforme, playera, credencial, adelanto…)</p>
+              <ul className="divide-y divide-ink-700 rounded-xl border border-ink-600">
+                {extras.map((x, k) => (
+                  <li key={x.key} className={cx('flex flex-wrap items-center gap-3 px-3 py-2 text-sm', x.on && 'bg-brand-dim')}>
+                    <input type="checkbox" checked={x.on} onChange={(e) => setExtras(extras.map((y, j) => (j === k ? { ...y, on: e.target.checked } : y)))} className="h-5 w-5 accent-[#F2E30A]" aria-label={x.concept || 'Otro concepto'} />
+                    {x.editable
+                      ? <Input value={x.concept} onChange={(e) => setExtras(extras.map((y, j) => (j === k ? { ...y, concept: e.target.value, on: true } : y)))} placeholder="Otro concepto (torneo, arbitraje…)" className="h-9 min-w-0 flex-1" />
+                      : <span className="min-w-0 flex-1 font-medium">{x.concept}</span>}
+                    <Input type="number" min="0" inputMode="decimal" value={x.amount} placeholder="Monto" aria-label="Monto"
+                      onChange={(e) => setExtras(extras.map((y, j) => (j === k ? { ...y, amount: e.target.value, on: e.target.value !== '' || y.on } : y)))} className="h-9 w-28" />
+                  </li>
+                ))}
+              </ul>
             </div>
-          </Field>
-          <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-ink-500 px-4 py-3 text-sm text-muted hover:text-white">
-            <Paperclip className="h-4 w-4" />
-            {file ? file.name : 'Adjuntar comprobante (opcional)'}
-            <input type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-          </label>
-          <Field label="Notas (opcional)"><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} /></Field>
-        </form>
-      )}
+
+            <div className="flex items-center justify-between rounded-xl bg-ink-900 px-4 py-3">
+              <span className="font-display text-lg font-bold uppercase">Total del pago</span>
+              <span className="font-display text-2xl font-bold text-ok">{money(total)}</span>
+            </div>
+
+            {/* 4. Datos del pago */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Fecha de pago"><Input type="date" value={paidAt} max={today()} onChange={(e) => setPaidAt(e.target.value)} /></Field>
+              <Field label="¿Quién recibió el pago? (equipo Rancho Seco) *">
+                <Input value={receiver} onChange={(e) => setReceiver(e.target.value)} list="receivers" placeholder="Nombre" />
+                <datalist id="receivers">{receivers.map((r) => <option key={r} value={r} />)}</datalist>
+              </Field>
+            </div>
+            <Field label="Método de pago">
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+                {(Object.keys(METHOD_LABEL) as PaymentMethod[]).map((m) => (
+                  <button type="button" key={m} onClick={() => setMethod(m)}
+                    className={`rounded-xl border px-2 py-2.5 text-sm font-medium ${method === m ? 'border-brand bg-brand text-ink' : 'border-ink-600 bg-ink-900 text-muted hover:text-white'}`}>
+                    {METHOD_LABEL[m]}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-ink-500 px-4 py-3 text-sm text-muted hover:text-white">
+              <Paperclip className="h-4 w-4" />
+              {file ? file.name : 'Adjuntar comprobante (opcional)'}
+              <input type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            </label>
+            <Field label="Notas (opcional)"><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} /></Field>
+          </>
+        )}
+      </form>
     </Modal>
   )
 }
@@ -236,7 +270,7 @@ export function EditPaymentModal({ payment, student, onClose }: { payment: Payme
   const fees = useFees(student.id)
   const qc = useQueryClient()
   const toast = useToast()
-  const [f, setF] = useState({ amount: String(payment.amount), paid_at: payment.paid_at.slice(0, 10), method: payment.method, fee_id: payment.fee_id, notes: payment.notes ?? '' })
+  const [f, setF] = useState({ amount: String(payment.amount), paid_at: payment.paid_at.slice(0, 10), method: payment.method, fee_id: payment.fee_id, notes: payment.notes ?? '', received_by: payment.received_by ?? '' })
   const [saving, setSaving] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
   const feeName = (id: string) => { const x = fees.data?.find((y) => y.id === id); return x ? `${x.concept} ${monthName(x.period)}` : 'cargo' }
@@ -254,7 +288,7 @@ export function EditPaymentModal({ payment, student, onClose }: { payment: Payme
     if (!(amount > 0)) return toast.error('El monto debe ser mayor a cero.')
     setSaving(true)
     try {
-      unwrap(await supabase.from('payments').update({ amount, paid_at: f.paid_at, method: f.method, fee_id: f.fee_id, notes: f.notes.trim() || null }).eq('id', payment.id))
+      unwrap(await supabase.from('payments').update({ amount, paid_at: f.paid_at, method: f.method, fee_id: f.fee_id, notes: f.notes.trim() || null, received_by: f.received_by.trim() || null }).eq('id', payment.id))
       if (f.fee_id !== payment.fee_id) await cleanupAdvance(payment.fee_id)
       const changes = [
         amount !== Number(payment.amount) && `monto ${money(payment.amount)} → ${money(amount)}`,
@@ -306,6 +340,7 @@ export function EditPaymentModal({ payment, student, onClose }: { payment: Payme
             {(Object.keys(METHOD_LABEL) as PaymentMethod[]).map((m) => <option key={m} value={m}>{METHOD_LABEL[m]}</option>)}
           </Select>
         </Field>
+        <Field label="¿Quién recibió el pago?"><Input value={f.received_by} onChange={(e) => setF({ ...f, received_by: e.target.value })} placeholder="Nombre" /></Field>
         <Field label="Notas"><Textarea rows={2} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} placeholder="Ej. Se registró por error" /></Field>
         <p className="text-xs text-muted">Los cambios quedan anotados en los avisos del Dashboard.</p>
       </div>
