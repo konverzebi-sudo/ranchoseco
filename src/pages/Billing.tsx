@@ -35,7 +35,7 @@ export default function Billing() {
   const [month, setMonth] = useState(monthStart.slice(0, 7))
   const monthFrom = `${month}-01`
   const payments = usePayments()
-  const [newPayment, setNewPayment] = useState(false)
+  const [newPayment, setNewPayment] = useState(params.get('nuevo-pago') === '1')
   const t = today()
   const soon = toISODate(addDays(new Date(), 7))
 

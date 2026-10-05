@@ -1,4 +1,4 @@
-import { Suspense, useState, useEffect, type FormEvent } from 'react'
+import { Suspense, useMemo, useState, useEffect, type FormEvent } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Layers, UserCog, ClipboardCheck, Wallet, Receipt, GraduationCap, Dumbbell, Trophy, CalendarDays,
@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { Spinner, cx } from './ui'
 import ErrorBoundary from './ErrorBoundary'
+import { parentsOf, useCategories, useStudents } from '@/lib/api'
 
 export const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -40,21 +41,77 @@ function Brand({ compact }: { compact?: boolean }) {
   )
 }
 
+const normQ = (x: string) => x.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+/** Atajos que también aparecen en el buscador. */
+const ACTIONS = [
+  { to: '/cobranza?nuevo-pago=1', label: 'Generar pago', words: 'cobrar pago abono registrar' },
+  { to: '/alumnos?nuevo=1', label: 'Nuevo alumno', words: 'alta inscribir registrar alumno' },
+  { to: '/alumnos?nuevo=muestra', label: 'Clase muestra', words: 'prueba muestra' },
+  { to: '/asistencias', label: 'Pasar lista', words: 'asistencia lista' },
+  { to: '/gastos/desglose', label: 'Gastos día a día', words: 'desglose gastos dia' },
+]
+
+/**
+ * Buscador de arriba: con unas cuantas letras muestra los niños que coinciden
+ * (por su nombre, el de su papá o mamá, o su teléfono) y las secciones de la página.
+ */
 function QuickSearch({ onDone }: { onDone?: () => void }) {
   const [q, setQ] = useState('')
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(0)
   const nav = useNavigate()
+  const students = useStudents()
+  const categories = useCategories()
+  const term = normQ(q.trim())
+  const digits = q.replace(/\D/g, '')
+  const results = useMemo(() => {
+    if (term.length < 2 && digits.length < 3) return []
+    const cat = new Map((categories.data ?? []).map((c) => [c.id, c.name]))
+    const kids = (students.data ?? []).filter((s) => {
+      const p = parentsOf(s)
+      return normQ(s.full_name).includes(term) || p.all.some((g) => normQ(g.full_name).includes(term) || (digits.length >= 3 && g.phone.includes(digits)))
+    }).sort((a, b) => Number(a.status === 'baja') - Number(b.status === 'baja') || Number(!normQ(a.full_name).startsWith(term)) - Number(!normQ(b.full_name).startsWith(term)) || a.full_name.localeCompare(b.full_name, 'es'))
+      .slice(0, 7).map((s) => ({ key: s.id, to: `/alumnos/${s.id}`, title: s.full_name, sub: `${cat.get(s.category_id ?? '') ?? 'Sin categoría'}${s.status === 'baja' ? ' · baja' : s.status === 'muestra' ? ' · clase muestra' : ''}`, kind: 'Alumno' as const }))
+    const pages = [
+      ...NAV.filter((n) => normQ(n.label).includes(term)).map((n) => ({ key: n.to, to: n.to, title: n.label, sub: 'Sección', kind: 'Sección' as const })),
+      ...ACTIONS.filter((a) => normQ(a.label).includes(term) || normQ(a.words).includes(term)).map((a) => ({ key: a.to, to: a.to, title: a.label, sub: 'Atajo', kind: 'Sección' as const })),
+    ].slice(0, 5)
+    return [...kids, ...pages]
+  }, [term, digits, students.data, categories.data])
+
+  const go = (to: string) => { nav(to); setQ(''); setOpen(false); onDone?.() }
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    nav(`/alumnos?q=${encodeURIComponent(q.trim())}`)
-    setQ('')
-    onDone?.()
+    if (results[active]) return go(results[active].to)
+    if (q.trim()) go(`/alumnos?q=${encodeURIComponent(q.trim())}&st=todos`)
   }
   return (
     <form onSubmit={submit} className="relative" role="search">
       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar alumno, papá, mamá o teléfono"
-        aria-label="Buscar alumno"
+      <input value={q} onChange={(e) => { setQ(e.target.value); setOpen(true); setActive(0) }} placeholder="Buscar niño, papá, mamá o sección"
+        aria-label="Buscar" onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, results.length - 1)) }
+          if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)) }
+          if (e.key === 'Escape') setOpen(false)
+        }}
         className="h-10 w-full rounded-xl border border-ink-600 bg-ink-900 pl-9 pr-3 text-sm placeholder:text-ink-500 focus:border-brand focus:outline-none" />
+      {open && results.length > 0 && (
+        <ul className="absolute left-0 right-0 top-full z-50 mt-1 max-h-96 overflow-y-auto rounded-xl border border-ink-600 bg-ink-800 py-1 shadow-xl">
+          {results.map((r, k) => (
+            <li key={r.key}>
+              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => go(r.to)} onMouseEnter={() => setActive(k)}
+                className={cx('flex w-full items-center gap-2 px-3 py-2 text-left text-sm', k === active && 'bg-ink-700')}>
+                <span className="min-w-0 flex-1"><span className="block truncate font-medium">{r.title}</span><span className="block truncate text-xs text-muted">{r.sub}</span></span>
+                <span className={cx('rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase', r.kind === 'Alumno' ? 'bg-brand/20 text-brand' : 'bg-ink-600 text-muted')}>{r.kind}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {open && term.length >= 2 && results.length === 0 && (
+        <p className="absolute left-0 right-0 top-full z-50 mt-1 rounded-xl border border-ink-600 bg-ink-800 px-3 py-2 text-sm text-muted shadow-xl">Sin resultados</p>
+      )}
     </form>
   )
 }
