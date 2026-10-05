@@ -95,6 +95,21 @@ export function PaymentModal({ student: fixed, feeId, onClose }: { student?: Stu
   const extraTotal = extras.filter((x) => x.on).reduce((a, x) => a + (Number(x.amount) || 0), 0)
   const total = Math.round((debtTotal + extraTotal) * 100) / 100
   const paidN = paid === '' ? null : Number(paid)
+  // Si ya escribió cuánto pagó, sólo se puede marcar lo que alcanza con ese dinero
+  const room = paidN != null ? Math.round((paidN - total) * 100) / 100 : Infinity
+  const over = paidN != null && total > paidN + 0.001
+  const checkDebt = (f: FeeBalance, on: boolean) => {
+    if (!on) return setSel({ ...sel, [f.id]: { on: false, amount: '' } })
+    if (room <= 0) return toast.error(`Ya no alcanza: pagó ${money(paidN!)} y ya está todo asignado.`)
+    setSel({ ...sel, [f.id]: { on: true, amount: String(Math.min(Number(f.balance), room)) } })
+  }
+  const checkExtra = (k: number, on: boolean) => {
+    const x = extras[k]
+    if (!on) return setExtras(extras.map((y, j) => (j === k ? { ...y, on: false } : y)))
+    if (room <= 0) return toast.error(`Ya no alcanza: pagó ${money(paidN!)} y ya está todo asignado.`)
+    const want = Number(x.amount) || 0
+    setExtras(extras.map((y, j) => (j === k ? { ...y, on: true, amount: String(want > 0 ? Math.min(want, room) : room === Infinity ? '' : room) } : y)))
+  }
 
   /** Al escribir cuánto pagó se marca solo lo que debe, del más antiguo al más nuevo. */
   const distribute = (v: string) => {
@@ -117,6 +132,7 @@ export function PaymentModal({ student: fixed, feeId, onClose }: { student?: Stu
     for (const f of open) if (sel[f.id]?.on && amountOf(f) > Number(f.balance) + 0.001) return toast.error(`A ${f.concept} ${monthName(f.period)} le abonas más de lo que debe (${money(f.balance)}).`)
     if (extras.some((x) => x.on && (!(Number(x.amount) > 0) || !x.concept.trim()))) return toast.error('Escribe el concepto y el monto de lo que agregaste.')
     if (!receiver.trim()) return toast.error('Escribe quién recibió el pago.')
+    if (over) return toast.error(`Marcaste ${money(total)} pero pagó ${money(paidN!)}. Quita algo o cambia los montos.`)
     if (paidN != null && Math.abs(paidN - total) > 0.5 && !window.confirm(`Pagó ${money(paidN)} pero marcaste ${money(total)}. ¿Registrar ${money(total)}?`)) return
     setSaving(true)
     try {
@@ -153,7 +169,7 @@ export function PaymentModal({ student: fixed, feeId, onClose }: { student?: Stu
 
   return (
     <Modal open onClose={onClose} title="Generar pago" wide
-      footer={student ? <><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button type="submit" form="pay-form" icon={Save} loading={saving} disabled={!(total > 0)}>Registrar {money(total)}</Button></> : undefined}>
+      footer={student ? <><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button type="submit" form="pay-form" icon={Save} loading={saving} disabled={!(total > 0) || over}>Registrar {money(total)}</Button></> : undefined}>
       <form id="pay-form" onSubmit={submit} className="space-y-4">
         {/* 1. Niño */}
         {!fixed && (
@@ -198,7 +214,7 @@ export function PaymentModal({ student: fixed, feeId, onClose }: { student?: Stu
                       const r = sel[f.id]
                       return (
                         <li key={f.id} className={cx('flex flex-wrap items-center gap-3 px-3 py-2 text-sm', r?.on && 'bg-brand-dim')}>
-                          <input type="checkbox" checked={!!r?.on} onChange={(e) => setSel({ ...sel, [f.id]: { on: e.target.checked, amount: r?.amount ?? '' } })} className="h-5 w-5 accent-[#F2E30A]" aria-label={`${f.concept} ${monthName(f.period)}`} />
+                          <input type="checkbox" checked={!!r?.on} onChange={(e) => checkDebt(f, e.target.checked)} className="h-5 w-5 accent-[#F2E30A]" aria-label={`${f.concept} ${monthName(f.period)}`} />
                           <span className="min-w-0 flex-1">
                             <b>{f.concept} {monthName(f.period)}</b>
                             <span className="block text-xs text-muted">Debe {money(f.balance)}{Number(f.late_fee) > 0 ? ` (incluye ${money(f.late_fee)} de recargo)` : ''} · vence {shortDate(f.due_date)}</span>
@@ -222,7 +238,7 @@ export function PaymentModal({ student: fixed, feeId, onClose }: { student?: Stu
               <ul className="divide-y divide-ink-700 rounded-xl border border-ink-600">
                 {extras.map((x, k) => (
                   <li key={x.key} className={cx('flex flex-wrap items-center gap-3 px-3 py-2 text-sm', x.on && 'bg-brand-dim')}>
-                    <input type="checkbox" checked={x.on} onChange={(e) => setExtras(extras.map((y, j) => (j === k ? { ...y, on: e.target.checked } : y)))} className="h-5 w-5 accent-[#F2E30A]" aria-label={x.concept || 'Otro concepto'} />
+                    <input type="checkbox" checked={x.on} onChange={(e) => checkExtra(k, e.target.checked)} className="h-5 w-5 accent-[#F2E30A]" aria-label={x.concept || 'Otro concepto'} />
                     {x.editable
                       ? <Input value={x.concept} onChange={(e) => setExtras(extras.map((y, j) => (j === k ? { ...y, concept: e.target.value, on: true } : y)))} placeholder="Otro concepto (torneo, arbitraje…)" className="h-9 min-w-0 flex-1" />
                       : <span className="min-w-0 flex-1 font-medium">{x.concept}</span>}
@@ -234,8 +250,11 @@ export function PaymentModal({ student: fixed, feeId, onClose }: { student?: Stu
             </div>
 
             <div className="flex items-center justify-between rounded-xl bg-ink-900 px-4 py-3">
-              <span className="font-display text-lg font-bold uppercase">Total del pago</span>
-              <span className="font-display text-2xl font-bold text-ok">{money(total)}</span>
+              <span className="font-display text-lg font-bold uppercase">Total del pago
+                {paidN != null && <span className={cx('block font-sans text-xs font-normal normal-case', over ? 'text-bad' : Math.abs(paidN - total) > 0.5 ? 'text-warn' : 'text-ok')}>
+                  Pagó {money(paidN)} · asignado {money(total)} · {over ? `te pasaste por ${money(total - paidN)}` : Math.abs(paidN - total) > 0.5 ? `falta asignar ${money(paidN - total)}` : 'cuadra ✓'}</span>}
+              </span>
+              <span className={cx('font-display text-2xl font-bold', over ? 'text-bad' : 'text-ok')}>{money(total)}</span>
             </div>
 
             {/* 4. Datos del pago */}
