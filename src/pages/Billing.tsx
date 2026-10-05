@@ -1,15 +1,13 @@
 import { useMemo, useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { startOfMonth, addDays } from 'date-fns'
 import { Wallet, Download, CalendarPlus, AlertTriangle, TrendingUp, CheckCircle2, Receipt, GraduationCap, HelpCircle, Eraser } from 'lucide-react'
-import { Avatar, Badge, Button, Card, ConfirmDialog, Empty, ErrorState, PageHeader, SearchInput, Segmented, Select, Spinner, StatCard, feeTone } from '@/components/ui'
+import { Avatar, Badge, Button, Card, Empty, ErrorState, PageHeader, SearchInput, Segmented, Select, Spinner, StatCard, feeTone } from '@/components/ui'
 import { CollectButton } from '@/components/WhatsAppButtons'
 import { PaymentModal, GenerateMonthModal } from '@/components/PaymentForms'
 import { ScholarshipReviewModal } from '@/components/ScholarshipReview'
 import CategoryResults from '@/components/CategoryResults'
-import { useToast } from '@/components/toast'
-import { supabase, unwrap } from '@/lib/supabase'
+import WaiveLateFeesModal from '@/components/WaiveLateFees'
 import { useCategories, useFees, usePayments, useStudents, primaryGuardian, type StudentRow } from '@/lib/api'
 import { ACCOUNT_LABEL, METHOD_LABEL, date, money, monthName, prettyPhone, shortDate, toISODate, today } from '@/lib/format'
 import { exportCsv } from '@/lib/csv'
@@ -29,9 +27,6 @@ export default function Billing() {
   const [generating, setGenerating] = useState(false)
   const [reviewing, setReviewing] = useState<{ fee: FeeBalance; name: string } | null>(null)
   const [waiveAll, setWaiveAll] = useState(false)
-  const [waiving, setWaiving] = useState(false)
-  const qc = useQueryClient()
-  const toast = useToast()
   const students = useStudents()
   const categories = useCategories()
   const fees = useFees()
@@ -92,18 +87,6 @@ export default function Billing() {
   }, [fees.data, students.data, payments.data, soon, monthStart])
 
   const lateTotal = totals.lateFees.reduce((a, f) => a + Number(f.late_fee), 0)
-  const doWaiveAll = async () => {
-    setWaiving(true)
-    try {
-      for (const f of totals.lateFees) {
-        unwrap(await supabase.from('fees').update({ late_fee_waived: Number(f.late_fee_waived) + Number(f.late_fee) }).eq('id', f.id))
-      }
-      await Promise.all(['fees', 'accounts'].map((k) => qc.invalidateQueries({ queryKey: [k] })))
-      toast.ok(`Se perdonaron ${money(lateTotal)} de recargos`)
-      setWaiveAll(false)
-    } catch (e) { toast.error(e) } finally { setWaiving(false) }
-  }
-
   const setFilter = (f: Filter) => setParams({ f }, { replace: true })
   const doExport = () =>
     exportCsv(`cobranza-${t}.csv`, ['Alumno', 'Categoría', 'Avisos a (papá/mamá)', 'Teléfono', 'Conceptos pendientes', 'Recargo', 'Saldo', 'Estado'],
@@ -117,7 +100,7 @@ export default function Billing() {
     <>
       <PageHeader title="Mensualidades y pagos"
         actions={<>
-          {lateTotal > 0 && <Button variant="secondary" icon={Eraser} onClick={() => setWaiveAll(true)}>Perdonar recargos</Button>}
+          {lateTotal > 0 && <Button variant="secondary" icon={Eraser} onClick={() => setWaiveAll(true)}>Perdonar recargos…</Button>}
           <Button variant="secondary" icon={CalendarPlus} onClick={() => setGenerating(true)}>Generar mensualidades</Button>
           <Button variant="secondary" icon={Download} onClick={doExport} disabled={!rows.length}>Exportar</Button>
         </>} />
@@ -205,8 +188,7 @@ export default function Billing() {
 
       {paying && <PaymentModal student={paying} onClose={() => setPaying(null)} />}
       {reviewing && <ScholarshipReviewModal fee={reviewing.fee} studentName={reviewing.name} onClose={() => setReviewing(null)} />}
-      <ConfirmDialog open={waiveAll} onClose={() => setWaiveAll(false)} onConfirm={doWaiveAll} loading={waiving} title="Perdonar recargos" confirmLabel={`Perdonar ${money(lateTotal)}`}
-        text={<>Se perdonarán <b className="text-white">{money(lateTotal)}</b> de recargos acumulados en {totals.lateFees.length} mensualidades. El precio de la mensualidad sigue pendiente, y si no se paga, a partir de mañana el recargo vuelve a correr. También puedes perdonarlos uno por uno desde el expediente de cada alumno.</>} />
+      {waiveAll && <WaiveLateFeesModal fees={totals.lateFees} names={new Map((students.data ?? []).map((x) => [x.id, x.full_name]))} onClose={() => setWaiveAll(false)} />}
       {generating && <GenerateMonthModal students={students.data ?? []} onClose={() => setGenerating(false)} />}
     </>
   )

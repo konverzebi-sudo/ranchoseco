@@ -17,6 +17,7 @@ import { ScholarshipReviewModal } from '@/components/ScholarshipReview'
 import { CouponModal } from '@/components/CouponModal'
 import { PauseModal, ReactivateModal } from '@/components/InactiveModals'
 import { CloseTrialModal } from '@/components/TrialModals'
+import WaiveLateFeesModal from '@/components/WaiveLateFees'
 import { useToast } from '@/components/toast'
 import {
   useAccounts, useAttendanceDetail, useCategories, useCoaches, useCoachCategories, useEvaluations, useFees, useMatches, useMatchPlayers,
@@ -470,18 +471,6 @@ function PaymentsTab({ s }: { s: StudentRow }) {
   const [review, setReview] = useState<FeeBalance | null>(null)
   const [coupon, setCoupon] = useState<FeeBalance | null>(null)
   const [editPay, setEditPay] = useState<Payment | null>(null)
-  const [waiving, setWaiving] = useState(false)
-  const qc = useQueryClient()
-  const doWaive = async () => {
-    if (!waive) return
-    setWaiving(true)
-    try {
-      unwrap(await supabase.from('fees').update({ late_fee_waived: Number(waive.late_fee_waived) + Number(waive.late_fee) }).eq('id', waive.id))
-      await Promise.all(['fees', 'accounts'].map((k) => qc.invalidateQueries({ queryKey: [k] })))
-      toast.ok('Recargo condonado')
-      setWaive(null)
-    } catch (e) { toast.error(e) } finally { setWaiving(false) }
-  }
   const balance = (fees.data ?? []).reduce((t, f) => t + Number(f.balance), 0)
   const scholarship = (fees.data ?? []).reduce((t, f) => t + Number(f.discount), 0)
   const openReceipt = async (path: string) => {
@@ -570,8 +559,7 @@ function PaymentsTab({ s }: { s: StudentRow }) {
       {review && <ScholarshipReviewModal fee={review} onClose={() => setReview(null)} />}
       {coupon && <CouponModal fee={coupon} studentName={s.full_name} onClose={() => setCoupon(null)} />}
       {editPay && <EditPaymentModal payment={editPay} student={s} onClose={() => setEditPay(null)} />}
-      <ConfirmDialog open={!!waive} onClose={() => setWaive(null)} onConfirm={doWaive} loading={waiving} title="Perdonar recargo" confirmLabel="Perdonar"
-        text={waive ? <>Se perdonan <b className="text-white">{money(waive.late_fee)}</b> de recargo de {waive.concept} {monthName(waive.period)}. Si el pago sigue pendiente, a partir de mañana el recargo vuelve a correr.</> : null} />
+      {waive && <WaiveLateFeesModal fees={fees.data ?? []} names={new Map([[s.id, s.full_name]])} preselect={[waive.id]} onClose={() => setWaive(null)} />}
     </div>
   )
 }
