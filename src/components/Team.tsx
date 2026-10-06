@@ -149,7 +149,7 @@ async function randomPin(team: TeamMember[], exceptId: string) {
 }
 
 /** Asignar o cambiar el PIN de una persona (debe ser distinto al de los demás). */
-function SetPinModal({ member, self, onClose, forced }: { member: TeamMember; self?: boolean; onClose: () => void; forced?: boolean }) {
+function SetPinModal({ member, self, onClose, forced, activate }: { member: TeamMember; self?: boolean; onClose: () => void; forced?: boolean; activate?: boolean }) {
   const team = useTeam()
   const qc = useQueryClient()
   const toast = useToast()
@@ -166,14 +166,15 @@ function SetPinModal({ member, self, onClose, forced }: { member: TeamMember; se
       if (other) { setBusy(false); return toast.error('Ese PIN ya lo usa otra persona. Escoge otro.') }
       await savePin(member.id, await pinHash(member.id, pin), null)
       await qc.invalidateQueries({ queryKey: ['team'] })
-      toast.ok(self ? 'Tu PIN quedó guardado' : `PIN temporal de ${member.full_name} guardado. Dáselo en persona: al entrar escogerá el suyo.`)
+      toast.ok(activate ? `¡Listo! ${member.full_name} ya puede entrar con su PIN` : 'Tu PIN quedó guardado')
       onClose()
     } catch (e) { toast.error(e) } finally { setBusy(false) }
   }
   return (
-    <Modal open onClose={forced ? () => {} : onClose} title={forced ? `Hola, ${member.full_name.split(' ')[0]}: escoge tu PIN` : self ? 'Cambiar mi PIN' : `PIN temporal de ${member.full_name}`}
+    <Modal open onClose={forced ? () => {} : onClose} title={forced ? `Hola, ${member.full_name.split(' ')[0]}: escoge tu PIN` : activate ? `Activar a ${member.full_name}` : 'Cambiar mi PIN'}
       footer={<>{forced ? <Button variant="secondary" onClick={() => setActor('', '')}>Salir</Button> : <Button variant="secondary" onClick={onClose}>Cancelar</Button>}<Button icon={KeyRound} loading={busy} onClick={save}>Guardar PIN</Button></>}>
       <div className="space-y-3">
+        {activate && <p className="rounded-xl border border-brand/40 bg-brand-dim p-3 text-sm">Pásale el celular a <b>{member.full_name}</b> para que escriba su PIN de {PIN_LENGTH} números dos veces. Sólo esa persona lo sabrá; nadie más lo puede ver.</p>}
         {forced && <p className="rounded-xl border border-brand/40 bg-brand-dim p-3 text-sm">Entraste con un PIN temporal. Escoge tu PIN personal de {PIN_LENGTH} números: sólo tú lo vas a saber.</p>}
         <p className="text-sm text-muted">{PIN_LENGTH} números. Con ese PIN la plataforma sabe quién es y qué puede ver{isAdminRole(member.role) ? ' (administración: todo, con los números)' : ' (vista de profesor, sin dinero)'}.</p>
         <Field label="Nuevo PIN"><Input type="password" inputMode="numeric" autoFocus value={pin} onChange={(e) => setPin(onlyDigits(e.target.value))} /></Field>
@@ -206,6 +207,7 @@ export function TeamSettings() {
   const [name, setName] = useState('')
   const [role, setRole] = useState('')
   const [mine, setMine] = useState<TeamMember | null>(null)
+  const [activating, setActivating] = useState<TeamMember | null>(null)
   const [busy, setBusy] = useState('')
   const list = team.data ?? []
   const refresh = () => qc.invalidateQueries({ queryKey: ['team'] })
@@ -245,7 +247,7 @@ export function TeamSettings() {
           <h3 className="font-display text-lg font-bold uppercase tracking-wide text-brand">Equipo Rancho Seco y PIN de acceso</h3>
           <p className="text-sm text-muted">Cada persona entra con su PIN de {PIN_LENGTH} números. Sólo el puesto <b>Administración</b> ve los números; los demás ven la vista de profesor.</p>
           <p className="mt-1 text-xs text-muted">{jany
-            ? 'Tú generas un PIN temporal para cada quien y se lo das en persona. Al entrar, cada quien escoge su PIN personal (ése ya no lo ve nadie). Si alguien lo olvida, genérale uno nuevo.'
+            ? 'Ve con cada persona y dale “Activar”: le pasas el celular y ella misma escribe su PIN (nadie más lo ve). Si no estás con ella, puedes darle un PIN temporal y al entrar escogerá el suyo. Si alguien lo olvida, actívalo de nuevo.'
             : 'Los PIN temporales los genera y los ve sólo Jany. Tu PIN lo puedes cambiar con la llavecita junto a tu nombre en el menú.'}</p>
         </div>
         {jany && without.length > 0 && <Button icon={KeyRound} loading={busy === 'all'} onClick={() => generate(without)}>Generar PIN para los {without.length} que no tienen</Button>}
@@ -260,7 +262,10 @@ export function TeamSettings() {
               : <span className={cx('text-xs', !m.pin_hash ? 'text-warn' : m.pin_must_change ? 'text-info' : 'text-ok')}>{!m.pin_hash ? 'sin PIN (no puede entrar)' : m.pin_must_change ? '⏳ PIN temporal (aún no entra)' : '🔒 ya escogió su PIN'}</span>}
             {m.id === getActorId()
               ? <Button size="sm" variant="secondary" icon={KeyRound} onClick={() => setMine(m)}>Cambiar mi PIN</Button>
-              : jany && <Button size="sm" variant="secondary" icon={KeyRound} loading={busy === m.id} onClick={() => generate([m])}>{m.pin_hash ? 'PIN nuevo' : 'Generar PIN'}</Button>}
+              : jany && <>
+                <Button size="sm" icon={KeyRound} onClick={() => setActivating(m)}>{m.pin_hash ? 'Activar de nuevo' : 'Activar'}</Button>
+                <Button size="sm" variant="ghost" loading={busy === m.id} onClick={() => generate([m])}>{m.pin_hash ? 'PIN temporal nuevo' : 'o PIN temporal'}</Button>
+              </>}
             {jany && m.pin_hash && m.id !== getActorId() && <button className="text-xs text-muted hover:text-bad hover:underline" onClick={() => clearPin(m)}>Quitar PIN</button>}
             <button className="text-xs text-muted hover:text-brand hover:underline" onClick={() => toggle(m.id, !m.active)}>{m.active ? 'Dar de baja' : 'Volver a activar'}</button>
           </li>
@@ -273,6 +278,7 @@ export function TeamSettings() {
         <Button icon={Plus} onClick={add}>Agregar</Button>
       </div>
       {mine && <SetPinModal member={mine} self onClose={() => setMine(null)} />}
+      {activating && <SetPinModal member={activating} activate onClose={() => setActivating(null)} />}
     </Card>
   )
 }
