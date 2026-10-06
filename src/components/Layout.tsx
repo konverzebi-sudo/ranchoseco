@@ -8,7 +8,8 @@ import { Spinner, cx } from './ui'
 import ErrorBoundary from './ErrorBoundary'
 import AutoMonthlyFees from './AutoMonthlyFees'
 import { AutoTrainings } from './WeeklySchedule'
-import { WhoAmI } from './Team'
+import { LoginScreen, WhoAmI } from './Team'
+import { profeCanOpen, useRole, PROFE_PATHS } from '@/lib/role'
 import { parentsOf, useCategories, useStudents } from '@/lib/api'
 
 export const NAV = [
@@ -121,18 +122,24 @@ function QuickSearch({ onDone }: { onDone?: () => void }) {
 }
 
 export default function Layout() {
+  const role = useRole()
+  const nav = role.isProfe ? NAV.filter((n) => PROFE_PATHS.includes(n.to)) : NAV
   const [drawer, setDrawer] = useState(false)
   const loc = useLocation()
   useEffect(() => setDrawer(false), [loc.pathname])
+
+  // Sin PIN no se ve nada (los links de papás y el registro siguen abiertos)
+  if (!role.ready) return <div className="min-h-dvh bg-page"><Spinner /></div>
+  if (!role.loggedIn) return <LoginScreen logo={LOGO} />
 
   return (
     <div className="min-h-dvh lg:flex">
       {/* Sidebar escritorio */}
       <aside className="theme-dark sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-ink-600 bg-ink-900 lg:flex">
         <div className="px-5 pb-4 pt-6"><Brand /></div>
-        <div className="px-4 pb-3"><QuickSearch /></div>
+        {!role.isProfe && <div className="px-4 pb-3"><QuickSearch /></div>}
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 pb-4" aria-label="Menú principal">
-          {NAV.map(({ to, label, icon: Icon, end }) => (
+          {nav.map(({ to, label, icon: Icon, end }) => (
             <NavLink key={to} to={to} end={end}
               className={({ isActive }) => cx('flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition',
                 isActive ? 'bg-brand text-ink' : 'text-muted hover:bg-ink-700 hover:text-white')}>
@@ -153,12 +160,12 @@ export default function Layout() {
       </header>
 
       <main className="min-w-0 flex-1 px-4 pb-28 pt-5 sm:px-6 lg:px-8 lg:pb-10 lg:pt-8">
-        <div className="mx-auto max-w-7xl"><AutoMonthlyFees /><AutoTrainings /><ErrorBoundary resetKey={loc.pathname}><Suspense fallback={<Spinner />}><Outlet /></Suspense></ErrorBoundary></div>
+        <div className="mx-auto max-w-7xl"><AutoMonthlyFees /><AutoTrainings /><ErrorBoundary resetKey={loc.pathname}><Suspense fallback={<Spinner />}>{role.isProfe && !profeCanOpen(loc.pathname) ? <NoAccess /> : <Outlet />}</Suspense></ErrorBoundary></div>
       </main>
 
       {/* Barra inferior celular */}
       <nav className="theme-dark fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-ink-600 bg-ink-900/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden" aria-label="Navegación rápida">
-        {NAV.filter((n) => MOBILE_MAIN.includes(n.to)).map(({ to, label, short, icon: Icon, end }) => (
+        {(role.isProfe ? nav.slice(0, 4) : NAV.filter((n) => MOBILE_MAIN.includes(n.to))).map(({ to, label, short, icon: Icon, end }) => (
           <NavLink key={to} to={to} end={end}
             className={({ isActive }) => cx('flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium', isActive ? 'text-brand' : 'text-muted')}>
             <Icon className="h-6 w-6" />
@@ -180,10 +187,10 @@ export default function Layout() {
               <Brand compact />
               <button onClick={() => setDrawer(false)} aria-label="Cerrar menú" className="rounded-xl p-2 text-muted hover:bg-ink-700"><X className="h-6 w-6" /></button>
             </div>
-            <div className="px-4 pb-3"><QuickSearch onDone={() => setDrawer(false)} /></div>
+            {!role.isProfe && <div className="px-4 pb-3"><QuickSearch onDone={() => setDrawer(false)} /></div>}
             <div className="px-4 pb-3"><WhoAmI /></div>
             <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-6">
-              {NAV.map(({ to, label, icon: Icon, end }) => (
+              {nav.map(({ to, label, icon: Icon, end }) => (
                 <NavLink key={to} to={to} end={end}
                   className={({ isActive }) => cx('flex items-center gap-3 rounded-xl px-3 py-3.5 text-base font-medium',
                     isActive ? 'bg-brand text-ink' : 'text-white hover:bg-ink-700')}>
@@ -195,6 +202,17 @@ export default function Layout() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/** Lo que no le toca ver a un profe (pagos, gastos, corte, configuración…). */
+function NoAccess() {
+  return (
+    <div className="mx-auto mt-16 max-w-md rounded-2xl border border-ink-600 bg-ink-800 p-6 text-center">
+      <p className="font-display text-2xl font-bold uppercase">Sección de administración</p>
+      <p className="mt-2 text-sm text-muted">Esta parte la maneja administración. Desde tu menú tienes asistencias, entrenamientos, partidos, calendario, evaluaciones y reportes.</p>
+      <NavLink to="/" className="mt-4 inline-block rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-ink">Ir a mi inicio</NavLink>
     </div>
   )
 }

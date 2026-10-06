@@ -45,15 +45,15 @@ export function BirthdayButtons({ student, iso = today() }: { student: StudentRo
 }
 
 /** Dashboard: cumpleaños de hoy (con botón para felicitar) y de los próximos 7 días. */
-export default function BirthdaysCard() {
+export default function BirthdaysCard({ categoryIds }: { categoryIds?: string[] }) {
   const students = useStudents()
   const t = today()
   const { todays, upcoming } = useMemo(() => {
-    const list = students.data ?? []
+    const list = (students.data ?? []).filter((s) => !categoryIds || (s.category_id && categoryIds.includes(s.category_id)))
     const upcoming = Array.from({ length: 7 }, (_, i) => format(addDays(new Date(t + 'T12:00:00'), i + 1), 'yyyy-MM-dd'))
       .flatMap((d) => birthdaysOn(list, d).map((s) => ({ s, d })))
     return { todays: birthdaysOn(list, t), upcoming }
-  }, [students.data, t])
+  }, [students.data, t, categoryIds])
   if (!todays.length && !upcoming.length) return null
   return (
     <Card className={todays.length ? 'border-brand/60' : ''}>

@@ -80,6 +80,8 @@ export interface TeamMember {
   full_name: string
   role: string | null
   active: boolean
+  /** PIN cifrado (sólo administración) */
+  pin_hash?: string | null
 }
 
 export interface AppNotification {

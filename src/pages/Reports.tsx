@@ -10,11 +10,15 @@ import { useToast } from '@/components/toast'
 import CategoryResults, { useCategoryResults } from '@/components/CategoryResults'
 import { HighlightCard, SECTIONS, useMonthHighlights } from '@/components/ReportHighlights'
 import { monthLabel } from '@/components/FinanceModules'
+import { useRole } from '@/lib/role'
 
 const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
 /** Reportes: módulos resumidos; al tocar uno se abre su desglose. */
+const MONEY_SECTIONS = ['onTime', 'scholarshipLate', 'latePayment']
+
 export default function Reports() {
+  const role = useRole()
   const [params, setParams] = useSearchParams()
   const month = /^\d{4}-\d{2}$/.test(params.get('mes') ?? '') ? params.get('mes')! : today().slice(0, 7)
   const view = params.get('ver') ?? ''
@@ -27,8 +31,8 @@ export default function Reports() {
   const students = useStudents()
   const evalCounts = useEvaluationCounts()
 
-  const section = SECTIONS.find((s) => s.key === view)
-  const title = view === 'ganancia' ? 'Ganancia real por categoría' : view === 'pdf' ? 'Reportes por jugador' : section?.title
+  const section = SECTIONS.find((s) => s.key === view && (!role.isProfe || !MONEY_SECTIONS.includes(s.key)))
+  const title = view === 'ganancia' && !role.isProfe ? 'Ganancia real por categoría' : view === 'pdf' ? 'Reportes por jugador' : section?.title
 
   if (view && title) {
     return (
@@ -52,19 +56,19 @@ export default function Reports() {
       <PageHeader title="Reportes" subtitle="Toca un módulo para ver su desglose."
         actions={<Input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className="h-10 w-44" aria-label="Mes" />} />
 
-      <h2 className="mb-3 font-display text-xl font-bold uppercase tracking-wide">Dinero · {monthLabel(month)}</h2>
+      {!role.isProfe && <><h2 className="mb-3 font-display text-xl font-bold uppercase tracking-wide">Dinero · {monthLabel(month)}</h2>
       <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard label="Ganancia real por categoría" icon={PiggyBank} tone={results && results.totals.result < 0 ? 'bad' : 'ok'}
           value={results ? money(Math.round(results.totals.result)) : '…'}
           hint={results ? `Ingreso ${money(Math.round(results.totals.income))} − gastos ${money(Math.round(results.totals.generalExpenses))} − sueldos ${money(Math.round(results.totals.salaries))}` : 'Calculando…'}
           onClick={() => go('ganancia')} />
-      </div>
+      </div></>}
 
       <h2 className="mb-3 font-display text-xl font-bold uppercase tracking-wide">Jugadores · {monthLabel(month)}</h2>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard label="Reportes por jugador" icon={FileText} value={monthReports}
           hint={`PDF generados en el mes · ${evaluated} de ${activeCount} evaluados`} onClick={() => go('pdf')} />
-        {SECTIONS.map((s) => {
+        {SECTIONS.filter((s) => !role.isProfe || !MONEY_SECTIONS.includes(s.key)).map((s) => {
           const items = h?.[s.key] ?? []
           const names = items.map(render).filter(Boolean).slice(0, 3).map((r) => r!.name.split(' ')[0])
           return (

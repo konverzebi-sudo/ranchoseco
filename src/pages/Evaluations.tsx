@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { BookOpen, ChevronDown, Copy, Pencil, Plus, Save, Star, Trash2 } from 'lucide-react'
+import { BookOpen, ChevronDown, ChevronLeft, ChevronRight, Copy, Pencil, Plus, Save, Star, Trash2 } from 'lucide-react'
 import { Avatar, Badge, Button, Card, ConfirmDialog, Empty, Field, Input, Modal, PageHeader, SearchInput, Segmented, Select, Spinner, Textarea, cx } from '@/components/ui'
 import { useToast } from '@/components/toast'
 import { TeamSelect } from '@/components/Team'
@@ -10,6 +10,7 @@ import { useCategories, useCoachCategories, useCoaches, useExtraClasses, useStud
 import { useEvalElements, useEvalExercises, useEvalTemplates, usePlayerEvalItems, usePlayerEvaluations } from '@/lib/evalApi'
 import { supabase, unwrap } from '@/lib/supabase'
 import { getActor } from '@/lib/actor'
+import { useRole } from '@/lib/role'
 import { age, date, today } from '@/lib/format'
 import {
   AREAS, SCORE_LABEL, areaLabel, scoresOf, templatesFor,
@@ -48,7 +49,6 @@ function Evaluate({ initialStudent }: { initialStudent: string }) {
   const qc = useQueryClient()
   const toast = useToast()
   const [sid, setSid] = useState(initialStudent)
-  const [q, setQ] = useState('')
   const [tplId, setTplId] = useState('')
   const [scores, setScores] = useState<Record<string, Score>>({})
   const [openEx, setOpenEx] = useState<string | null>(null)
@@ -72,7 +72,6 @@ function Evaluate({ initialStudent }: { initialStudent: string }) {
   const done = items.length
   const set = (id: string, patch: Partial<Score>) => setScores((s) => ({ ...s, [id]: { ...(s[id] ?? { score: 0, exercise: '', note: '' }), ...patch } }))
 
-  const results = (students.data ?? []).filter((s) => (s.status === 'activo' || s.status === 'muestra') && q.trim().length >= 2 && norm(s.full_name).includes(norm(q.trim()))).slice(0, 8)
   const coachOf = (s: StudentRow) => (cc.data ?? []).filter((x) => x.category_id === s.category_id).map((x) => coaches.data?.find((c) => c.id === x.coach_id)?.full_name).filter(Boolean).join(', ')
 
   const save = async () => {
@@ -102,23 +101,7 @@ function Evaluate({ initialStudent }: { initialStudent: string }) {
   if (students.isLoading || templates.isLoading) return <Spinner />
   if (!(templates.data ?? []).length) return <Card className="p-6 text-sm text-warn">Falta activar el módulo en la base de datos (pegar el SQL en Supabase).</Card>
 
-  if (!student) {
-    return (
-      <Card className="space-y-3 p-5">
-        <p className="font-semibold">1. Selecciona al alumno</p>
-        <SearchInput value={q} onChange={setQ} placeholder="Escribe el nombre del niño" />
-        {results.length > 0 && (
-          <ul className="divide-y divide-ink-700 rounded-xl border border-ink-600">
-            {results.map((s) => (
-              <li key={s.id}><button onClick={() => { setSid(s.id); setQ('') }} className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-ink-700/50">
-                <Avatar name={s.full_name} path={s.photo_path} size={32} /><span className="flex-1">{s.full_name}</span>
-                <span className="text-xs text-muted">{categories.data?.find((c) => c.id === s.category_id)?.name}</span></button></li>
-            ))}
-          </ul>
-        )}
-      </Card>
-    )
-  }
+  if (!student) return <StudentPicker onPick={setSid} />
 
   const cat = categories.data?.find((c) => c.id === student.category_id)
   return (
@@ -303,38 +286,123 @@ function EvalModal({ ev, name, tpl, onClose }: { ev: PlayerEvaluation; name: str
 // CATÁLOGO DE EJERCICIOS
 // ---------------------------------------------------------------------------
 function Catalog() {
+  const role = useRole()
   const templates = useEvalTemplates()
   const elements = useEvalElements()
   const exercises = useEvalExercises()
+  const qc = useQueryClient()
+  const toast = useToast()
   const [tplId, setTplId] = useState('')
   const [area, setArea] = useState<'' | AreaKey>('')
   const [q, setQ] = useState('')
   const [editing, setEditing] = useState<EvalExercise | 'new' | null>(null)
   const [openEl, setOpenEl] = useState<Record<string, boolean>>({})
-  const tpl = (templates.data ?? []).find((t) => t.id === tplId) ?? templates.data?.[0]
-  const els = (elements.data ?? []).filter((e) => e.template_id === tpl?.id && (!area || e.area === area))
+  const [delEx, setDelEx] = useState<EvalExercise | null>(null)
+  const [delEl, setDelEl] = useState<EvalElement | null>(null)
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null)
+  const [adding, setAdding] = useState<{ area: AreaKey; name: string } | null>(null)
+  // El profe ve y edita sólo las plantillas de sus categorías
+  const tpls = (templates.data ?? []).filter((t) => !role.isProfe || (t.category_id && role.categoryIds.includes(t.category_id)))
+  const idx = Math.max(0, tpls.findIndex((t) => t.id === tplId))
+  const tpl = tpls[idx]
+  const els = (elements.data ?? []).filter((e) => e.template_id === tpl?.id)
   const exOf = (elId: string) => (exercises.data ?? []).filter((x) => x.eval_exercise_elements?.some((l) => l.element_id === elId) && (!q || norm(x.name).includes(norm(q))))
+  const refresh = () => qc.invalidateQueries({ queryKey: ['eval'] })
+  const go = (d: number) => { const n = tpls[(idx + d + tpls.length) % tpls.length]; if (n) { setTplId(n.id); setOpenEl({}) } }
+
+  const addElement = async () => {
+    if (!adding || !tpl || !adding.name.trim()) return
+    try {
+      const sort = els.filter((e) => e.area === adding.area).length
+      unwrap(await supabase.from('eval_elements').insert({ template_id: tpl.id, area: adding.area, name: adding.name.trim(), sort_order: sort }))
+      await refresh(); setAdding(null); toast.ok('Indicador agregado')
+    } catch (e) { toast.error(e) }
+  }
+  const rename = async () => {
+    if (!renaming?.name.trim()) return
+    try { unwrap(await supabase.from('eval_elements').update({ name: renaming.name.trim() }).eq('id', renaming.id)); await refresh(); setRenaming(null) } catch (e) { toast.error(e) }
+  }
+  const removeElement = async () => {
+    if (!delEl) return
+    try {
+      // Los ejercicios que sólo evaluaban este indicador también se quitan
+      const only = (exercises.data ?? []).filter((x) => x.eval_exercise_elements?.length === 1 && x.eval_exercise_elements[0].element_id === delEl.id).map((x) => x.id)
+      if (only.length) unwrap(await supabase.from('eval_exercises').delete().in('id', only))
+      unwrap(await supabase.from('eval_elements').delete().eq('id', delEl.id))
+      await refresh(); toast.ok('Indicador eliminado'); setDelEl(null)
+    } catch (e) { toast.error(e) }
+  }
+  const removeExercise = async () => {
+    if (!delEx) return
+    try { unwrap(await supabase.from('eval_exercises').delete().eq('id', delEx.id)); await refresh(); toast.ok('Ejercicio eliminado'); setDelEx(null) } catch (e) { toast.error(e) }
+  }
+
   if (templates.isLoading || exercises.isLoading) return <Spinner />
   if (!(templates.data ?? []).length) return <Card className="p-6 text-sm text-warn">Falta activar el módulo en la base de datos (pegar el SQL en Supabase).</Card>
+  if (!tpl) return <Card className="p-6 text-sm text-muted">No tienes categorías asignadas.</Card>
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-2">
-        {(templates.data ?? []).map((t) => (
-          <button key={t.id} onClick={() => setTplId(t.id)} className={cx('rounded-xl border px-3 py-1.5 text-sm', t.id === tpl?.id ? 'border-brand bg-brand font-semibold text-ink' : 'border-ink-600 text-muted hover:text-fg')}>{t.name}</button>
-        ))}
+      <div className="sticky top-[57px] z-20 -mx-4 space-y-2 border-b border-ink-600 bg-page/95 px-4 py-3 backdrop-blur lg:top-0 lg:mx-0 lg:rounded-2xl lg:border">
+        <div className="flex items-center gap-2">
+          {tpls.length > 1 && <Button size="sm" variant="secondary" icon={ChevronLeft} onClick={() => go(-1)} aria-label="Categoría anterior" />}
+          <div className="min-w-0 flex-1 text-center">
+            <p className="font-display text-xl font-bold uppercase leading-tight">{tpl.name}</p>
+            <p className="text-xs text-muted">Generación {tpl.generation} · {tpl.level_label} · categoría {tpl.match_name} · {idx + 1} de {tpls.length}</p>
+          </div>
+          {tpls.length > 1 && <Button size="sm" variant="secondary" onClick={() => go(1)} aria-label="Siguiente categoría">Siguiente <ChevronRight className="h-4 w-4" /></Button>}
+        </div>
+        {tpls.length > 1 && (
+          <div className="flex gap-1.5 overflow-x-auto pb-1">
+            {tpls.map((t) => (
+              <button key={t.id} onClick={() => { setTplId(t.id); setOpenEl({}) }} className={cx('whitespace-nowrap rounded-full border px-3 py-1 text-xs', t.id === tpl.id ? 'border-brand bg-brand font-semibold text-ink' : 'border-ink-600 text-muted hover:text-fg')}>{t.name}</button>
+            ))}
+          </div>
+        )}
       </div>
+
+      <Card className="p-4">
+        <p className="mb-3 font-semibold">Qué se evalúa en {tpl.name} <span className="text-xs font-normal text-muted">· toca ✎ para cambiar el nombre, 🗑 para quitar, + para agregar</span></p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {AREAS.map((a) => {
+            const list = els.filter((e) => e.area === a.key)
+            return (
+              <div key={a.key} className="rounded-xl border border-ink-600 p-3">
+                <p className="mb-2 text-sm font-semibold">{a.icon} {a.label} <span className="text-xs font-normal text-muted">· {list.length}</span></p>
+                <ul className="space-y-1 text-sm">
+                  {list.map((e) => (
+                    <li key={e.id} className="group flex items-center gap-1">
+                      {renaming?.id === e.id ? (
+                        <><Input autoFocus value={renaming.name} onChange={(ev) => setRenaming({ ...renaming, name: ev.target.value })} onKeyDown={(ev) => ev.key === 'Enter' && rename()} className="h-8 text-sm" />
+                          <Button size="sm" onClick={rename}>OK</Button></>
+                      ) : (
+                        <><span className="min-w-0 flex-1 truncate">· {e.name}</span>
+                          <button onClick={() => setRenaming({ id: e.id, name: e.name })} className="rounded p-1 text-muted hover:text-brand" aria-label={`Cambiar nombre de ${e.name}`}><Pencil className="h-3.5 w-3.5" /></button>
+                          <button onClick={() => setDelEl(e)} className="rounded p-1 text-muted hover:text-bad" aria-label={`Quitar ${e.name}`}><Trash2 className="h-3.5 w-3.5" /></button></>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                {adding?.area === a.key ? (
+                  <div className="mt-2 flex gap-1"><Input autoFocus value={adding.name} onChange={(ev) => setAdding({ ...adding, name: ev.target.value })} onKeyDown={(ev) => ev.key === 'Enter' && addElement()} placeholder="Nuevo indicador" className="h-8 text-sm" />
+                    <Button size="sm" onClick={addElement}>Agregar</Button></div>
+                ) : <button onClick={() => setAdding({ area: a.key, name: '' })} className="mt-2 inline-flex items-center gap-1 text-xs text-brand hover:underline"><Plus className="h-3.5 w-3.5" /> Agregar indicador</button>}
+              </div>
+            )
+          })}
+        </div>
+      </Card>
+
       <div className="grid gap-2 sm:grid-cols-[1fr_220px_auto]">
         <SearchInput value={q} onChange={setQ} placeholder="Buscar ejercicio" />
         <Select value={area} onChange={(e) => setArea(e.target.value as '' | AreaKey)} aria-label="Área"><option value="">Todas las áreas</option>{AREAS.map((a) => <option key={a.key} value={a.key}>{a.label}</option>)}</Select>
         <Button icon={Plus} onClick={() => setEditing('new')}>Crear ejercicio</Button>
       </div>
-      {tpl && <p className="text-xs text-muted">Plantilla <b>{tpl.name}</b> · Generación {tpl.generation} · {tpl.level_label} · ligada a la categoría {tpl.match_name}{!tpl.category_id && <span className="text-warn"> (no se encontró la categoría)</span>}</p>}
       {AREAS.filter((a) => !area || a.key === area).map((a) => {
         const list = els.filter((e) => e.area === a.key)
         if (!list.length) return null
         return (
           <Card key={a.key}>
-            <p className="border-b border-ink-600 px-5 py-3 font-display text-lg font-bold uppercase tracking-wide">{a.icon} {a.label} <span className="font-sans text-sm font-normal normal-case text-muted">· {list.length} indicadores</span></p>
+            <p className="border-b border-ink-600 px-5 py-3 font-display text-lg font-bold uppercase tracking-wide">{a.icon} {a.label} <span className="font-sans text-sm font-normal normal-case text-muted">· ejercicios por indicador</span></p>
             <ul className="divide-y divide-ink-700">
               {list.map((el) => {
                 const xs = exOf(el.id)
@@ -353,11 +421,12 @@ function Catalog() {
                               {x.difficulty && <Badge>Dificultad {x.difficulty}/5</Badge>}
                               <Button size="sm" variant="ghost" icon={Pencil} onClick={() => setEditing(x)}>Editar</Button>
                               <Button size="sm" variant="ghost" icon={Copy} onClick={() => setEditing({ ...x, id: '', name: `${x.name} (copia)` })}>Duplicar</Button>
+                              <Button size="sm" variant="ghost" icon={Trash2} onClick={() => setDelEx(x)} aria-label="Borrar ejercicio" />
                             </div>
                             <ExerciseInfo ex={x} />
                           </li>
                         ))}
-                        {!xs.length && <li className="text-xs text-muted">Sin ejercicios. Se puede calificar con la escala general.</li>}
+                        {!xs.length && <li className="text-xs text-muted">Sin ejercicios. Se puede calificar con la escala general, o crea uno.</li>}
                       </ul>
                     )}
                   </li>
@@ -367,7 +436,11 @@ function Catalog() {
           </Card>
         )
       })}
-      {editing && <ExerciseModal exercise={editing === 'new' ? null : editing} defaultTemplate={tpl?.id} onClose={() => setEditing(null)} />}
+      {tpls.length > 1 && <div className="flex justify-end"><Button variant="secondary" onClick={() => { go(1); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>Siguiente categoría: {tpls[(idx + 1) % tpls.length].name} <ChevronRight className="h-4 w-4" /></Button></div>}
+      {editing && <ExerciseModal exercise={editing === 'new' ? null : editing} defaultTemplate={tpl.id} onClose={() => setEditing(null)} />}
+      <ConfirmDialog open={!!delEx} onClose={() => setDelEx(null)} onConfirm={removeExercise} danger title="Borrar ejercicio" confirmLabel="Borrar" text={`Se borrará "${delEx?.name ?? ''}". Las evaluaciones ya hechas se conservan.`} />
+      <ConfirmDialog open={!!delEl} onClose={() => setDelEl(null)} onConfirm={removeElement} danger title="Quitar indicador" confirmLabel="Quitar"
+        text={`Se quitará "${delEl?.name ?? ''}" de ${tpl.name} y ya no se calificará. Sus ejercicios también se borran. Las evaluaciones ya hechas se conservan.`} />
     </div>
   )
 }
@@ -474,5 +547,60 @@ function ExerciseModal({ exercise, defaultTemplate, onClose }: { exercise: EvalE
       </div>
       <ConfirmDialog open={del} onClose={() => setDel(false)} onConfirm={remove} danger title="Eliminar ejercicio" confirmLabel="Eliminar" text="Las evaluaciones ya hechas con este ejercicio se conservan." />
     </Modal>
+  )
+}
+
+/** Escoger categoría y luego al niño (si el profe tiene una sola categoría, sale su lista directo). */
+function StudentPicker({ onPick }: { onPick: (id: string) => void }) {
+  const role = useRole()
+  const students = useStudents()
+  const categories = useCategories()
+  const evals = usePlayerEvaluations()
+  const cats = (categories.data ?? []).filter((c) => !role.isProfe || role.categoryIds.includes(c.id))
+  const [cat, setCat] = useState('')
+  const [q, setQ] = useState('')
+  const current = cats.length === 1 ? cats[0].id : cat
+  const last = new Map<string, string>()
+  for (const e of evals.data ?? []) if (!last.has(e.student_id)) last.set(e.student_id, e.evaluated_on)
+  const extraIds = new Set<string>()
+  const list = (students.data ?? []).filter((s) => (s.status === 'activo' || s.status === 'muestra')
+    && (q.trim().length >= 2 ? norm(s.full_name).includes(norm(q.trim())) && (!role.isProfe || role.categoryIds.includes(s.category_id ?? '')) : s.category_id === current || extraIds.has(s.id)))
+    .sort((a, b) => a.full_name.localeCompare(b.full_name, 'es'))
+  const count = (id: string) => (students.data ?? []).filter((s) => s.category_id === id && (s.status === 'activo' || s.status === 'muestra')).length
+  return (
+    <Card className="space-y-4 p-5">
+      {cats.length > 1 && (
+        <div>
+          <p className="mb-2 font-semibold">1. Escoge la categoría</p>
+          <div className="flex flex-wrap gap-2">
+            {cats.map((c) => (
+              <button key={c.id} onClick={() => { setCat(c.id); setQ('') }}
+                className={cx('rounded-xl border px-4 py-2.5 text-sm font-semibold', current === c.id ? 'border-brand bg-brand text-ink' : 'border-ink-600 text-muted hover:text-fg')}>
+                {c.name} <span className="font-normal opacity-70">· {count(c.id)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <div>
+        <p className="mb-2 font-semibold">{cats.length > 1 ? '2. ' : ''}Escoge al alumno</p>
+        <SearchInput value={q} onChange={setQ} placeholder="O busca por nombre" />
+      </div>
+      {!current && q.trim().length < 2 ? <p className="text-sm text-muted">Toca una categoría para ver a sus alumnos.</p> : (
+        <ul className="grid gap-2 sm:grid-cols-2">
+          {list.map((s) => (
+            <li key={s.id}>
+              <button onClick={() => onPick(s.id)} className="flex w-full items-center gap-3 rounded-xl border border-ink-600 px-3 py-2.5 text-left hover:border-brand">
+                <Avatar name={s.full_name} path={s.photo_path} size={36} />
+                <span className="min-w-0 flex-1"><span className="block truncate font-medium">{s.full_name}</span>
+                  <span className="text-xs text-muted">{last.has(s.id) ? `Última evaluación: ${date(last.get(s.id)!, 'd MMM yy')}` : 'Sin evaluación'}{s.status === 'muestra' ? ' · clase muestra' : ''}</span></span>
+                {last.has(s.id) ? <Badge tone="ok">Evaluado</Badge> : <Badge>Evaluar</Badge>}
+              </button>
+            </li>
+          ))}
+          {!list.length && <li className="text-sm text-muted">Nadie con ese nombre.</li>}
+        </ul>
+      )}
+    </Card>
   )
 }

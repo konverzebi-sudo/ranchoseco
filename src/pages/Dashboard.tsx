@@ -8,6 +8,8 @@ import { monthNameOf, useCashBoxCards, useFinanceCards } from '@/components/Fina
 import { PayInstallmentModal } from '@/components/Installments'
 import { CloseTrialModal } from '@/components/TrialModals'
 import ActivityFeed from '@/components/ActivityFeed'
+import ProfeDashboard from '@/components/ProfeDashboard'
+import { useRole } from '@/lib/role'
 import CoachNotes from '@/components/CoachNotes'
 import IncomeBreakdownModal from '@/components/IncomeBreakdown'
 import CardDetailModal, { type CardKind } from '@/components/CardDetails'
@@ -31,6 +33,12 @@ function byFamily<T extends { acc: { balance: number | string }; s: StudentRow }
 }
 
 export default function Dashboard() {
+  const role = useRole()
+  if (!role.ready) return <Spinner />
+  return role.isProfe ? <ProfeDashboard name={role.name} categoryIds={role.categoryIds} /> : <AdminDashboard />
+}
+
+function AdminDashboard() {
   const [incomeOpen, setIncomeOpen] = useState(false)
   const [detail, setDetail] = useState<CardKind | null>(null)
   const nav = useNavigate()

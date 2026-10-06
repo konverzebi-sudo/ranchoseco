@@ -12,6 +12,7 @@ import type { Expense, ExpenseInstallment } from '@/lib/types'
 import { monthName, time, toISODate, today, date } from '@/lib/format'
 import { TrainingModal } from './Trainings'
 import { MatchModal } from './Matches'
+import { useRole } from '@/lib/role'
 
 const DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 type Show = 'todo' | 'tr' | 'bd' | 'ma' | 'pend' | 'paid'
@@ -28,7 +29,9 @@ export default function CalendarPage() {
   const categories = useCategories()
   const nav = useNavigate()
   const [cursor, setCursor] = useState(startOfMonth(new Date()))
-  const [cat, setCat] = useState('')
+  const role = useRole()
+  const [catPicked, setCat] = useState('')
+  const cat = role.isProfe && !role.categoryIds.includes(catPicked) ? role.categoryIds[0] ?? '' : catPicked
   const [dayOpen, setDayOpen] = useState<string | null>(null)
   // Qué se ve en el calendario (toca un tipo para ver sólo eso)
   const [show, setShow] = useState<Show>('todo')
@@ -72,8 +75,8 @@ export default function CalendarPage() {
     <>
       <PageHeader title="Calendario" subtitle="Entrenamientos y partidos por categoría."
         actions={<Select value={cat} onChange={(e) => setCat(e.target.value)} className="min-w-[200px]" aria-label="Categoría">
-          <option value="">Todas las categorías</option>
-          {categories.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {!role.isProfe && <option value="">Todas las categorías</option>}
+          {categories.data?.filter((c) => !role.isProfe || role.categoryIds.includes(c.id)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </Select>} />
       <Card className="p-3 sm:p-5">
         <div className="mb-4 flex items-center justify-between">

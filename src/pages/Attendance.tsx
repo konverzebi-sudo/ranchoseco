@@ -7,6 +7,7 @@ import { Avatar, Badge, Button, Card, Empty, ErrorState, Field, Input, PageHeade
 import { useToast } from '@/components/toast'
 import { useAttendanceChecks, useAttendanceDetail, useAttendanceFor, useCategories, useExtraClasses, useStudents, useTeam, useTrainings } from '@/lib/api'
 import { getActor, getActorId } from '@/lib/actor'
+import { useRole } from '@/lib/role'
 import { supabase, unwrap } from '@/lib/supabase'
 import { ATTENDANCE_LABEL, date, time, toISODate, today } from '@/lib/format'
 import { attendanceRate, consecutiveAbsences } from '@/lib/stats'
@@ -47,11 +48,15 @@ function useDefaultWho(): [Who, (w: Who) => void] {
 }
 
 function TakeAttendance() {
-  const categories = useCategories()
+  const role = useRole()
+  const allCategories = useCategories()
+  const categories = { ...allCategories, data: role.isProfe ? allCategories.data?.filter((c) => role.categoryIds.includes(c.id)) : allCategories.data }
   const students = useStudents()
   const qc = useQueryClient()
   const toast = useToast()
-  const [who, setWho] = useDefaultWho()
+  const [whoPicked, setWho] = useDefaultWho()
+  // Al profe no se le muestra la lista de administración
+  const who = role.isProfe ? 'profe' : whoPicked
   const isAdmin = who === 'admin'
   const [cat, setCat] = useState(readLS)
   const [day, setDay] = useState(today())
@@ -68,7 +73,7 @@ function TakeAttendance() {
   const [savingNote, setSavingNote] = useState(false)
 
   useEffect(() => { try { if (cat) localStorage.setItem(LS_KEY, cat) } catch { /* sin almacenamiento */ } }, [cat])
-  useEffect(() => { if (!cat && categories.data?.length) setCat(categories.data[0].id) }, [cat, categories.data])
+  useEffect(() => { if ((!cat || !categories.data?.some((c) => c.id === cat)) && categories.data?.length) setCat(categories.data[0].id) }, [cat, categories.data])
   useEffect(() => { setLocal({}); setTrainingId(''); setNoteOpen(null) }, [cat, day, who])
   useEffect(() => { setGroupNote(training?.coach_notes ?? '') }, [training?.id, training?.coach_notes])
 
@@ -196,10 +201,10 @@ function TakeAttendance() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
+      {!role.isProfe && <div className="flex flex-wrap items-center gap-3">
         <Segmented value={who} onChange={setWho} options={[{ id: 'profe', label: 'Lista del profe' }, { id: 'admin', label: 'Lista de administración' }]} />
         <p className="text-xs text-muted">{isAdmin ? 'Administración lleva su propia lista para verificar la del profe.' : 'La lista oficial del entrenamiento.'}</p>
-      </div>
+      </div>}
 
       <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
         <div className="flex min-w-max gap-2">

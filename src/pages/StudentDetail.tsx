@@ -11,6 +11,7 @@ import StudentForm from '@/components/StudentForm'
 import { CollectButton } from '@/components/WhatsAppButtons'
 import { PaymentModal, FeeModal, EditPaymentModal } from '@/components/PaymentForms'
 import { DeliveryCheck, DeliveryHistory } from '@/components/Deliveries'
+import { useRole } from '@/lib/role'
 import { EvalResult } from '@/components/PlayerEvalProfile'
 import { useEvalTemplates, usePlayerEvalItems, usePlayerEvaluations } from '@/lib/evalApi'
 import { EvaluationModal, EvolutionChart, GroupSummary, SkillRadar } from '@/components/Evaluation'
@@ -46,6 +47,7 @@ const TABS: { id: Tab; label: string; icon: typeof User }[] = [
 ]
 
 export default function StudentDetail() {
+  const role = useRole()
   const { id } = useParams()
   const [params, setParams] = useSearchParams()
   const tab = (params.get('tab') as Tab) || 'general'
@@ -73,21 +75,21 @@ export default function StudentDetail() {
               <Badge tone="brand">{cat?.name ?? 'Sin categoría'}</Badge>
               {ag != null && <span>{ag} años</span>}
               <Badge tone={s.status === 'activo' ? 'ok' : s.status === 'baja' ? 'bad' : 'warn'}>{STATUS_LABEL[s.status]}</Badge>
-              {acc && <Badge tone={feeTone(acc.status)}>{ACCOUNT_LABEL[acc.status]}{Number(acc.balance) > 0 ? ` · ${money(acc.balance)}` : ''}</Badge>}
+              {acc && !role.isProfe && <Badge tone={feeTone(acc.status)}>{ACCOUNT_LABEL[acc.status]}{Number(acc.balance) > 0 ? ` · ${money(acc.balance)}` : ''}</Badge>}
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            {Number(acc?.balance ?? 0) > 0 && <CollectButton student={s} size="md" label="Cobrar por WhatsApp" />}
-            <Button variant="secondary" icon={Pencil} onClick={() => setEditing(true)}>Editar</Button>
+            {!role.isProfe && Number(acc?.balance ?? 0) > 0 && <CollectButton student={s} size="md" label="Cobrar por WhatsApp" />}
+            {!role.isProfe && <Button variant="secondary" icon={Pencil} onClick={() => setEditing(true)}>Editar</Button>}
           </div>
         </div>
       </Card>
 
-      <Tabs tabs={TABS} value={tab} onChange={(t) => setParams({ tab: t }, { replace: true })} />
+      <Tabs tabs={role.isProfe ? TABS.filter((x) => x.id !== 'pagos') : TABS} value={tab} onChange={(t) => setParams({ tab: t }, { replace: true })} />
       <div className="pt-5">
         {tab === 'general' && <GeneralTab s={s} />}
         {tab === 'asistencias' && <AttendanceTab s={s} />}
-        {tab === 'pagos' && <PaymentsTab s={s} />}
+        {tab === 'pagos' && !role.isProfe && <PaymentsTab s={s} />}
         {tab === 'evaluacion' && <AreaEvalTab s={s} />}
       {tab === 'seguimiento' && <TrackingTab s={s} />}
         {tab === 'actividad' && <ActivityTab s={s} />}
