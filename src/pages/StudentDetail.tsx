@@ -6,12 +6,13 @@ import {
   MessageCircle, RefreshCw, UserX, Receipt, Phone, PauseCircle, PlayCircle,
 } from 'lucide-react'
 import {
-  Avatar, Badge, Button, Card, ConfirmDialog, Empty, ErrorState, Field, Input, Modal, Spinner, Tabs, Textarea, feeTone,
-} from '@/components/ui'
+  Avatar, Badge, Button, Card, ConfirmDialog, Empty, ErrorState, Field, Input, Modal, Spinner, Tabs, Textarea, feeTone, cx } from '@/components/ui'
 import StudentForm from '@/components/StudentForm'
 import { CollectButton } from '@/components/WhatsAppButtons'
 import { PaymentModal, FeeModal, EditPaymentModal } from '@/components/PaymentForms'
 import { DeliveryCheck, DeliveryHistory } from '@/components/Deliveries'
+import { EvalResult } from '@/components/PlayerEvalProfile'
+import { useEvalTemplates, usePlayerEvalItems, usePlayerEvaluations } from '@/lib/evalApi'
 import { EvaluationModal, EvolutionChart, GroupSummary, SkillRadar } from '@/components/Evaluation'
 import ReportPanel from '@/components/ReportPanel'
 import { ScholarshipReviewModal } from '@/components/ScholarshipReview'
@@ -33,11 +34,12 @@ import { waLink } from '@/lib/whatsapp'
 import { memberPrice, ordinal, promoStatus } from '@/lib/siblings'
 import { SKILL_GROUPS, type AttendanceStatus, type Evaluation, type FeeBalance, type Payment, type SkillKey } from '@/lib/types'
 
-type Tab = 'general' | 'asistencias' | 'pagos' | 'seguimiento' | 'actividad' | 'reportes'
+type Tab = 'general' | 'asistencias' | 'pagos' | 'evaluacion' | 'seguimiento' | 'actividad' | 'reportes'
 const TABS: { id: Tab; label: string; icon: typeof User }[] = [
   { id: 'general', label: 'Información general', icon: User },
   { id: 'asistencias', label: 'Asistencias', icon: ClipboardCheck },
   { id: 'pagos', label: 'Pagos', icon: Wallet },
+  { id: 'evaluacion', label: 'Evaluación por áreas', icon: TrendingUp },
   { id: 'seguimiento', label: 'Seguimiento deportivo', icon: TrendingUp },
   { id: 'actividad', label: 'Entrenamientos y partidos', icon: Trophy },
   { id: 'reportes', label: 'Reportes PDF', icon: FileText },
@@ -86,7 +88,8 @@ export default function StudentDetail() {
         {tab === 'general' && <GeneralTab s={s} />}
         {tab === 'asistencias' && <AttendanceTab s={s} />}
         {tab === 'pagos' && <PaymentsTab s={s} />}
-        {tab === 'seguimiento' && <TrackingTab s={s} />}
+        {tab === 'evaluacion' && <AreaEvalTab s={s} />}
+      {tab === 'seguimiento' && <TrackingTab s={s} />}
         {tab === 'actividad' && <ActivityTab s={s} />}
         {tab === 'reportes' && <ReportPanel student={s} />}
       </div>
@@ -551,6 +554,32 @@ function PaymentsTab({ s }: { s: StudentRow }) {
       {coupon && <CouponModal fee={coupon} studentName={s.full_name} onClose={() => setCoupon(null)} />}
       {editPay && <EditPaymentModal payment={editPay} student={s} onClose={() => setEditPay(null)} />}
       {waive && <WaiveLateFeesModal fees={fees.data ?? []} names={new Map([[s.id, s.full_name]])} preselect={[waive.id]} onClose={() => setWaive(null)} />}
+    </div>
+  )
+}
+
+/** Evaluación por áreas (plantilla por generación y nivel): perfil, historial y evolución. */
+function AreaEvalTab({ s }: { s: StudentRow }) {
+  const history = usePlayerEvaluations(s.id)
+  const templates = useEvalTemplates()
+  const [sel, setSel] = useState<string>('')
+  const list = history.data ?? []
+  const ev = list.find((e) => e.id === sel) ?? list[0]
+  const items = usePlayerEvalItems(ev ? [ev.id] : [])
+  if (history.isLoading) return <Spinner />
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {list.length > 1 ? (
+          <div className="flex flex-wrap gap-1.5">{[...list].reverse().map((e, i) => (
+            <button key={e.id} onClick={() => setSel(e.id)} className={cx('rounded-full border px-3 py-1 text-xs', e.id === ev?.id ? 'border-brand bg-brand font-semibold text-ink' : 'border-ink-600 text-muted')}>
+              Evaluación {i + 1} · {date(e.evaluated_on, 'd MMM yy')}</button>
+          ))}</div>
+        ) : <span />}
+        <Link to={`/evaluaciones?alumno=${s.id}`}><Button icon={Plus}>Realizar evaluación</Button></Link>
+      </div>
+      {!ev ? <Card><Empty icon={TrendingUp} title="Aún no tiene evaluación por áreas" text="Se evalúa con la plantilla de su generación y nivel: técnica, partido, coordinación y físico." /></Card>
+        : !items.data ? <Spinner /> : <EvalResult ev={ev} items={items.data} history={list} template={templates.data?.find((t) => t.id === ev.template_id)} />}
     </div>
   )
 }
