@@ -2,9 +2,8 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { startOfMonth, subMonths } from 'date-fns'
-import { CalendarDays, Wallet, TrendingUp, ClipboardCheck, Trophy, FileDown, Dumbbell, MapPin, ShieldX, Target } from 'lucide-react'
+import { CalendarDays, Wallet, TrendingUp, ClipboardCheck, Trophy, FileDown, Dumbbell, MapPin, ShieldX, Target, Star, Sparkles, MessageSquare } from 'lucide-react'
 import { Badge, Button, Card, Spinner, Segmented, feeTone } from '@/components/ui'
-import { EvolutionChart, GroupSummary } from '@/components/Evaluation'
 import { useToast } from '@/components/toast'
 import { LOGO } from '@/components/Layout'
 import { supabase } from '@/lib/supabase'
@@ -12,18 +11,18 @@ import { ATTENDANCE_LABEL, FEE_LABEL, METHOD_LABEL, age, date, money, monthName,
 import { attendanceRate } from '@/lib/stats'
 import { downloadBlob } from '@/lib/whatsapp'
 import { periodLabel, renderReportPdf, reportFilename, summarizeAttendance, type ReportData } from '@/pdf/reportData'
-import type { AttendanceStatus, Evaluation, FeeStatus, PaymentMethod } from '@/lib/types'
+import { SKILL_GROUPS, type AttendanceStatus, type Evaluation, type FeeStatus, type PaymentMethod, type SkillKey } from '@/lib/types'
 
 interface PortalData {
   student: { id: string; full_name: string; birth_date: string | null; category: string | null; schedule: string | null; coach: string | null; enrolled_at: string; status: string }
   academy: { name: string; payment_instructions: string; due_day: number; late_fee_amount: number }
   upcoming_trainings: { date: string; start_time: string | null; end_time: string | null; objectives: string | null }[]
   upcoming_matches: { date: string; time: string | null; opponent: string; venue: string | null; is_home: boolean }[]
-  attendance: { date: string; status: AttendanceStatus }[]
+  attendance: { date: string; status: AttendanceStatus; note?: string | null }[]
   fees: { id: string; concept: string; period: string; amount: number; paid: number; balance: number; due_date: string; status: FeeStatus; late_fee: number; late_months: number; total_due: number; discount: number; discount_reason: string | null }[]
   payments: { amount: number; paid_at: string; method: PaymentMethod; concept: string; period: string }[]
   evaluations: (Evaluation & { coach: string | null })[]
-  matches: { date: string; opponent: string; goals_for: number | null; goals_against: number | null; status: string; starter: boolean; position: string | null; goals: number; assists: number; minutes: number }[]
+  matches: { date: string; opponent: string; goals_for: number | null; goals_against: number | null; status: string; starter: boolean; position: string | null; goals: number; assists: number; minutes: number; attended?: boolean; note?: string | null }[]
 }
 
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
@@ -75,8 +74,8 @@ export default function Portal() {
   const since = toISODate(subMonths(new Date(), 3))
   const recentAtt = d.attendance.filter((a) => a.date >= since)
   const rate = attendanceRate(recentAtt)
-  const latest = d.evaluations.at(-1)
-  const goals = d.matches.reduce((t, m) => t + m.goals, 0)
+  const played = d.matches.filter((m) => m.attended !== false)
+  const goals = played.reduce((t, m) => t + m.goals, 0)
   const agenda = [
     ...d.upcoming_trainings.map((t) => ({ kind: 'tr' as const, date: t.date, time: t.start_time, title: t.objectives || 'Entrenamiento', sub: t.end_time ? `${time(t.start_time)}–${time(t.end_time)}` : time(t.start_time) })),
     ...d.upcoming_matches.map((m) => ({ kind: 'ma' as const, date: m.date, time: m.time, title: `Partido vs ${m.opponent}`, sub: [time(m.time), m.venue, m.is_home ? 'Local' : 'Visitante'].filter(Boolean).join(' · ') })),
@@ -128,7 +127,7 @@ export default function Portal() {
       <main className="mx-auto max-w-3xl space-y-4 px-4 pt-5">
         <div className="grid grid-cols-3 gap-2">
           <Card className="p-3 text-center"><p className="text-[11px] uppercase tracking-wider text-muted">Asistencia</p><p className="font-display text-3xl font-bold text-brand">{rate != null ? `${rate}%` : '—'}</p></Card>
-          <Card className="p-3 text-center"><p className="text-[11px] uppercase tracking-wider text-muted">Partidos</p><p className="font-display text-3xl font-bold">{d.matches.length}</p></Card>
+          <Card className="p-3 text-center"><p className="text-[11px] uppercase tracking-wider text-muted">Partidos</p><p className="font-display text-3xl font-bold">{played.length}</p></Card>
           <Card className="p-3 text-center"><p className="text-[11px] uppercase tracking-wider text-muted">Goles</p><p className="font-display text-3xl font-bold">{goals}</p></Card>
         </div>
 
@@ -187,21 +186,7 @@ export default function Portal() {
           )}
         </Section>
 
-        <Section icon={TrendingUp} title="Avance deportivo">
-          {!latest ? <p className="text-sm text-muted">Aún no hay evaluaciones. El profesor registrará el avance próximamente.</p> : (
-            <div className="space-y-4">
-              <p className="text-sm text-muted">Última evaluación: {date(latest.date)}{latest.coach ? ` · ${latest.coach}` : ''}</p>
-              <GroupSummary evaluation={latest} />
-              {d.evaluations.length > 1 && <EvolutionChart evaluations={d.evaluations} height={220} />}
-              <div className="grid gap-3 text-sm sm:grid-cols-2">
-                {latest.strengths && <div className="rounded-xl bg-ink-900 p-3"><p className="mb-1 font-semibold text-ok">Fortalezas</p>{latest.strengths}</div>}
-                {latest.improvements && <div className="rounded-xl bg-ink-900 p-3"><p className="mb-1 font-semibold text-warn">Áreas de mejora</p>{latest.improvements}</div>}
-                {latest.goals && <div className="rounded-xl bg-ink-900 p-3 sm:col-span-2"><p className="mb-1 flex items-center gap-1.5 font-semibold text-brand"><Target className="h-4 w-4" /> Objetivos</p>{latest.goals}</div>}
-                {latest.comments && <div className="rounded-xl bg-ink-900 p-3 sm:col-span-2"><p className="mb-1 font-semibold">Comentarios del profesor</p>{latest.comments}</div>}
-              </div>
-            </div>
-          )}
-        </Section>
+        <MonthReport d={d} />
 
         <Section icon={ClipboardCheck} title="Asistencias">
           {d.attendance.length === 0 ? <p className="text-sm text-muted">Sin registros de asistencia todavía.</p> : (
@@ -225,8 +210,8 @@ export default function Portal() {
               {d.matches.slice(0, 10).map((m, i) => (
                 <li key={i} className="flex items-center justify-between gap-2 py-2.5">
                   <div><p className="font-medium">vs {m.opponent} {m.goals_for != null && <span className="text-muted">({m.goals_for}-{m.goals_against})</span>}</p>
-                    <p className="text-xs text-muted">{date(m.date)} · {m.starter ? 'Titular' : 'Suplente'}{m.position ? ` · ${m.position}` : ''} · {m.minutes} min</p></div>
-                  {m.goals > 0 && <Badge tone="brand">{m.goals} gol{m.goals > 1 ? 'es' : ''}</Badge>}
+                    <p className="text-xs text-muted">{date(m.date)} · {m.attended === false ? 'Convocado, no asistió' : `${m.starter ? 'Titular' : 'Suplente'}${m.position ? ` · ${m.position}` : ''}${m.minutes ? ` · ${m.minutes} min` : ''}`}</p></div>
+                  {m.attended === false ? <Badge tone="bad">No asistió</Badge> : m.goals > 0 && <Badge tone="brand">{m.goals} gol{m.goals > 1 ? 'es' : ''}</Badge>}
                 </li>
               ))}
             </ul>
@@ -244,5 +229,66 @@ export default function Portal() {
         <p className="flex items-center justify-center gap-1.5 pt-2 text-center text-xs text-ink-500"><MapPin className="h-3 w-3" /> {d.academy.name} · Fútbol rápido · Enlace personal, no lo compartas.</p>
       </main>
     </div>
+  )
+}
+
+const SKILL_LABEL = Object.fromEntries(SKILL_GROUPS.flatMap((g) => g.skills as readonly (readonly [string, string])[])) as Record<SkillKey, string>
+const SKILLS = Object.keys(SKILL_LABEL) as SkillKey[]
+const listJoin = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} y ${xs.at(-1)}`)
+
+/**
+ * Reporte del mes para los papás: sin calificaciones. Dice en qué sobresale, en qué mejoró
+ * respecto a la evaluación anterior, las notas de los profes, asistencias y partidos
+ * (si no fue convocado no cuenta como falta).
+ */
+function MonthReport({ d }: { d: PortalData }) {
+  const months = Array.from({ length: 6 }, (_, i) => toISODate(startOfMonth(subMonths(new Date(), i))))
+  const [month, setMonth] = useState(months[0])
+  const end = toISODate(startOfMonth(subMonths(new Date(month + 'T12:00:00'), -1)))
+  const inMonth = (x: string) => x >= month && x < end
+  const att = d.attendance.filter((a) => inMonth(a.date))
+  const came = att.filter((a) => a.status === 'presente' || a.status === 'retardo').length
+  const justified = att.filter((a) => a.status === 'justificada').length
+  const called = d.matches.filter((m) => inMonth(m.date))
+  const playedM = called.filter((m) => m.attended !== false)
+  const goalsM = playedM.reduce((t, m) => t + m.goals, 0)
+  // Evaluación del mes (o la más reciente antes de que termine) y la anterior a esa
+  const evals = d.evaluations.filter((e) => e.date < end)
+  const cur = evals.at(-1)
+  const prev = cur ? evals.filter((e) => e.date < cur.date).at(-1) : undefined
+  const evalInMonth = !!cur && inMonth(cur.date)
+  const best = cur ? [...SKILLS].sort((a, b) => Number(cur[b]) - Number(cur[a])).filter((k) => Number(cur[k]) >= 4).slice(0, 4) : []
+  const improved = cur && prev ? SKILLS.filter((k) => Number(cur[k]) > Number(prev[k])) : []
+  const notes = [
+    ...(evalInMonth && cur ? ([cur.strengths && `Fortalezas: ${cur.strengths}`, cur.comments, cur.goals && `Objetivos: ${cur.goals}`].filter(Boolean) as string[]) : []),
+    ...att.filter((a) => a.note).map((a) => `${date(a.date, 'd MMM')}: ${a.note}`),
+    ...called.filter((m) => m.note).map((m) => `Partido vs ${m.opponent}: ${m.note}`),
+  ]
+  return (
+    <Section icon={TrendingUp} title="Reporte del mes">
+      <div className="mb-4 flex flex-wrap gap-2">
+        {months.map((m) => (
+          <button key={m} onClick={() => setMonth(m)}
+            className={`rounded-full border px-3 py-1 text-sm ${m === month ? 'border-brand bg-brand font-semibold text-ink' : 'border-ink-600 text-muted'}`}>{cap(monthName(m))}</button>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="rounded-xl bg-ink-900 p-3"><p className="text-[11px] uppercase tracking-wider text-muted">Entrenamientos</p><p className="font-display text-2xl font-bold">{came}<span className="text-base text-muted"> de {att.length}</span></p>{justified > 0 && <p className="text-xs text-muted">{justified} justificada{justified > 1 ? 's' : ''}</p>}</div>
+        <div className="rounded-xl bg-ink-900 p-3"><p className="text-[11px] uppercase tracking-wider text-muted">Convocado</p><p className="font-display text-2xl font-bold">{called.length}<span className="text-base text-muted"> partido{called.length === 1 ? '' : 's'}</span></p></div>
+        <div className="rounded-xl bg-ink-900 p-3"><p className="text-[11px] uppercase tracking-wider text-muted">Asistió</p><p className="font-display text-2xl font-bold">{playedM.length}<span className="text-base text-muted"> de {called.length}</span></p></div>
+        <div className="rounded-xl bg-ink-900 p-3"><p className="text-[11px] uppercase tracking-wider text-muted">Goles</p><p className="font-display text-2xl font-bold">{goalsM}</p></div>
+      </div>
+      <p className="mt-2 text-xs text-muted">Si no fue convocado a un partido, no cuenta como falta.</p>
+      <div className="mt-4 space-y-3 text-sm">
+        {best.length > 0 && <div className="rounded-xl bg-ink-900 p-3"><p className="mb-1 flex items-center gap-1.5 font-semibold text-brand"><Star className="h-4 w-4" /> En lo que más sobresale</p>{listJoin(best.map((k) => SKILL_LABEL[k]))}.</div>}
+        {improved.length > 0 && <div className="rounded-xl bg-ink-900 p-3"><p className="mb-1 flex items-center gap-1.5 font-semibold text-ok"><Sparkles className="h-4 w-4" /> Mejoró en</p>{listJoin(improved.map((k) => SKILL_LABEL[k]))}{prev ? `, comparado con su evaluación de ${monthName(prev.date)}` : ''}.</div>}
+        {notes.length > 0 && (
+          <div className="rounded-xl bg-ink-900 p-3"><p className="mb-1 flex items-center gap-1.5 font-semibold"><MessageSquare className="h-4 w-4 text-brand" /> Notas de los profes</p>
+            <ul className="space-y-1 text-muted">{notes.map((n, i) => <li key={i}>{n}</li>)}</ul></div>
+        )}
+        {!best.length && !improved.length && !notes.length && <p className="text-muted">Los profes todavía no registran evaluación ni notas de este mes.</p>}
+        {cur && !evalInMonth && best.length > 0 && <p className="flex items-center gap-1.5 text-xs text-muted"><Target className="h-3.5 w-3.5" /> Basado en su evaluación de {monthName(cur.date)}.</p>}
+      </div>
+    </Section>
   )
 }

@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { addMonths, eachDayOfInterval, endOfMonth, endOfWeek, isSameMonth, startOfMonth, startOfWeek, format } from 'date-fns'
 import { ChevronLeft, ChevronRight, Dumbbell, Trophy, Plus, Receipt } from 'lucide-react'
 import { Button, Card, IconButton, Modal, PageHeader, Select, Spinner, cx } from '@/components/ui'
-import { useCategories, useExpenses, useMatches, useTrainings } from '@/lib/api'
+import { useCategories, useExpenses, useMatches, useStudents, useTrainings } from '@/lib/api'
+import { BirthdayButtons, birthdaysOn, turns } from '@/components/Birthdays'
 import { PayInstallmentModal } from '@/components/Installments'
 import { installmentLabel, installmentsOf } from '@/lib/finance'
 import { money } from '@/lib/format'
@@ -27,6 +28,8 @@ export default function CalendarPage() {
   const trainings = useTrainings(range)
   const matches = useMatches(range)
   const expenses = useExpenses()
+  const students = useStudents()
+  const bdays = (k: string) => birthdaysOn((students.data ?? []).filter((s) => !cat || s.category_id === cat), k)
   const [paying, setPaying] = useState<{ expense: Expense; inst: ExpenseInstallment } | null>(null)
   // Pagos de gastos en partes y préstamos (pendientes en su fecha; pagados el día que se pagaron)
   const bills = useMemo(() => {
@@ -85,6 +88,9 @@ export default function CalendarPage() {
                       </p>
                     ))}
                     {list.length > 3 && <p className="text-[10px] text-muted">+{list.length - 3}</p>}
+                    {bdays(k).map((s) => (
+                      <p key={'b' + s.id} className="truncate rounded bg-[#F9A8D4]/25 px-1 py-0.5 text-[10px] font-medium text-[#BE185D] sm:text-xs">🎂 {s.full_name.split(' ')[0]}</p>
+                    ))}
                     {dayBills.map((b) => (
                       <p key={b.inst.id} className={cx('truncate rounded px-1 py-0.5 text-[10px] font-medium sm:text-xs', b.inst.paid_on ? 'bg-ok/20 text-ok' : 'bg-bad/20 text-bad')}>
                         $ {b.expense.kind === 'prestamo' ? b.expense.lender ?? b.expense.name : b.expense.name}
@@ -98,6 +104,7 @@ export default function CalendarPage() {
         )}
         <div className="mt-3 flex gap-4 text-xs text-muted">
           <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-ink-700" /> Entrenamiento</span>
+          <span className="flex items-center gap-1.5">🎂 Cumpleaños</span>
           <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-brand" /> Partido</span>
           {!cat && <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-bad/40" /> Pago pendiente</span>}
           {!cat && <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-ok/40" /> Pago hecho</span>}
@@ -122,7 +129,18 @@ export default function CalendarPage() {
             ))}
           </ul>
         )}
-        {(events.get(dayOpen ?? '') ?? []).length === 0 ? <p className="text-sm text-muted">Sin actividades este día.</p> : (
+        {dayOpen && bdays(dayOpen).length > 0 && (
+          <ul className="mb-3 space-y-2">
+            {bdays(dayOpen).map((s) => (
+              <li key={s.id} className="flex flex-wrap items-center gap-3 rounded-xl bg-ink-900 p-3">
+                <span className="text-xl">🎂</span>
+                <div className="min-w-0 flex-1"><p className="font-medium">{s.full_name}</p><p className="text-xs text-muted">Cumple {turns(s, dayOpen)} años</p></div>
+                <BirthdayButtons student={s} iso={dayOpen} />
+              </li>
+            ))}
+          </ul>
+        )}
+        {(events.get(dayOpen ?? '') ?? []).length === 0 ? <p className="text-sm text-muted">{dayOpen && bdays(dayOpen).length ? 'Sin entrenamientos ni partidos este día.' : 'Sin actividades este día.'}</p> : (
           <ul className="space-y-2">
             {(events.get(dayOpen ?? '') ?? []).map((e) => (
               <li key={e.kind + e.id}>

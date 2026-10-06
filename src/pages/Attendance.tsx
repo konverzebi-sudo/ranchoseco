@@ -2,10 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { startOfMonth } from 'date-fns'
-import { Check, X, Clock, FileCheck2, CheckCheck, ClipboardCheck, Download, Plus, Loader2 } from 'lucide-react'
-import { Avatar, Badge, Button, Card, Empty, ErrorState, Field, Input, PageHeader, Segmented, Select, Spinner, cx } from '@/components/ui'
+import { Check, X, Clock, FileCheck2, CheckCheck, ClipboardCheck, Download, Plus, Loader2, ShieldCheck, AlertTriangle, MessageSquare, Save } from 'lucide-react'
+import { Avatar, Badge, Button, Card, Empty, ErrorState, Field, Input, PageHeader, Segmented, Select, Spinner, Textarea, cx } from '@/components/ui'
 import { useToast } from '@/components/toast'
-import { useAttendanceDetail, useAttendanceFor, useCategories, useExtraClasses, useStudents, useTrainings } from '@/lib/api'
+import { useAttendanceChecks, useAttendanceDetail, useAttendanceFor, useCategories, useExtraClasses, useStudents, useTeam, useTrainings } from '@/lib/api'
+import { getActor, getActorId } from '@/lib/actor'
 import { supabase, unwrap } from '@/lib/supabase'
 import { ATTENDANCE_LABEL, date, time, toISODate, today } from '@/lib/format'
 import { attendanceRate, consecutiveAbsences } from '@/lib/stats'
@@ -32,11 +33,26 @@ export default function AttendancePage() {
   )
 }
 
+type Who = 'profe' | 'admin'
+const WHO_KEY = 'rs-lista-modo'
+
+/** Quién pasa lista en este aparato: si en el equipo es de administración, empieza en "Administración". */
+function useDefaultWho(): [Who, (w: Who) => void] {
+  const team = useTeam()
+  const [who, setWho] = useState<Who | ''>(() => { try { return (localStorage.getItem(WHO_KEY) as Who) || '' } catch { return '' } })
+  const me = team.data?.find((m) => m.id === getActorId())
+  const auto: Who = me && /admin|direct/i.test(me.role ?? '') ? 'admin' : 'profe'
+  const set = (w: Who) => { setWho(w); try { localStorage.setItem(WHO_KEY, w) } catch { /* sin almacenamiento */ } }
+  return [who || auto, set]
+}
+
 function TakeAttendance() {
   const categories = useCategories()
   const students = useStudents()
   const qc = useQueryClient()
   const toast = useToast()
+  const [who, setWho] = useDefaultWho()
+  const isAdmin = who === 'admin'
   const [cat, setCat] = useState(readLS)
   const [day, setDay] = useState(today())
   const [trainingId, setTrainingId] = useState('')
@@ -44,12 +60,17 @@ function TakeAttendance() {
   const dayTrainings = cat ? trainings.data ?? [] : []
   const training: Training | undefined = dayTrainings.find((t) => t.id === trainingId) ?? dayTrainings[0]
   const attendance = useAttendanceFor(training?.id)
+  const checks = useAttendanceChecks(training?.id)
   const [local, setLocal] = useState<Record<string, AttendanceStatus | null>>({})
   const [pending, setPending] = useState<Set<string>>(new Set())
+  const [noteOpen, setNoteOpen] = useState<string | null>(null)
+  const [groupNote, setGroupNote] = useState('')
+  const [savingNote, setSavingNote] = useState(false)
 
   useEffect(() => { try { if (cat) localStorage.setItem(LS_KEY, cat) } catch { /* sin almacenamiento */ } }, [cat])
   useEffect(() => { if (!cat && categories.data?.length) setCat(categories.data[0].id) }, [cat, categories.data])
-  useEffect(() => { setLocal({}); setTrainingId('') }, [cat, day])
+  useEffect(() => { setLocal({}); setTrainingId(''); setNoteOpen(null) }, [cat, day, who])
+  useEffect(() => { setGroupNote(training?.coach_notes ?? '') }, [training?.id, training?.coach_notes])
 
   const extras = useExtraClasses()
   const isExtra = !!categories.data?.find((c) => c.id === cat)?.is_extra
@@ -57,9 +78,13 @@ function TakeAttendance() {
     const members = new Set((extras.data ?? []).filter((x) => x.category_id === cat).map((x) => x.student_id))
     return (students.data ?? []).filter((s) => (s.status === 'activo' || s.status === 'muestra') && (isExtra ? members.has(s.id) : s.category_id === cat))
   }, [students.data, cat, isExtra, extras.data])
-  const saved = useMemo(() => new Map((attendance.data ?? []).map((a) => [a.student_id, a.status])), [attendance.data])
+  const official = useMemo(() => new Map((attendance.data ?? []).map((a) => [a.student_id, a])), [attendance.data])
+  const adminSaved = useMemo(() => new Map((checks.data ?? []).map((a) => [a.student_id, a.status])), [checks.data])
+  const saved = isAdmin ? adminSaved : new Map([...official].map(([k, a]) => [k, a.status]))
   const statusOf = (id: string) => (id in local ? local[id] : saved.get(id)) ?? undefined
   const marked = roster.filter((s) => statusOf(s.id)).length
+  // Diferencias entre la lista del profe y la de administración (sólo las ve administración)
+  const diffs = roster.filter((s) => { const a = adminSaved.get(s.id); const p = official.get(s.id)?.status; return (a || p) && a !== p })
 
   /** Crea el entrenamiento del día si aún no existe (un solo toque para empezar). */
   const creating = useRef<Promise<string> | null>(null)
@@ -75,6 +100,7 @@ function TakeAttendance() {
     creating.current.catch(() => { creating.current = null })
     return creating.current
   }
+  const table = isAdmin ? 'attendance_checks' : 'attendance'
 
   const mark = async (studentIds: string[], status: AttendanceStatus) => {
     const prev = { ...local }
@@ -82,7 +108,8 @@ function TakeAttendance() {
     setPending((p) => new Set([...p, ...studentIds]))
     try {
       const tid = await ensureTraining()
-      unwrap(await supabase.from('attendance').upsert(studentIds.map((student_id) => ({ training_id: tid, student_id, status })), { onConflict: 'training_id,student_id' }))
+      const rows = studentIds.map((student_id) => ({ training_id: tid, student_id, status, ...(isAdmin ? { actor: getActor() || null, updated_at: new Date().toISOString() } : {}) }))
+      unwrap(await supabase.from(table).upsert(rows, { onConflict: 'training_id,student_id' }))
       qc.invalidateQueries({ queryKey: ['attendance'] })
       if (studentIds.length > 1) toast.ok(`${studentIds.length} alumnos marcados como ${ATTENDANCE_LABEL[status].toLowerCase()}`)
     } catch (e) {
@@ -100,10 +127,13 @@ function TakeAttendance() {
     setLocal((l) => ({ ...l, [studentId]: null }))
     setPending((p) => new Set([...p, studentId]))
     try {
-      unwrap(await supabase.from('attendance').delete().eq('training_id', training.id).eq('student_id', studentId))
+      unwrap(await supabase.from(table).delete().eq('training_id', training.id).eq('student_id', studentId))
       // Si era un entrenamiento creado solo al pasar lista y ya no tiene a nadie, se quita
-      const { count } = await supabase.from('attendance').select('id', { count: 'exact', head: true }).eq('training_id', training.id)
-      if (count === 0 && !training.objectives && !training.exercises && !training.notes) {
+      const [{ count }, { count: count2 }] = await Promise.all([
+        supabase.from('attendance').select('id', { count: 'exact', head: true }).eq('training_id', training.id),
+        supabase.from('attendance_checks').select('student_id', { count: 'exact', head: true }).eq('training_id', training.id),
+      ])
+      if (count === 0 && !count2 && !training.objectives && !training.exercises && !training.notes && !training.coach_notes) {
         unwrap(await supabase.from('trainings').delete().eq('id', training.id))
         creating.current = null
         setTrainingId('')
@@ -118,11 +148,59 @@ function TakeAttendance() {
     }
   }
 
+  /** Nota del profe para un niño (se guarda en su asistencia de ese día). */
+  const saveKidNote = async (studentId: string, text: string) => {
+    if (!training) return
+    const cur = official.get(studentId)?.notes ?? ''
+    if (text.trim() === cur.trim()) return
+    try {
+      unwrap(await supabase.from('attendance').update({ notes: text.trim() || null }).eq('training_id', training.id).eq('student_id', studentId))
+      await qc.invalidateQueries({ queryKey: ['attendance'] })
+      toast.ok('Nota guardada')
+    } catch (e) { toast.error(e) }
+  }
+
+  const saveGroupNote = async () => {
+    setSavingNote(true)
+    try {
+      const tid = await ensureTraining()
+      unwrap(await supabase.from('trainings').update({ coach_notes: groupNote.trim() || null }).eq('id', tid))
+      await qc.invalidateQueries({ queryKey: ['trainings'] })
+      toast.ok('Notas del entrenamiento guardadas')
+    } catch (e) { toast.error(e) } finally { setSavingNote(false) }
+  }
+
+  /** Administración: deja como oficial lo que marcó administración. */
+  const keepAdminMark = async (studentId: string) => {
+    const st = adminSaved.get(studentId)
+    if (!training) return
+    try {
+      if (st) unwrap(await supabase.from('attendance').upsert({ training_id: training.id, student_id: studentId, status: st }, { onConflict: 'training_id,student_id' }))
+      else unwrap(await supabase.from('attendance').delete().eq('training_id', training.id).eq('student_id', studentId))
+      await qc.invalidateQueries({ queryKey: ['attendance'] })
+      toast.ok('Lista oficial corregida')
+    } catch (e) { toast.error(e) }
+  }
+
+  const verify = async (ok: boolean) => {
+    if (!training) return
+    try {
+      unwrap(await supabase.from('trainings').update(ok ? { verified_at: new Date().toISOString(), verified_by: getActor() || null } : { verified_at: null, verified_by: null }).eq('id', training.id))
+      await qc.invalidateQueries({ queryKey: ['trainings'] })
+      toast.ok(ok ? 'Lista confirmada' : 'Se quitó la confirmación')
+    } catch (e) { toast.error(e) }
+  }
+
   if (categories.error) return <ErrorState error={categories.error} />
   if (categories.isLoading || students.isLoading) return <Spinner />
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <Segmented value={who} onChange={setWho} options={[{ id: 'profe', label: 'Lista del profe' }, { id: 'admin', label: 'Lista de administración' }]} />
+        <p className="text-xs text-muted">{isAdmin ? 'Administración lleva su propia lista para verificar la del profe.' : 'La lista oficial del entrenamiento.'}</p>
+      </div>
+
       <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
         <div className="flex min-w-max gap-2">
           {categories.data?.map((c) => (
@@ -149,12 +227,30 @@ function TakeAttendance() {
         </Field>
       </div>
 
+      {isAdmin && training && (
+        <Card className={cx('flex flex-wrap items-center gap-3 p-4', training.verified_at ? 'border-ok/50' : diffs.length ? 'border-bad/60' : '')}>
+          {training.verified_at ? <ShieldCheck className="h-6 w-6 text-ok" /> : diffs.length ? <AlertTriangle className="h-6 w-6 text-bad" /> : <ClipboardCheck className="h-6 w-6 text-brand" />}
+          <div className="min-w-0 flex-1 text-sm">
+            {training.verified_at
+              ? <p className="font-semibold text-ok">Lista confirmada{training.verified_by ? ` por ${training.verified_by}` : ''} · {date(training.verified_at, "d MMM HH:mm")}</p>
+              : diffs.length
+                ? <p className="font-semibold text-bad">{diffs.length} {diffs.length === 1 ? 'niño no coincide' : 'niños no coinciden'} con la lista del profe. Revisa y corrige.</p>
+                : <p className="font-semibold">{official.size ? 'Coincide con la lista del profe.' : 'El profe todavía no pasa lista.'}</p>}
+            <p className="text-xs text-muted">Profe: {official.size} marcados · Administración: {adminSaved.size} marcados</p>
+          </div>
+          {training.verified_at
+            ? <Button size="sm" variant="ghost" onClick={() => verify(false)}>Quitar confirmación</Button>
+            : <Button size="sm" icon={ShieldCheck} onClick={() => verify(true)} disabled={!official.size}>Confirmar que la lista es correcta</Button>}
+        </Card>
+      )}
+      {isAdmin && training?.coach_notes && <Card className="p-4 text-sm"><p className="mb-1 text-xs font-semibold uppercase text-muted">Nota del profe para el grupo</p>{training.coach_notes}</Card>}
+
       {roster.length === 0 ? (
         <Card><Empty icon={ClipboardCheck} title="No hay alumnos activos en esta categoría" action={<Link to="/alumnos?nuevo=1"><Button icon={Plus}>Agregar alumno</Button></Link>} /></Card>
       ) : (
         <>
           <div className="sticky top-[57px] z-20 -mx-4 flex items-center justify-between gap-3 border-b border-ink-600 bg-page/95 px-4 py-3 backdrop-blur lg:top-0 lg:mx-0 lg:rounded-2xl lg:border">
-            <p className="text-sm"><span className="font-display text-2xl font-bold text-brand">{marked}</span><span className="text-muted"> / {roster.length} marcados</span><span className="block text-xs text-muted">Toca de nuevo una opción para desmarcarla</span></p>
+            <p className="text-sm"><span className="font-display text-2xl font-bold text-brand">{marked}</span><span className="text-muted"> / {roster.length} marcados{isAdmin ? ' (administración)' : ''}</span><span className="block text-xs text-muted">Toca de nuevo una opción para desmarcarla</span></p>
             <Button size="sm" icon={CheckCheck} onClick={() => mark(roster.filter((s) => !statusOf(s.id)).map((s) => s.id), 'presente')} disabled={marked === roster.length}>
               Resto presentes
             </Button>
@@ -162,13 +258,20 @@ function TakeAttendance() {
           <ul className="space-y-2">
             {roster.map((s) => {
               const st = statusOf(s.id)
+              const prof = official.get(s.id)
+              const mismatch = isAdmin && diffs.some((d) => d.id === s.id)
               return (
                 <li key={s.id}>
-                  <Card className={cx('p-3 transition', st && 'border-ink-500')}>
+                  <Card className={cx('p-3 transition', st && 'border-ink-500', mismatch && 'border-bad/70')}>
                     <div className="mb-2.5 flex items-center gap-3">
                       <Avatar name={s.full_name} path={s.photo_path} size={40} />
                       <Link to={`/alumnos/${s.id}`} className="min-w-0 flex-1 truncate font-medium hover:text-brand">{s.full_name}</Link>
                       {s.status === 'muestra' && <Badge tone="info">Clase muestra</Badge>}
+                      {!isAdmin && prof && (
+                        <button onClick={() => setNoteOpen(noteOpen === s.id ? null : s.id)} className={cx('rounded-lg p-1.5', prof.notes ? 'text-brand' : 'text-muted hover:text-fg')} aria-label="Nota del niño" title="Nota del niño">
+                          <MessageSquare className="h-4 w-4" />
+                        </button>
+                      )}
                       {pending.has(s.id) ? <Loader2 className="h-4 w-4 animate-spin text-muted" /> : st && <Check className="h-4 w-4 text-ok" aria-label="Guardado" />}
                     </div>
                     <div className="grid grid-cols-4 gap-1.5">
@@ -181,12 +284,34 @@ function TakeAttendance() {
                         </button>
                       ))}
                     </div>
+                    {isAdmin && (prof || mismatch) && (
+                      <div className={cx('mt-2 flex flex-wrap items-center gap-2 text-xs', mismatch ? 'text-bad' : 'text-muted')}>
+                        <span>Profe: <b>{prof ? ATTENDANCE_LABEL[prof.status] : 'sin marcar'}</b>{mismatch ? ' · no coincide' : ''}</span>
+                        {mismatch && <button onClick={() => keepAdminMark(s.id)} className="rounded-lg border border-bad/50 px-2 py-0.5 font-semibold hover:bg-bad/10">Dejar la de administración como oficial</button>}
+                        {prof?.notes && <span className="w-full text-muted">Nota del profe: {prof.notes}</span>}
+                      </div>
+                    )}
+                    {!isAdmin && noteOpen === s.id && prof && (
+                      <div className="mt-2">
+                        <Textarea rows={2} autoFocus defaultValue={prof.notes ?? ''} onBlur={(e) => saveKidNote(s.id, e.target.value)}
+                          placeholder={`Nota sobre ${s.full_name.split(' ')[0]} (ej. trabajó muy bien el pase, llegó lastimado…)`} />
+                        <p className="mt-1 text-[11px] text-muted">Se guarda al salir del cuadro. Los papás la ven en el reporte del mes.</p>
+                      </div>
+                    )}
+                    {!isAdmin && noteOpen !== s.id && prof?.notes && <p className="mt-2 text-xs text-muted">📝 {prof.notes}</p>}
                   </Card>
                 </li>
               )
             })}
           </ul>
           {marked === roster.length && <p className="py-2 text-center text-sm text-ok">Lista completa y guardada.</p>}
+          {!isAdmin && (
+            <Card className="space-y-2 p-4">
+              <p className="font-semibold">Notas del entrenamiento (para todo el grupo)</p>
+              <Textarea rows={3} value={groupNote} onChange={(e) => setGroupNote(e.target.value)} placeholder="Ej. Trabajamos salida con balón; el grupo estuvo muy concentrado; faltaron conos…" />
+              <div className="flex justify-end"><Button size="sm" icon={Save} loading={savingNote} onClick={saveGroupNote} disabled={groupNote.trim() === (training?.coach_notes ?? '').trim()}>Guardar notas</Button></div>
+            </Card>
+          )}
         </>
       )}
     </div>

@@ -260,6 +260,18 @@ export interface Training {
   objectives: string | null
   exercises: string | null
   notes: string | null
+  /** Nota del profe para todo el grupo */
+  coach_notes?: string | null
+  /** Administración confirmó que la lista es correcta */
+  verified_at?: string | null
+  verified_by?: string | null
+}
+
+export interface AttendanceCheck {
+  training_id: string
+  student_id: string
+  status: AttendanceStatus
+  actor: string | null
 }
 
 export interface Attendance {
@@ -288,6 +300,18 @@ export interface Match {
   goals_against: number | null
   status: MatchStatus
   notes: string | null
+  /** Reporte al terminar el partido */
+  report?: MatchReport | null
+  report_at?: string | null
+}
+
+export interface MatchReport {
+  injuries?: string
+  kids?: string
+  parents?: string
+  referees?: string
+  tournament?: string
+  other?: string
 }
 
 export interface MatchPlayer {
@@ -301,6 +325,8 @@ export interface MatchPlayer {
   /** Convocado que sí llegó (false = falta). Los no convocados no tienen registro. */
   attended: boolean
   notes: string | null
+  /** Se lesionó en el partido */
+  injured?: boolean
 }
 
 export const SKILL_GROUPS = [

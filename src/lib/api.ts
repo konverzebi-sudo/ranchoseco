@@ -7,6 +7,7 @@ import type {
   AppNotification,
   TeamMember,
   ActivityRow,
+  AttendanceCheck,
   CashCut,
   Category,
   Coach,
@@ -248,6 +249,18 @@ export function useAttendanceFor(trainingId: string | undefined) {
     enabled: !!trainingId,
     queryFn: async () =>
       unwrap(await supabase.from('attendance').select('*').eq('training_id', trainingId!)) as Attendance[],
+  })
+}
+
+/** Lista de administración (para verificar la del profe). */
+export function useAttendanceChecks(trainingId: string | undefined) {
+  return useQuery({
+    queryKey: ['attendance', 'checks', trainingId],
+    enabled: !!trainingId,
+    queryFn: async () => {
+      const r = await supabase.from('attendance_checks').select('*').eq('training_id', trainingId!)
+      return r.error ? [] : (r.data as AttendanceCheck[])
+    },
   })
 }
 

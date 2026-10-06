@@ -70,6 +70,7 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase/migrations/0023_quien_recibe.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0024_equipo_bitacora.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0025_actividad.sql', 'utf8'))
+  await db.exec(readFileSync('supabase/migrations/0026_lista_doble_reporte_partido.sql', 'utf8'))
   await db.exec('update academia.settings set open_mode = false') // las pruebas por rol corren con el sitio cerrado
 
   const users: [string, string, string][] = [
@@ -521,5 +522,16 @@ describe('actividad en el sitio', () => {
     await db.exec(`update academia.attendance set status = 'falta' where training_id = '${TR_A}'`)
     expect((await log()).filter((r) => r.title.startsWith('Se tomó lista: Sub-10')).length).toBe(1)
     await db.exec(`select set_config('request.headers', '', false)`)
+  })
+})
+
+describe('corregir pagos', () => {
+  it('corregir un abono de 400 a 550 en un cargo de 550 se permite (no es pago de más)', async () => {
+    const fee = (await db.query<any>(`insert into academia.fees (student_id, concept, period, amount, due_date) values ('${STU_2}', 'Mensualidad', '2026-12-01', 550, '2099-12-10') returning id`)).rows[0].id
+    const pay = (await db.query<any>(`insert into academia.payments (fee_id, student_id, amount) values ('${fee}', '${STU_2}', 400) returning id`)).rows[0].id
+    await db.exec(`update academia.payments set amount = 550 where id = '${pay}'`)
+    const r = (await db.query<any>(`select balance from academia.fee_balances where id = '${fee}'`)).rows[0]
+    expect(Number(r.balance)).toBe(0)
+    await expect(db.exec(`update academia.payments set amount = 551 where id = '${pay}'`)).rejects.toThrow(/excede/)
   })
 })

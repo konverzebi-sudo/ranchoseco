@@ -8,6 +8,8 @@ import { monthNameOf, useCashBoxCards, useFinanceCards } from '@/components/Fina
 import { PayInstallmentModal } from '@/components/Installments'
 import { CloseTrialModal } from '@/components/TrialModals'
 import ActivityFeed from '@/components/ActivityFeed'
+import CoachNotes from '@/components/CoachNotes'
+import BirthdaysCard from '@/components/Birthdays'
 import { pendingInstallments } from '@/lib/finance'
 import type { Expense, ExpenseInstallment } from '@/lib/types'
 import { useAccounts, useCategories, useCoaches, useFees, useMatches, usePayments, useSiblingGroups, useExtraClasses, useStudents, useTrainings, useAttendanceDetail, useExpenses, useNotifications, type StudentRow } from '@/lib/api'
@@ -236,6 +238,8 @@ export default function Dashboard() {
 
           {paying && <PayInstallmentModal expense={paying.expense} inst={paying.inst} onClose={() => setPaying(null)} />}
           {closing && <CloseTrialModal student={closing} onClose={() => setClosing(null)} />}
+          <BirthdaysCard />
+          <CoachNotes />
           <Card>
             <div className="flex items-center justify-between border-b border-ink-600 px-5 py-4">
               <h2 className="font-display text-lg font-bold uppercase tracking-wide">Próximas actividades</h2>

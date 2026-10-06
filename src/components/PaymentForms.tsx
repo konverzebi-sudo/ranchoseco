@@ -51,7 +51,7 @@ type Extra = { key: string; concept: string; amount: string; on: boolean; period
  * a qué corresponde el dinero; también se pueden cobrar en el mismo pago uniforme, playera,
  * credencial, un adelanto u otro concepto. Se anota quién del equipo recibió el pago.
  */
-export function PaymentModal({ student: fixed, feeId, onClose }: { student?: StudentRow; feeId?: string; onClose: () => void }) {
+export function PaymentModal({ student: fixed, feeId, onClose, onAddFee }: { student?: StudentRow; feeId?: string; onClose: () => void; onAddFee?: () => void }) {
   const students = useStudents()
   const allFees = useFees()
   const qc = useQueryClient()
@@ -203,7 +203,7 @@ export function PaymentModal({ student: fixed, feeId, onClose }: { student?: Stu
                 <span className="text-sm">Debe <b className={owed > 0 ? 'text-bad' : 'text-ok'}>{money(owed)}</b></span>
               </div>
               {credit.length > 0 && <p className="mb-2 rounded-xl border border-info/40 bg-info/10 p-2 text-xs text-info">Saldo a favor: {credit.map((f) => `${f.concept} ${monthName(f.period)} ${money(-Number(f.balance))}`).join(' · ')}</p>}
-              {open.length === 0 ? <p className="rounded-xl border border-ink-600 px-3 py-2 text-sm text-ok">Está al corriente.</p> : (
+              {open.length === 0 ? <p className="rounded-xl border border-ok/40 bg-ok/10 px-3 py-2 text-sm"><b className="text-ok">No tiene adeudos.</b> ¿A qué quieres abonar? Márcalo abajo (adelanto del siguiente mes, uniforme, playera…).</p> : (
                 <>
                   <Field label="¿Cuánto pagó?" hint="Al escribirlo se marca solo lo que debe, empezando por lo más antiguo. Puedes cambiarlo abajo.">
                     <Input type="number" min="0" inputMode="decimal" value={paid} onChange={(e) => distribute(e.target.value)} placeholder={String(owed)} />
@@ -246,6 +246,7 @@ export function PaymentModal({ student: fixed, feeId, onClose }: { student?: Stu
                   </li>
                 ))}
               </ul>
+              {onAddFee && <button type="button" onClick={onAddFee} className="mt-2 text-xs text-muted hover:text-brand hover:underline">¿Sólo quieres cargarle algo sin que pague todavía? Agregar cargo</button>}
             </div>
 
             <div className="flex items-center justify-between rounded-xl bg-ink-900 px-4 py-3">
@@ -295,6 +296,12 @@ export function EditPaymentModal({ payment, student, onClose }: { payment: Payme
   const [saving, setSaving] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
   const feeName = (id: string) => { const x = fees.data?.find((y) => y.id === id); return x ? `${x.concept} ${monthName(x.period)}` : 'cargo' }
+  /** Lo que le cabe a cada cargo con ESTE pago: lo que debe + lo que ya tenía este mismo pago (se está corrigiendo). */
+  const roomFor = (x: FeeBalance) => Math.max(0, Number(x.balance) + (x.id === payment.fee_id ? Number(payment.amount) : 0))
+  const target = fees.data?.find((x) => x.id === f.fee_id)
+  const amountN = Number(f.amount) || 0
+  const room = target ? roomFor(target) : 0
+  const after = room - amountN
 
   /** Si era un adelanto y se quedó sin pagos, se quita también ese cargo. */
   const cleanupAdvance = async (feeId: string) => {
@@ -307,6 +314,7 @@ export function EditPaymentModal({ payment, student, onClose }: { payment: Payme
   const save = async () => {
     const amount = Number(f.amount)
     if (!(amount > 0)) return toast.error('El monto debe ser mayor a cero.')
+    if (target && amount > room + 0.001) return toast.error(`A ${feeName(target.id)} sólo le caben ${money(room)} con este pago. Si pagó más, regístralo como otro pago (adelanto, uniforme…).`)
     setSaving(true)
     try {
       const upd = { amount, paid_at: f.paid_at, method: f.method, fee_id: f.fee_id, notes: f.notes.trim() || null }
@@ -355,10 +363,21 @@ export function EditPaymentModal({ payment, student, onClose }: { payment: Payme
         <Field label="¿A qué corresponde?">
           <Select value={f.fee_id} onChange={(e) => setF({ ...f, fee_id: e.target.value })}>
             {(fees.data ?? []).slice().sort((a, b) => a.period.localeCompare(b.period)).map((x) => (
-              <option key={x.id} value={x.id}>{x.concept} {monthName(x.period)} — {Number(x.balance) > 0 ? `debe ${money(x.balance)}` : 'pagada'}</option>
+              <option key={x.id} value={x.id}>{x.concept} {monthName(x.period)} — {money(x.total_due)} · {roomFor(x) > 0 ? `con este pago le caben ${money(roomFor(x))}` : 'pagada'}</option>
             ))}
           </Select>
         </Field>
+        {target && (
+          <div className={cx('rounded-xl border p-3 text-sm', after < -0.001 ? 'border-bad/50 bg-bad/10' : after > 0.001 ? 'border-warn/50 bg-warn/10' : 'border-ok/50 bg-ok/10')}>
+            <p>{feeName(target.id)} cuesta <b>{money(target.total_due)}</b>{Number(target.discount) > 0 ? ` (ya con ${money(target.discount)} de descuento)` : ''}
+              {Number(target.paid) - (target.id === payment.fee_id ? Number(payment.amount) : 0) > 0.001 && <> · otros pagos: {money(Number(target.paid) - (target.id === payment.fee_id ? Number(payment.amount) : 0))}</>}.</p>
+            <p className="mt-1 font-semibold">
+              {after < -0.001 ? <span className="text-bad">Te pasas por {money(-after)}: a este cargo sólo le caben {money(room)}.</span>
+                : after > 0.001 ? <span className="text-warn">Con {money(amountN)} queda debiendo {money(after)}.</span>
+                : <span className="text-ok">Con {money(amountN)} queda pagada ✓</span>}
+            </p>
+          </div>
+        )}
         <Field label="Forma de pago">
           <Select value={f.method} onChange={(e) => setF({ ...f, method: e.target.value as PaymentMethod })}>
             {(Object.keys(METHOD_LABEL) as PaymentMethod[]).map((m) => <option key={m} value={m}>{METHOD_LABEL[m]}</option>)}

@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Pencil, Save, Trash2, Users, MapPin, Minus, Plus } from 'lucide-react'
-import { Avatar, Button, Card, ConfirmDialog, Empty, ErrorState, Input, Spinner, cx } from '@/components/ui'
+import { ArrowLeft, Pencil, Save, Trash2, Users, MapPin, Minus, Plus, ClipboardList, HeartPulse } from 'lucide-react'
+import { Avatar, Button, Card, ConfirmDialog, Empty, ErrorState, Field, Input, Spinner, Textarea, cx } from '@/components/ui'
 import { useToast } from '@/components/toast'
 import { MatchModal, resultBadge } from './Matches'
 import { useCategories, useMatchPlayers, useMatches, useStudents } from '@/lib/api'
 import { supabase, unwrap } from '@/lib/supabase'
 import { date, time } from '@/lib/format'
-import type { MatchPlayer } from '@/lib/types'
+import type { Match, MatchPlayer, MatchReport } from '@/lib/types'
 
 const POSITIONS = ['Portero', 'Defensa', 'Medio', 'Delantero', 'Ala', 'Pívot', 'Cierre']
-type Row = Omit<MatchPlayer, 'match_id' | 'notes'> & { called: boolean }
+type Row = Omit<MatchPlayer, 'match_id' | 'notes' | 'injured'> & { called: boolean; notes: string; injured: boolean }
 
 function Counter({ value, onChange, max = 99, label }: { value: number; onChange: (v: number) => void; max?: number; label: string }) {
   return (
@@ -46,7 +46,7 @@ export default function MatchDetail() {
     const saved = new Map(players.data.map((p) => [p.student_id, p]))
     setRows(Object.fromEntries(roster.map((s) => {
       const p = saved.get(s.id)
-      return [s.id, { student_id: s.id, called: !!p, attended: p?.attended ?? true, starter: p?.starter ?? false, position: p?.position ?? '', goals: p?.goals ?? 0, assists: p?.assists ?? 0, minutes: p?.minutes ?? 0 }]
+      return [s.id, { student_id: s.id, called: !!p, attended: p?.attended ?? true, starter: p?.starter ?? false, position: p?.position ?? '', goals: p?.goals ?? 0, assists: p?.assists ?? 0, minutes: p?.minutes ?? 0, notes: p?.notes ?? '', injured: !!p?.injured }]
     })))
     setDirty(false)
   }, [players.data, roster, match])
@@ -59,7 +59,7 @@ export default function MatchDetail() {
       const called = Object.values(rows).filter((r) => r.called)
       const removed = (players.data ?? []).filter((p) => !rows[p.student_id]?.called).map((p) => p.student_id)
       if (removed.length) unwrap(await supabase.from('match_players').delete().eq('match_id', id!).in('student_id', removed))
-      if (called.length) unwrap(await supabase.from('match_players').upsert(called.map(({ called: _c, ...r }) => ({ ...r, position: r.position || null, match_id: id })), { onConflict: 'match_id,student_id' }))
+      if (called.length) unwrap(await supabase.from('match_players').upsert(called.map(({ called: _c, ...r }) => ({ ...r, position: r.position || null, notes: r.notes.trim() || null, match_id: id })), { onConflict: 'match_id,student_id' }))
       await qc.invalidateQueries({ queryKey: ['match_players'] })
       toast.ok(`Lista guardada: ${called.filter((r) => r.attended).length} asistieron · ${called.filter((r) => !r.attended).length} faltaron`)
     } catch (e) { toast.error(e) } finally { setSaving(false) }
@@ -147,16 +147,81 @@ export default function MatchDetail() {
                       </div>
                     </div>
                   )}
+                  {r.called && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      {r.attended && (
+                        <button onClick={() => upd(s.id, { injured: !r.injured })}
+                          className={cx('inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm', r.injured ? 'border-bad bg-bad/15 text-bad' : 'border-ink-600 text-muted')}>
+                          <HeartPulse className="h-4 w-4" /> {r.injured ? 'Se lesionó' : '¿Lesionado?'}
+                        </button>
+                      )}
+                      <Input value={r.notes} onChange={(e) => upd(s.id, { notes: e.target.value })} className="h-10 min-w-0 flex-1"
+                        placeholder={r.attended ? 'Nota (comportamiento, lesión, algo a destacar…)' : 'Por qué faltó (opcional)'} aria-label="Nota del niño" />
+                    </div>
+                  )}
                 </Card>
               </li>
             )
           })}
         </ul>
       )}
+      <MatchReportCard match={match} injured={roster.filter((s) => rows[s.id]?.called && rows[s.id]?.injured).map((s) => s.full_name)} />
       <datalist id="positions">{POSITIONS.map((p) => <option key={p} value={p} />)}</datalist>
       {editing && <MatchModal match={match} onClose={() => setEditing(false)} />}
       <ConfirmDialog open={confirmDel} onClose={() => setConfirmDel(false)} onConfirm={remove} danger title="Eliminar partido" confirmLabel="Eliminar"
         text="Se eliminará el partido con su convocatoria y estadísticas. Esta acción no se puede deshacer." />
     </>
+  )
+}
+
+const REPORT_FIELDS: [keyof MatchReport, string, string][] = [
+  ['injuries', '¿Hubo lesionados?', 'Quién, qué le pasó y qué se hizo (ej. se torció el tobillo, se le puso hielo, se avisó al papá)'],
+  ['kids', 'Comportamiento de los niños', 'Actitud, disciplina, compañerismo…'],
+  ['parents', 'Comportamiento de los papás', 'Porra, quejas, algún incidente…'],
+  ['referees', 'Árbitros', 'Cómo arbitraron, alguna situación…'],
+  ['tournament', 'Torneo / organización', 'Cancha, horarios, organización, otro equipo…'],
+  ['other', 'Otras notas', 'Lo que quieras dejar anotado'],
+]
+
+/** Reporte al terminar el partido: cómo quedó, lesionados y comportamiento. */
+function MatchReportCard({ match, injured }: { match: Match; injured: string[] }) {
+  const qc = useQueryClient()
+  const toast = useToast()
+  const [gf, setGf] = useState(match.goals_for ?? '')
+  const [ga, setGa] = useState(match.goals_against ?? '')
+  const [rep, setRep] = useState<MatchReport>(match.report ?? {})
+  const [saving, setSaving] = useState(false)
+  useEffect(() => { setGf(match.goals_for ?? ''); setGa(match.goals_against ?? ''); setRep(match.report ?? {}) }, [match.id, match.goals_for, match.goals_against, match.report])
+  const save = async () => {
+    if (gf === '' || ga === '') return toast.error('Escribe cómo quedó el partido.')
+    setSaving(true)
+    try {
+      const clean = Object.fromEntries(Object.entries(rep).map(([k, v]) => [k, (v ?? '').trim()]).filter(([, v]) => v)) as MatchReport
+      if (injured.length && !clean.injuries) clean.injuries = injured.join(', ')
+      unwrap(await supabase.from('matches').update({ goals_for: Number(gf), goals_against: Number(ga), status: 'jugado', report: clean, report_at: new Date().toISOString() }).eq('id', match.id))
+      await qc.invalidateQueries({ queryKey: ['matches'] })
+      toast.ok('Reporte del partido guardado')
+    } catch (e) { toast.error(e) } finally { setSaving(false) }
+  }
+  return (
+    <Card className="mt-5 space-y-4 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="flex items-center gap-2 font-display text-xl font-bold uppercase tracking-wide"><ClipboardList className="h-5 w-5 text-brand" /> Reporte del partido</h2>
+        {match.report_at && <span className="text-xs text-muted">Guardado el {date(match.report_at, "d MMM HH:mm")}</span>}
+      </div>
+      <p className="text-sm text-muted">Al terminar el partido: cómo quedó, si hubo lesionados y cualquier nota de comportamiento.</p>
+      <div className="flex items-end gap-3">
+        <Field label="Rancho Seco"><Input type="number" min="0" inputMode="numeric" value={gf} onChange={(e) => setGf(e.target.value)} className="w-24 text-center text-lg font-bold" /></Field>
+        <span className="pb-3 text-xl font-bold text-muted">-</span>
+        <Field label={match.opponent}><Input type="number" min="0" inputMode="numeric" value={ga} onChange={(e) => setGa(e.target.value)} className="w-24 text-center text-lg font-bold" /></Field>
+      </div>
+      {injured.length > 0 && <p className="rounded-xl bg-bad/10 p-3 text-sm text-bad">Marcados como lesionados: <b>{injured.join(', ')}</b></p>}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {REPORT_FIELDS.map(([k, label, ph]) => (
+          <Field key={k} label={label}><Textarea rows={2} value={rep[k] ?? ''} onChange={(e) => setRep({ ...rep, [k]: e.target.value })} placeholder={ph} /></Field>
+        ))}
+      </div>
+      <div className="flex justify-end"><Button icon={Save} loading={saving} onClick={save}>Guardar reporte</Button></div>
+    </Card>
   )
 }

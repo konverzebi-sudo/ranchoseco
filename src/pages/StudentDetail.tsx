@@ -492,8 +492,7 @@ function PaymentsTab({ s }: { s: StudentRow }) {
           )}
         </Card>
         <div className="flex flex-wrap gap-2">
-          <Button icon={Wallet} onClick={() => setPay(null)}>{balance > 0 ? 'Registrar pago' : 'Pagar por adelantado'}</Button>
-          <Button variant="secondary" icon={Plus} onClick={() => setNewFee(true)}>Nuevo cargo</Button>
+          <Button icon={Wallet} onClick={() => setPay(null)}>Generar pago</Button>
           {balance > 0 && <CollectButton student={s} size="md" label="WhatsApp" />}
         </div>
       </div>
@@ -554,7 +553,7 @@ function PaymentsTab({ s }: { s: StudentRow }) {
           </ul>
         )}
       </Card>
-      {pay !== undefined && <PaymentModal student={s} feeId={pay ?? undefined} onClose={() => setPay(undefined)} />}
+      {pay !== undefined && <PaymentModal student={s} feeId={pay ?? undefined} onClose={() => setPay(undefined)} onAddFee={() => { setPay(undefined); setNewFee(true) }} />}
       {newFee && <FeeModal student={s} onClose={() => setNewFee(false)} />}
       {review && <ScholarshipReviewModal fee={review} onClose={() => setReview(null)} />}
       {coupon && <CouponModal fee={coupon} studentName={s.full_name} onClose={() => setCoupon(null)} />}
