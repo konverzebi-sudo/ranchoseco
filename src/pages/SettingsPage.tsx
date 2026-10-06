@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { TeamSettings } from '@/components/Team'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Save, ShieldAlert, ShieldCheck, History } from 'lucide-react'
 import { Button, Card, ErrorState, Field, Input, PageHeader, Select, Spinner, Textarea } from '@/components/ui'
@@ -127,6 +128,8 @@ export default function SettingsPage() {
             <Textarea rows={6} value={f.report_template} onChange={(e) => setF({ ...f, report_template: e.target.value })} />
           </Field>
         </Card>
+
+        <TeamSettings />
 
         <Card className="p-5 lg:col-span-2">
           <div className="flex items-start gap-3">

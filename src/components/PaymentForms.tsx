@@ -4,7 +4,7 @@ import { Save, Paperclip } from 'lucide-react'
 import { addDays, addMonths, startOfMonth, setDate } from 'date-fns'
 import { Button, ConfirmDialog, Field, Input, Modal, Select, Textarea, cx } from './ui'
 import { useToast } from './toast'
-import { useCategories, useCoaches, useFees, useSettings, useStudents, type StudentRow } from '@/lib/api'
+import { useCategories, useFees, useSettings, useStudents, type StudentRow } from '@/lib/api'
 import { supabase, unwrap, BUCKETS } from '@/lib/supabase'
 import { METHOD_LABEL, date, money, monthName, shortDate, toISODate, today } from '@/lib/format'
 import { TIER_LABEL, joinTier, tierAmount, tierNote, type JoinTier } from '@/lib/prorate'
@@ -14,6 +14,8 @@ import { CREDENTIAL_CONCEPT, CREDENTIAL_FEE, UNIFORM_CONCEPTS, isUniformConcept 
 import type { FeeBalance, Payment, PaymentMethod } from '@/lib/types'
 import { allocatePayment, payOrder } from '@/lib/allocate'
 import { notify } from '@/lib/notify'
+import { getActor } from '@/lib/actor'
+import { TeamSelect } from './Team'
 
 const PAY_KEYS = [['fees'], ['accounts'], ['payments']]
 async function refresh(qc: ReturnType<typeof useQueryClient>) {
@@ -40,7 +42,7 @@ export function useMonthlyPrice(student: StudentRow) {
 
 const normName = (x: string) => x.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 const RECEIVER_KEY = 'rs-last-receiver'
-const readReceiver = () => { try { return localStorage.getItem(RECEIVER_KEY) ?? '' } catch { return '' } }
+const readReceiver = () => { try { return localStorage.getItem(RECEIVER_KEY) || getActor() } catch { return getActor() } }
 const saveReceiver = (v: string) => { try { localStorage.setItem(RECEIVER_KEY, v) } catch { /* sin almacenamiento */ } }
 type Extra = { key: string; concept: string; amount: string; on: boolean; period: string; editable?: boolean }
 
@@ -52,7 +54,6 @@ type Extra = { key: string; concept: string; amount: string; on: boolean; period
 export function PaymentModal({ student: fixed, feeId, onClose }: { student?: StudentRow; feeId?: string; onClose: () => void }) {
   const students = useStudents()
   const allFees = useFees()
-  const coaches = useCoaches()
   const qc = useQueryClient()
   const toast = useToast()
   const [sid, setSid] = useState(fixed?.id ?? '')
@@ -123,15 +124,13 @@ export function PaymentModal({ student: fixed, feeId, onClose }: { student?: Stu
     })))
   }
 
-  const receivers = useMemo(() => [...new Set([...(coaches.data ?? []).filter((c) => c.active).map((c) => c.full_name), receiver].filter(Boolean))], [coaches.data, receiver])
-
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     if (!student) return toast.error('Escoge al niño.')
     if (!(total > 0)) return toast.error('Marca a qué corresponde el pago.')
     for (const f of open) if (sel[f.id]?.on && amountOf(f) > Number(f.balance) + 0.001) return toast.error(`A ${f.concept} ${monthName(f.period)} le abonas más de lo que debe (${money(f.balance)}).`)
     if (extras.some((x) => x.on && (!(Number(x.amount) > 0) || !x.concept.trim()))) return toast.error('Escribe el concepto y el monto de lo que agregaste.')
-    if (!receiver.trim()) return toast.error('Escribe quién recibió el pago.')
+    if (!receiver.trim()) return toast.error('Escoge quién del equipo recibió el pago.')
     if (over) return toast.error(`Marcaste ${money(total)} pero pagó ${money(paidN!)}. Quita algo o cambia los montos.`)
     if (paidN != null && Math.abs(paidN - total) > 0.5 && !window.confirm(`Pagó ${money(paidN)} pero marcaste ${money(total)}. ¿Registrar ${money(total)}?`)) return
     setSaving(true)
@@ -261,8 +260,7 @@ export function PaymentModal({ student: fixed, feeId, onClose }: { student?: Stu
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Fecha de pago"><Input type="date" value={paidAt} max={today()} onChange={(e) => setPaidAt(e.target.value)} /></Field>
               <Field label="¿Quién recibió el pago? (equipo Rancho Seco) *">
-                <Input value={receiver} onChange={(e) => setReceiver(e.target.value)} list="receivers" placeholder="Nombre" />
-                <datalist id="receivers">{receivers.map((r) => <option key={r} value={r} />)}</datalist>
+                <TeamSelect value={receiver} onChange={setReceiver} className={cx(!receiver && 'border-warn')} />
               </Field>
             </div>
             <Field label="Método de pago">
@@ -366,9 +364,9 @@ export function EditPaymentModal({ payment, student, onClose }: { payment: Payme
             {(Object.keys(METHOD_LABEL) as PaymentMethod[]).map((m) => <option key={m} value={m}>{METHOD_LABEL[m]}</option>)}
           </Select>
         </Field>
-        <Field label="¿Quién recibió el pago?"><Input value={f.received_by} onChange={(e) => setF({ ...f, received_by: e.target.value })} placeholder="Nombre" /></Field>
+        <Field label="¿Quién recibió el pago? (equipo Rancho Seco)"><TeamSelect value={f.received_by} onChange={(v) => setF({ ...f, received_by: v })} /></Field>
         <Field label="Notas"><Textarea rows={2} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} placeholder="Ej. Se registró por error" /></Field>
-        <p className="text-xs text-muted">Los cambios quedan anotados en los avisos del Dashboard.</p>
+        <p className="text-xs text-muted">Los cambios quedan anotados en la actividad del Dashboard (con quién lo hizo y a qué hora).</p>
       </div>
       <ConfirmDialog open={confirmDel} onClose={() => setConfirmDel(false)} onConfirm={remove} loading={saving} danger title="Borrar pago" confirmLabel="Borrar"
         text={`Se borrará el pago de ${money(payment.amount)} del ${date(payment.paid_at)} (${feeName(payment.fee_id)}). Ese cargo volverá a quedar pendiente.`} />

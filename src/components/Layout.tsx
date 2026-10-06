@@ -7,6 +7,7 @@ import {
 import { Spinner, cx } from './ui'
 import ErrorBoundary from './ErrorBoundary'
 import AutoMonthlyFees from './AutoMonthlyFees'
+import { WhoAmI } from './Team'
 import { parentsOf, useCategories, useStudents } from '@/lib/api'
 
 export const NAV = [
@@ -138,7 +139,7 @@ export default function Layout() {
             </NavLink>
           ))}
         </nav>
-        <p className="border-t border-ink-600 px-5 py-3 text-[11px] text-ink-500">Deportivo Rancho Seco · Fútbol rápido</p>
+        <div className="border-t border-ink-600 px-4 py-3"><WhoAmI /></div>
       </aside>
 
       {/* Encabezado celular */}
@@ -178,6 +179,7 @@ export default function Layout() {
               <button onClick={() => setDrawer(false)} aria-label="Cerrar menú" className="rounded-xl p-2 text-muted hover:bg-ink-700"><X className="h-6 w-6" /></button>
             </div>
             <div className="px-4 pb-3"><QuickSearch onDone={() => setDrawer(false)} /></div>
+            <div className="px-4 pb-3"><WhoAmI /></div>
             <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-6">
               {NAV.map(({ to, label, icon: Icon, end }) => (
                 <NavLink key={to} to={to} end={end}

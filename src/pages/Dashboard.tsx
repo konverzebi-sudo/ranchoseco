@@ -7,6 +7,7 @@ import { CollectButton } from '@/components/WhatsAppButtons'
 import { monthNameOf, useCashBoxCards, useFinanceCards } from '@/components/FinanceModules'
 import { PayInstallmentModal } from '@/components/Installments'
 import { CloseTrialModal } from '@/components/TrialModals'
+import ActivityFeed from '@/components/ActivityFeed'
 import { pendingInstallments } from '@/lib/finance'
 import type { Expense, ExpenseInstallment } from '@/lib/types'
 import { useAccounts, useCategories, useCoaches, useFees, useMatches, usePayments, useSiblingGroups, useExtraClasses, useStudents, useTrainings, useAttendanceDetail, useExpenses, useNotifications, type StudentRow } from '@/lib/api'
@@ -261,6 +262,7 @@ export default function Dashboard() {
               </ul>
             )}
           </Card>
+          <ActivityFeed />
         </div>
       )}
     </>

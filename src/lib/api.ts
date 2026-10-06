@@ -1,9 +1,12 @@
 import { useQuery, useMutation, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import { supabase, unwrap } from './supabase'
+import { ALERT_KINDS } from './notify'
 import type {
   Attendance,
   AttendanceDetail,
   AppNotification,
+  TeamMember,
+  ActivityRow,
   CashCut,
   Category,
   Coach,
@@ -100,8 +103,33 @@ export function useCoachPay() {
 
 export function useNotifications() {
   return useQuery({
-    queryKey: ['notifications'],
-    queryFn: async () => unwrap(await supabase.from('notifications').select('*').is('seen_at', null).order('created_at', { ascending: false }).limit(30)) as AppNotification[],
+    queryKey: ['notifications', 'alerts'],
+    queryFn: async () => unwrap(await supabase.from('notifications').select('*').is('seen_at', null).in('kind', ALERT_KINDS).order('created_at', { ascending: false }).limit(30)) as AppNotification[],
+  })
+}
+
+/** Actividad en el sitio: todo lo que pasó en un día ('YYYY-MM-DD', hora local). */
+export function useActivity(day: string) {
+  return useQuery({
+    queryKey: ['activity', day],
+    queryFn: async () => {
+      const from = new Date(day + 'T00:00:00').toISOString()
+      const to = new Date(day + 'T23:59:59.999').toISOString()
+      const r = await supabase.from('activity').select('*').gte('at', from).lte('at', to).order('at', { ascending: false }).limit(1000)
+      return r.error ? null : (r.data as ActivityRow[])
+    },
+    refetchInterval: 30_000,
+  })
+}
+
+export function useTeam() {
+  return useQuery({
+    queryKey: ['team'],
+    queryFn: async () => {
+      const r = await supabase.from('team_members').select('*').order('full_name')
+      return r.error ? [] : (r.data as TeamMember[])
+    },
+    staleTime: 60_000,
   })
 }
 

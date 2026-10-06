@@ -68,6 +68,8 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase/migrations/0021_uniformes.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0022_credencial_talla.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0023_quien_recibe.sql', 'utf8'))
+  await db.exec(readFileSync('supabase/migrations/0024_equipo_bitacora.sql', 'utf8'))
+  await db.exec(readFileSync('supabase/migrations/0025_actividad.sql', 'utf8'))
   await db.exec('update academia.settings set open_mode = false') // las pruebas por rol corren con el sitio cerrado
 
   const users: [string, string, string][] = [
@@ -493,5 +495,31 @@ describe('registro de datos por los papás (link público)', () => {
   })
   it('sin modo abierto, el visitante sigue sin poder leer tablas', async () => {
     expect((await anon('select * from academia.students')).rows.length).toBe(0)
+  })
+})
+
+describe('actividad en el sitio', () => {
+  const log = async () => (await db.query<any>('select kind, title, body, actor from academia.activity order by at desc, title')).rows
+  it('anota pagos, abonos, cambios de nombre, listas, partidos y quién lo hizo', async () => {
+    await db.exec('delete from academia.activity')
+    const T = (await db.query<any>(`insert into academia.team_members (full_name) values ('Prueba Caja') returning id`)).rows[0].id
+    await db.exec(`select set_config('request.headers', '{"x-actor-id":"${T}"}', false)`)
+    const fee = (await db.query<any>(`insert into academia.fees (student_id, concept, period, amount, due_date) values ('${STU_1}', 'Playera', '2026-10-01', 250, '2026-10-10') returning id`)).rows[0].id
+    await db.exec(`insert into academia.payments (fee_id, student_id, amount, received_by) values ('${fee}', '${STU_1}', 100, 'Prueba Caja')`)
+    await db.exec(`update academia.students set full_name = 'Alumno Uno Bis' where id = '${STU_1}'`)
+    await db.exec(`insert into academia.attendance (training_id, student_id, status) values ('${TR_A}', '${STU_1}', 'presente') on conflict (training_id, student_id) do update set status = 'presente'`)
+    await db.exec(`insert into academia.matches (category_id, opponent, date) values ('${CAT_A}', 'Tigres', '2026-10-11')`)
+    const rows = await log()
+    const titles = rows.map((r) => r.title)
+    expect(titles).toContain('Alumno Uno abonó $100')
+    expect(titles).toContain('Nuevo cargo para Alumno Uno')
+    expect(rows.find((r) => r.title === 'Cambios en Alumno Uno Bis')?.body).toBe('Nombre: Alumno Uno → Alumno Uno Bis')
+    expect(titles.some((t) => t.startsWith('Se tomó lista: Sub-10'))).toBe(true)
+    expect(titles).toContain('Partido nuevo: Sub-10 vs Tigres')
+    expect(rows.filter((r) => r.actor !== 'Prueba Caja').map((r) => r.title)).toEqual(['Se agregó al equipo: Prueba Caja'])
+    // la lista del mismo entrenamiento se junta en un solo renglón
+    await db.exec(`update academia.attendance set status = 'falta' where training_id = '${TR_A}'`)
+    expect((await log()).filter((r) => r.title.startsWith('Se tomó lista: Sub-10')).length).toBe(1)
+    await db.exec(`select set_config('request.headers', '', false)`)
   })
 })

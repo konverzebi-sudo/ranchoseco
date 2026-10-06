@@ -61,6 +61,24 @@ export interface CoachPayHistory {
   created_at: string
 }
 
+export interface ActivityRow {
+  id: string
+  at: string
+  actor: string | null
+  kind: string
+  title: string
+  body: string | null
+  link: string | null
+  student_id: string | null
+}
+
+export interface TeamMember {
+  id: string
+  full_name: string
+  role: string | null
+  active: boolean
+}
+
 export interface AppNotification {
   id: string
   kind: string
@@ -69,6 +87,8 @@ export interface AppNotification {
   link: string | null
   created_at: string
   seen_at: string | null
+  /** Quién hizo el movimiento */
+  actor?: string | null
 }
 
 export interface CashCut {

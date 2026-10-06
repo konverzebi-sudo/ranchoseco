@@ -6,6 +6,8 @@ import { useToast } from './toast'
 import { supabase, unwrap } from '@/lib/supabase'
 import { date, money, monthName, today } from '@/lib/format'
 import { notify } from '@/lib/notify'
+import { getActor } from '@/lib/actor'
+import { TeamSelect } from './Team'
 import type { FeeBalance } from '@/lib/types'
 
 type Action = 'recargo' | 'descuento'
@@ -28,7 +30,7 @@ export default function WaiveLateFeesModal({ fees, names, preselect = [], onClos
   const [sel, setSel] = useState<Record<string, Pick>>(() => Object.fromEntries(preselect.map((id) => [id, { action: 'recargo' as Action, amount: '' }])))
   const [q, setQ] = useState('')
   const [reason, setReason] = useState('')
-  const [who, setWho] = useState('')
+  const [who, setWho] = useState(getActor)
   const [saving, setSaving] = useState(false)
   const shown = list.filter((f) => sel[f.id] || !q || norm(names.get(f.student_id) ?? '').includes(norm(q)))
   const valueOf = (f: FeeBalance, p: Pick) => (p.action === 'recargo' ? Number(f.late_fee) : Math.min(Number(p.amount) || 0, Number(f.balance)))
@@ -49,7 +51,7 @@ export default function WaiveLateFeesModal({ fees, names, preselect = [], onClos
       if (p.action === 'descuento' && !(Number(p.amount) > 0)) return toast.error(`Escribe cuánto se le descuenta a ${names.get(f.student_id)}.`)
     }
     if (reason.trim().length < 3) return toast.error('Escribe por qué.')
-    if (who.trim().length < 2) return toast.error('Escribe quién lo autorizó o registró.')
+    if (who.trim().length < 2) return toast.error('Escoge quién lo autorizó.')
     setSaving(true)
     try {
       for (const f of chosen) {
@@ -106,7 +108,7 @@ export default function WaiveLateFeesModal({ fees, names, preselect = [], onClos
           </ul>
         )}
         <Field label="¿Por qué? *"><Textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ej. Pagó a tiempo por transferencia; beca por desempeño; hermano entró a medio mes…" /></Field>
-        <Field label="¿Quién lo autorizó / registró? *"><Input value={who} onChange={(e) => setWho(e.target.value)} placeholder="Nombre" /></Field>
+        <Field label="¿Quién lo autorizó? *"><TeamSelect value={who} onChange={setWho} /></Field>
         <p className="text-xs text-muted">Queda anotado en el cargo del niño y como aviso en el Dashboard.</p>
       </div>
     </Modal>

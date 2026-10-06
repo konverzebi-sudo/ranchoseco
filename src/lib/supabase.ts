@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { getActorId } from './actor'
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
@@ -9,6 +10,16 @@ export const isConfigured = Boolean(url && key)
 export const supabase = createClient(url ?? 'http://localhost', key ?? 'missing', {
   db: { schema: 'academia' },
   auth: { persistSession: true, storageKey: 'ranchoseco-auth' },
+  // Cada cambio lleva quién lo hizo, para la "Actividad en el sitio" del Dashboard
+  global: {
+    fetch: (input, init) => {
+      const id = getActorId()
+      if (!id || !String(input instanceof Request ? input.url : input).includes('/rest/v1/')) return fetch(input, init)
+      const headers = new Headers(init?.headers)
+      headers.set('x-actor-id', id)
+      return fetch(input, { ...init, headers })
+    },
+  },
 })
 
 export const BUCKETS = {
