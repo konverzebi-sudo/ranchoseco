@@ -97,7 +97,7 @@ export function LoginScreen({ logo }: { logo: string }) {
 
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center bg-[#0b0d0b] bg-cover bg-center p-6"
-      style={{ backgroundImage: `linear-gradient(rgba(0,0,0,.55), rgba(0,0,0,.7)), url(${import.meta.env.BASE_URL}fondo-acceso.jpg)` }}>
+      style={{ backgroundImage: `linear-gradient(rgba(0,0,0,.25), rgba(0,0,0,.45)), url(${import.meta.env.BASE_URL}fondo-acceso.jpg)` }}>
       <div className="w-full max-w-sm rounded-2xl border border-ink-600 bg-ink-800/95 p-6 text-center shadow-2xl backdrop-blur">
         <img src={logo} alt="Escudo Deportivo Rancho Seco" className="mx-auto h-20 w-20" />
         <p className="mt-3 font-display text-2xl font-bold uppercase">Rancho Seco</p>
@@ -112,7 +112,7 @@ export function LoginScreen({ logo }: { logo: string }) {
                   <option value="">Escoge tu nombre…</option>
                   {pending.map((m) => <option key={m.id} value={m.id}>{m.full_name}{m.role ? ` · ${m.role}` : ''}</option>)}
                 </Select>
-                <Input type="password" inputMode="numeric" value={pin} onChange={(e) => setPin(onlyDigits(e.target.value))} placeholder={`Tu código (${PIN_LENGTH} números)`} className="text-center text-xl tracking-[0.4em]" />
+                <Input type="password" inputMode="numeric" value={pin} onChange={(e) => setPin(onlyDigits(e.target.value))} placeholder="Tu código" className="text-center text-xl tracking-[0.4em]" />
                 <Input type="password" inputMode="numeric" value={pin2} onChange={(e) => setPin2(onlyDigits(e.target.value))} placeholder="Repite tu código" className="text-center text-xl tracking-[0.4em]" onKeyDown={(e) => e.key === 'Enter' && createFirst()} />
                 <Button className="w-full" icon={KeyRound} loading={busy} onClick={createFirst}>Guardar mi código y entrar</Button>
               </>
