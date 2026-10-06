@@ -39,18 +39,21 @@ export default function ProfeDashboard({ name, categoryIds, myCategoryIds = [], 
       ...(matches.data ?? []).filter((x) => mine(x.category_id) && x.status === 'programado').map((x) => ({ kind: 'ma' as const, id: x.id, date: x.date, time: x.time, cat: x.category_id, title: `vs ${x.opponent}` })),
     ].sort((a, b) => (a.date + (a.time ?? '')).localeCompare(b.date + (b.time ?? ''))).slice(0, 8)
     const trainingToday = agenda.find((a) => a.kind === 'tr' && a.date === t)
-    return { kids, todayAtt, absent, toEvaluate, agenda, trainingToday }
-  }, [students.data, recent.data, evals.data, trainings.data, matches.data, categoryIds, t]) // eslint-disable-line react-hooks/exhaustive-deps
+    // Coordinador: "Mis alumnos" son los de sus categorías; aparte el total de la academia
+    const own = coordinator ? kids.filter((s) => s.category_id && myCategoryIds.includes(s.category_id)) : kids
+    return { kids, own, todayAtt, absent, toEvaluate, agenda, trainingToday }
+  }, [students.data, recent.data, evals.data, trainings.data, matches.data, categoryIds, myCategoryIds, coordinator, t]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const present = d.todayAtt.filter((a) => a.status === 'presente' || a.status === 'retardo').length
   return (
     <>
-      <PageHeader title={`Hola, ${name.split(' ')[0] || 'profe'}`} subtitle={`${date(t, "EEEE d 'de' MMMM")} · ${coordinator ? 'Coordinador · todas las categorías' : categoryIds.map(catName).filter(Boolean).join(', ') || 'Sin categorías asignadas'}`}
+      <PageHeader title={`Hola, ${name.replace(/^prof\.?\s*/i, '').split(' ')[0] || 'profe'}`} subtitle={`${date(t, "EEEE d 'de' MMMM")} · ${coordinator ? 'Coordinador · todas las categorías' : categoryIds.map(catName).filter(Boolean).join(', ') || 'Sin categorías asignadas'}`}
         actions={<><Button icon={ClipboardCheck} onClick={() => nav('/asistencias')}>Pasar lista</Button><Button variant="secondary" icon={Star} onClick={() => nav('/evaluaciones')}>Evaluar</Button></>} />
       {!categoryIds.length && <Card className="mb-4 p-4 text-sm text-warn">Todavía no tienes categorías asignadas. Pídele a administración que te asigne en Categorías → Profesor de la categoría.</Card>}
       <div className="space-y-6">
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatCard label="Mis alumnos" value={d.kids.length} icon={Users} hint={`${d.kids.filter((s) => s.status === 'muestra').length} en clase muestra`} />
+        <div className={coordinator ? "grid grid-cols-2 gap-3 lg:grid-cols-5" : "grid grid-cols-2 gap-3 lg:grid-cols-4"}>
+          <StatCard label="Mis alumnos" value={d.own.length} icon={Users} hint={coordinator ? `De mis categorías · ${d.own.filter((s) => s.status === 'muestra').length} en clase muestra` : `${d.kids.filter((s) => s.status === 'muestra').length} en clase muestra`} />
+          {coordinator && <StatCard label="Total de alumnos" value={d.kids.length} icon={Users} hint="Todas las categorías" />}
           <StatCard label="Asistencia de hoy" value={d.todayAtt.length ? `${present}/${d.todayAtt.length}` : '—'} icon={ClipboardCheck} hint={d.trainingToday ? 'Hoy hay entrenamiento' : 'Hoy no hay entrenamiento'} onClick={() => nav('/asistencias')} />
           <StatCard label="Faltas seguidas" value={d.absent.length} icon={UserX} tone={d.absent.length ? 'bad' : undefined} hint="2 o más faltas seguidas" />
           <StatCard label="Por evaluar" value={d.toEvaluate.length} icon={Star} hint="Sin evaluación en 45 días" onClick={() => nav('/evaluaciones')} />
