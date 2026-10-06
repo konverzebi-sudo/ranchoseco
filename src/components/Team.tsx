@@ -127,11 +127,25 @@ export function WhoAmI() {
   )
 }
 
-/** Guarda el PIN; si lo asigna administración queda como temporal (al entrar se cambia). */
-async function savePin(id: string, hash: string, temporary: boolean) {
-  const r = await supabase.from('team_members').update({ pin_hash: hash, pin_must_change: temporary }).eq('id', id)
-  if (r.error && /pin_must_change/.test(r.error.message)) unwrap(await supabase.from('team_members').update({ pin_hash: hash }).eq('id', id))
+/** Guarda el PIN. El temporal (lo genera Jany) se ve en Configuración hasta que la persona escoge el suyo. */
+async function savePin(id: string, hash: string, tempPin: string | null) {
+  const r = await supabase.from('team_members').update({ pin_hash: hash, pin_must_change: !!tempPin, pin_temp: tempPin }).eq('id', id)
+  if (r.error && /pin_must_change|pin_temp/.test(r.error.message)) unwrap(await supabase.from('team_members').update({ pin_hash: hash }).eq('id', id))
   else unwrap(r)
+}
+
+/** Sólo Jany genera y ve las claves temporales. */
+export const isJany = (name: string | null | undefined) => (name ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase() === 'jany'
+
+/** PIN temporal al azar: 6 números, no obvio y distinto al de los demás. */
+async function randomPin(team: TeamMember[], exceptId: string) {
+  for (let i = 0; i < 50; i++) {
+    const n = crypto.getRandomValues(new Uint32Array(1))[0] % 900000 + 100000
+    const pin = String(n)
+    if (/^(\d)\1+$/.test(pin) || '0123456789'.includes(pin) || '9876543210'.includes(pin)) continue
+    if (!(await whosePin(team.filter((m) => m.id !== exceptId), pin))) return pin
+  }
+  throw new Error('No se pudo generar el PIN, inténtalo de nuevo.')
 }
 
 /** Asignar o cambiar el PIN de una persona (debe ser distinto al de los demás). */
@@ -150,7 +164,7 @@ function SetPinModal({ member, self, onClose, forced }: { member: TeamMember; se
     try {
       const other = await whosePin((team.data ?? []).filter((m) => m.id !== member.id), pin)
       if (other) { setBusy(false); return toast.error('Ese PIN ya lo usa otra persona. Escoge otro.') }
-      await savePin(member.id, await pinHash(member.id, pin), !self)
+      await savePin(member.id, await pinHash(member.id, pin), null)
       await qc.invalidateQueries({ queryKey: ['team'] })
       toast.ok(self ? 'Tu PIN quedó guardado' : `PIN temporal de ${member.full_name} guardado. Dáselo en persona: al entrar escogerá el suyo.`)
       onClose()
@@ -161,7 +175,6 @@ function SetPinModal({ member, self, onClose, forced }: { member: TeamMember; se
       footer={<>{forced ? <Button variant="secondary" onClick={() => setActor('', '')}>Salir</Button> : <Button variant="secondary" onClick={onClose}>Cancelar</Button>}<Button icon={KeyRound} loading={busy} onClick={save}>Guardar PIN</Button></>}>
       <div className="space-y-3">
         {forced && <p className="rounded-xl border border-brand/40 bg-brand-dim p-3 text-sm">Entraste con un PIN temporal. Escoge tu PIN personal de {PIN_LENGTH} números: sólo tú lo vas a saber.</p>}
-        {!self && <p className="rounded-xl border border-info/40 bg-info/10 p-3 text-sm text-info">Es un PIN temporal: dáselo en persona. La primera vez que entre, la plataforma le pedirá escoger el suyo.</p>}
         <p className="text-sm text-muted">{PIN_LENGTH} números. Con ese PIN la plataforma sabe quién es y qué puede ver{isAdminRole(member.role) ? ' (administración: todo, con los números)' : ' (vista de profesor, sin dinero)'}.</p>
         <Field label="Nuevo PIN"><Input type="password" inputMode="numeric" autoFocus value={pin} onChange={(e) => setPin(onlyDigits(e.target.value))} /></Field>
         <Field label="Repite el PIN"><Input type="password" inputMode="numeric" value={pin2} onChange={(e) => setPin2(onlyDigits(e.target.value))} onKeyDown={(e) => e.key === 'Enter' && save()} /></Field>
@@ -188,39 +201,67 @@ export function TeamSettings() {
   const team = useTeam()
   const qc = useQueryClient()
   const toast = useToast()
+  const actor = useActor()
+  const jany = isJany(actor)
   const [name, setName] = useState('')
   const [role, setRole] = useState('')
-  const [pinFor, setPinFor] = useState<TeamMember | null>(null)
+  const [mine, setMine] = useState<TeamMember | null>(null)
+  const [busy, setBusy] = useState('')
+  const list = team.data ?? []
   const refresh = () => qc.invalidateQueries({ queryKey: ['team'] })
   const add = async () => {
     if (name.trim().length < 2) return toast.error('Escribe el nombre.')
     try {
       unwrap(await supabase.from('team_members').insert({ full_name: name.trim(), role: role.trim() || null }))
       await refresh(); setName(''); setRole('')
-      toast.ok('Agregado al equipo. Ahora asígnale su PIN.')
+      toast.ok(jany ? 'Agregado al equipo. Genérale su PIN.' : 'Agregado al equipo. Jany le genera su PIN.')
     } catch (e) { toast.error(e) }
   }
+  const generate = async (ms: TeamMember[]) => {
+    if (!ms.length) return toast.ok('Todos tienen PIN.')
+    setBusy(ms.length > 1 ? 'all' : ms[0].id)
+    try {
+      for (const m of ms) {
+        const pin = await randomPin(list, m.id)
+        await savePin(m.id, await pinHash(m.id, pin), pin)
+        m.pin_hash = await pinHash(m.id, pin) // para que el siguiente no repita
+      }
+      await refresh()
+      toast.ok(ms.length > 1 ? `Se generaron ${ms.length} PIN temporales` : `PIN temporal de ${ms[0].full_name} generado`)
+    } catch (e) { toast.error(e) } finally { setBusy('') }
+  }
   const clearPin = async (m: TeamMember) => {
-    if (!window.confirm(`¿Quitar el PIN de ${m.full_name}? Ya no podrá entrar hasta que le asignes otro.`)) return
-    try { unwrap(await supabase.from('team_members').update({ pin_hash: null }).eq('id', m.id)); await refresh(); toast.ok('PIN quitado') } catch (e) { toast.error(e) }
+    if (!window.confirm(`¿Quitar el PIN de ${m.full_name}? Ya no podrá entrar hasta que le generes otro.`)) return
+    try { unwrap(await supabase.from('team_members').update({ pin_hash: null, pin_must_change: false, pin_temp: null }).eq('id', m.id)); await refresh(); toast.ok('PIN quitado') } catch (e) { toast.error(e) }
   }
   const toggle = async (id: string, active: boolean) => {
     try { unwrap(await supabase.from('team_members').update({ active }).eq('id', id)); await refresh() } catch (e) { toast.error(e) }
   }
+  const without = list.filter((m) => m.active && !m.pin_hash)
   return (
     <Card className="space-y-3 p-5 lg:col-span-2">
-      <div>
-        <h3 className="font-display text-lg font-bold uppercase tracking-wide text-brand">Equipo Rancho Seco y PIN de acceso</h3>
-        <p className="text-sm text-muted">Cada persona entra con su PIN de {PIN_LENGTH} números (distinto para cada quien). Sólo el puesto <b>Administración</b> ve los números; los demás ven la vista de profesor. Asigna el PIN aquí y dáselo en persona.</p>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="font-display text-lg font-bold uppercase tracking-wide text-brand">Equipo Rancho Seco y PIN de acceso</h3>
+          <p className="text-sm text-muted">Cada persona entra con su PIN de {PIN_LENGTH} números. Sólo el puesto <b>Administración</b> ve los números; los demás ven la vista de profesor.</p>
+          <p className="mt-1 text-xs text-muted">{jany
+            ? 'Tú generas un PIN temporal para cada quien y se lo das en persona. Al entrar, cada quien escoge su PIN personal (ése ya no lo ve nadie). Si alguien lo olvida, genérale uno nuevo.'
+            : 'Los PIN temporales los genera y los ve sólo Jany. Tu PIN lo puedes cambiar con la llavecita junto a tu nombre en el menú.'}</p>
+        </div>
+        {jany && without.length > 0 && <Button icon={KeyRound} loading={busy === 'all'} onClick={() => generate(without)}>Generar PIN para los {without.length} que no tienen</Button>}
       </div>
       <ul className="divide-y divide-ink-700 rounded-xl border border-ink-600">
-        {(team.data ?? []).map((m) => (
+        {list.map((m) => (
           <li key={m.id} className={cx('flex flex-wrap items-center gap-2 px-3 py-2 text-sm', !m.active && 'opacity-50')}>
             <b className="min-w-0 flex-1">{m.full_name}</b>
             {m.role && <Badge tone={isAdminRole(m.role) ? 'brand' : 'neutral'}>{m.role}</Badge>}
-            <span className={cx('text-xs', !m.pin_hash ? 'text-warn' : m.pin_must_change ? 'text-info' : 'text-ok')}>{!m.pin_hash ? 'sin PIN (no puede entrar)' : m.pin_must_change ? '⏳ PIN temporal (aún no escoge el suyo)' : '🔒 ya tiene su PIN'}</span>
-            <Button size="sm" variant="secondary" icon={KeyRound} onClick={() => setPinFor(m)}>{m.pin_hash ? (m.id === getActorId() ? 'Cambiar mi PIN' : 'Darle PIN nuevo') : 'Asignar PIN temporal'}</Button>
-            {m.pin_hash && <button className="text-xs text-muted hover:text-bad hover:underline" onClick={() => clearPin(m)}>Quitar PIN</button>}
+            {jany && m.pin_must_change && m.pin_temp
+              ? <span className="rounded-lg bg-brand-dim px-2 py-1 font-mono text-base font-bold tracking-widest text-brand" title="PIN temporal: dáselo en persona">{m.pin_temp}</span>
+              : <span className={cx('text-xs', !m.pin_hash ? 'text-warn' : m.pin_must_change ? 'text-info' : 'text-ok')}>{!m.pin_hash ? 'sin PIN (no puede entrar)' : m.pin_must_change ? '⏳ PIN temporal (aún no entra)' : '🔒 ya escogió su PIN'}</span>}
+            {m.id === getActorId()
+              ? <Button size="sm" variant="secondary" icon={KeyRound} onClick={() => setMine(m)}>Cambiar mi PIN</Button>
+              : jany && <Button size="sm" variant="secondary" icon={KeyRound} loading={busy === m.id} onClick={() => generate([m])}>{m.pin_hash ? 'PIN nuevo' : 'Generar PIN'}</Button>}
+            {jany && m.pin_hash && m.id !== getActorId() && <button className="text-xs text-muted hover:text-bad hover:underline" onClick={() => clearPin(m)}>Quitar PIN</button>}
             <button className="text-xs text-muted hover:text-brand hover:underline" onClick={() => toggle(m.id, !m.active)}>{m.active ? 'Dar de baja' : 'Volver a activar'}</button>
           </li>
         ))}
@@ -231,7 +272,7 @@ export function TeamSettings() {
         <datalist id="team-roles">{['Administración', 'Profesor', 'Staff'].map((r) => <option key={r} value={r} />)}</datalist>
         <Button icon={Plus} onClick={add}>Agregar</Button>
       </div>
-      {pinFor && <SetPinModal member={pinFor} self={pinFor.id === getActorId()} onClose={() => setPinFor(null)} />}
+      {mine && <SetPinModal member={mine} self onClose={() => setMine(null)} />}
     </Card>
   )
 }

@@ -84,6 +84,8 @@ export interface TeamMember {
   pin_hash?: string | null
   /** El PIN lo asignó administración: al entrar debe escoger el suyo */
   pin_must_change?: boolean
+  /** PIN temporal (sólo lo ve Jany hasta que la persona escoge el suyo) */
+  pin_temp?: string | null
 }
 
 export interface AppNotification {

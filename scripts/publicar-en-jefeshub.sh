@@ -8,6 +8,8 @@ cd "$(dirname "$0")/.."
 npm test
 npm run build
 tmp="$(mktemp -d)"
+# La copia temporal se borra siempre al terminar (antes se quedaban y llenaban el disco)
+trap 'rm -rf "$tmp"' EXIT
 git clone -q --depth 1 https://github.com/konverzebi-sudo/hub-jany.git "$tmp/hub"
 # Se conservan los archivos de versiones anteriores (assets/) para que quien tenga la
 # página abierta pueda seguir cambiando de sección sin que se quede en blanco.
