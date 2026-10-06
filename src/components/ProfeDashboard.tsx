@@ -4,13 +4,15 @@ import { CalendarDays, ClipboardCheck, Dumbbell, Star, Trophy, UserX, Users } fr
 import { Badge, Button, Card, PageHeader, StatCard } from './ui'
 import BirthdaysCard from './Birthdays'
 import CoachNotes from './CoachNotes'
+import { CategoryRequestsCard } from './CategoryChange'
+import { scheduleText, type Slot } from '@/lib/schedule'
 import { useAttendanceDetail, useCategories, useMatches, useStudents, useTrainings } from '@/lib/api'
 import { usePlayerEvaluations } from '@/lib/evalApi'
 import { consecutiveAbsences } from '@/lib/stats'
 import { date, time, today, toISODate } from '@/lib/format'
 
 /** Dashboard del profe: sólo lo de sus categorías, sin dinero. */
-export default function ProfeDashboard({ name, categoryIds }: { name: string; categoryIds: string[] }) {
+export default function ProfeDashboard({ name, categoryIds, myCategoryIds = [], coordinator }: { name: string; categoryIds: string[]; myCategoryIds?: string[]; coordinator?: boolean }) {
   const nav = useNavigate()
   const t = today()
   const cats = useCategories()
@@ -43,7 +45,7 @@ export default function ProfeDashboard({ name, categoryIds }: { name: string; ca
   const present = d.todayAtt.filter((a) => a.status === 'presente' || a.status === 'retardo').length
   return (
     <>
-      <PageHeader title={`Hola, ${name.split(' ')[0] || 'profe'}`} subtitle={`${date(t, "EEEE d 'de' MMMM")} · ${categoryIds.map(catName).filter(Boolean).join(', ') || 'Sin categorías asignadas'}`}
+      <PageHeader title={`Hola, ${name.split(' ')[0] || 'profe'}`} subtitle={`${date(t, "EEEE d 'de' MMMM")} · ${coordinator ? 'Coordinador · todas las categorías' : categoryIds.map(catName).filter(Boolean).join(', ') || 'Sin categorías asignadas'}`}
         actions={<><Button icon={ClipboardCheck} onClick={() => nav('/asistencias')}>Pasar lista</Button><Button variant="secondary" icon={Star} onClick={() => nav('/evaluaciones')}>Evaluar</Button></>} />
       {!categoryIds.length && <Card className="mb-4 p-4 text-sm text-warn">Todavía no tienes categorías asignadas. Pídele a administración que te asigne en Categorías → Profesor de la categoría.</Card>}
       <div className="space-y-6">
@@ -53,6 +55,8 @@ export default function ProfeDashboard({ name, categoryIds }: { name: string; ca
           <StatCard label="Faltas seguidas" value={d.absent.length} icon={UserX} tone={d.absent.length ? 'bad' : undefined} hint="2 o más faltas seguidas" />
           <StatCard label="Por evaluar" value={d.toEvaluate.length} icon={Star} hint="Sin evaluación en 45 días" onClick={() => nav('/evaluaciones')} />
         </div>
+        {coordinator && <CategoryRequestsCard />}
+        <MySchedule categoryIds={coordinator ? (myCategoryIds.length ? myCategoryIds : categoryIds) : categoryIds} title={coordinator ? 'Horarios de entrenamiento' : 'Mis categorías y horarios'} all={coordinator} />
         <BirthdaysCard categoryIds={categoryIds} />
         <div className="grid gap-6 lg:grid-cols-2">
           <Card>
@@ -91,5 +95,31 @@ export default function ProfeDashboard({ name, categoryIds }: { name: string; ca
         <CoachNotes />
       </div>
     </>
+  )
+}
+
+/** Las categorías del profe y qué días entrenan (en cuanto registren su horario). */
+function MySchedule({ categoryIds, title, all }: { categoryIds: string[]; title: string; all?: boolean }) {
+  const cats = useCategories()
+  const list = (cats.data ?? []).filter((c) => c.active && (all || categoryIds.includes(c.id)))
+  if (!list.length) return null
+  return (
+    <Card>
+      <div className="flex items-center justify-between border-b border-ink-600 px-5 py-4">
+        <h2 className="flex items-center gap-2 font-display text-lg font-bold uppercase tracking-wide"><CalendarDays className="h-5 w-5 text-brand" /> {title}</h2>
+        <Link to="/entrenamientos" className="text-sm text-brand hover:underline">Horario semanal</Link>
+      </div>
+      <ul className="divide-y divide-ink-700">
+        {list.map((c) => {
+          const slots = (c.weekly_schedule ?? []) as Slot[]
+          return (
+            <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-2.5 text-sm">
+              <b>{c.name}</b>
+              {slots.length ? <span className="text-muted">{scheduleText(slots)}</span> : <Link to="/entrenamientos" className="text-warn hover:underline">Falta registrar su horario</Link>}
+            </li>
+          )
+        })}
+      </ul>
+    </Card>
   )
 }

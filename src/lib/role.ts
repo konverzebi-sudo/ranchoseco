@@ -28,11 +28,13 @@ export function useRole() {
     // Jany puede ver la plataforma como otra persona
     const me = real && isJany(real.full_name) && viewAs ? team.data?.find((m) => m.id === viewAs) ?? real : real
     const isAdmin = !!me && isAdminRole(me.role)
-    const isCoach = !!me && /profe/i.test(me.role ?? '')
+    // Coordinador (Prof. Padrón): vista de profe pero con TODAS las categorías y cambia alumnos de categoría directo
+    const isCoordinator = !!me && /coordin/i.test(me.role ?? '')
+    const isCoach = !!me && (/profe/i.test(me.role ?? '') || isCoordinator)
     const coach = isCoach ? (coaches.data ?? []).find((c) => norm(c.full_name) === norm(me!.full_name)) : undefined
-    const categoryIds = coach
+    const categoryIds = coach && !isCoordinator
       ? (cc.data ?? []).filter((x) => x.coach_id === coach.id).map((x) => x.category_id)
       : (cats.data ?? []).map((c) => c.id) // sin nombre escogido: ve todas las categorías, pero sin números
-    return { loggedIn: !!real, viewingAs: me !== real ? me?.full_name ?? '' : '', isProfe: !isAdmin, isAdmin, isCoach, name: isCoach ? me!.full_name : '', coachId: coach?.id ?? null, categoryIds, ready: !!team.data }
+    return { isCoordinator, canMoveCategory: isAdmin || isCoordinator, myCategoryIds: coach ? (cc.data ?? []).filter((x) => x.coach_id === coach.id).map((x) => x.category_id) : [], loggedIn: !!real, viewingAs: me !== real ? me?.full_name ?? '' : '', isProfe: !isAdmin, isAdmin, isCoach, name: isCoach ? me!.full_name : '', coachId: coach?.id ?? null, categoryIds, ready: !!team.data }
   }, [actor, team.data, coaches.data, cc.data, cats.data, viewAs])
 }

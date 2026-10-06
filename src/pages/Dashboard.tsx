@@ -12,6 +12,7 @@ import ProfeDashboard from '@/components/ProfeDashboard'
 import { useRole } from '@/lib/role'
 import CoachNotes from '@/components/CoachNotes'
 import { MatchReportsCard } from '@/components/MatchPhotos'
+import { CategoryRequestsCard } from '@/components/CategoryChange'
 import IncomeBreakdownModal from '@/components/IncomeBreakdown'
 import CardDetailModal, { type CardKind } from '@/components/CardDetails'
 import BirthdaysCard from '@/components/Birthdays'
@@ -36,7 +37,7 @@ function byFamily<T extends { acc: { balance: number | string }; s: StudentRow }
 export default function Dashboard() {
   const role = useRole()
   if (!role.ready) return <Spinner />
-  return role.isProfe ? <ProfeDashboard name={role.name} categoryIds={role.categoryIds} /> : <AdminDashboard />
+  return role.isProfe ? <ProfeDashboard name={role.name} categoryIds={role.categoryIds} myCategoryIds={role.myCategoryIds} coordinator={role.isCoordinator} /> : <AdminDashboard />
 }
 
 function AdminDashboard() {
@@ -264,6 +265,7 @@ function AdminDashboard() {
           {paying && <PayInstallmentModal expense={paying.expense} inst={paying.inst} onClose={() => setPaying(null)} />}
           {closing && <CloseTrialModal student={closing} onClose={() => setClosing(null)} />}
           <OverpaidAlert />
+          <CategoryRequestsCard />
           <UnpaidDeliveries />
           <MatchReportsCard />
           <BirthdaysCard />

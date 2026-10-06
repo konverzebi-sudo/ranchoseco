@@ -12,6 +12,7 @@ import { CollectButton } from '@/components/WhatsAppButtons'
 import { PaymentModal, FeeModal, EditPaymentModal } from '@/components/PaymentForms'
 import { DeliveryCheck, DeliveryHistory } from '@/components/Deliveries'
 import { useRole } from '@/lib/role'
+import { CategoryChangeButton } from '@/components/CategoryChange'
 import { EvalResult } from '@/components/PlayerEvalProfile'
 import { useEvalTemplates, usePlayerEvalItems, usePlayerEvaluations } from '@/lib/evalApi'
 import { EvaluationModal, EvolutionChart, GroupSummary, SkillRadar } from '@/components/Evaluation'
@@ -80,6 +81,7 @@ export default function StudentDetail() {
           </div>
           <div className="flex flex-wrap gap-2">
             {!role.isProfe && Number(acc?.balance ?? 0) > 0 && <CollectButton student={s} size="md" label="Cobrar por WhatsApp" />}
+            <CategoryChangeButton student={s} />
             {!role.isProfe && <Button variant="secondary" icon={Pencil} onClick={() => setEditing(true)}>Editar</Button>}
           </div>
         </div>

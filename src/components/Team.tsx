@@ -326,7 +326,7 @@ export function TeamSettings() {
       <div className="grid gap-2 sm:grid-cols-[1fr_200px_auto]">
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre (como siempre se va a ver)" />
         <Input value={role} onChange={(e) => setRole(e.target.value)} placeholder="Puesto (Administración / Profesor)" list="team-roles" />
-        <datalist id="team-roles">{['Administración', 'Profesor', 'Staff'].map((r) => <option key={r} value={r} />)}</datalist>
+        <datalist id="team-roles">{['Administración', 'Coordinador', 'Profesor', 'Staff'].map((r) => <option key={r} value={r} />)}</datalist>
         <Button icon={Plus} onClick={add}>Agregar</Button>
       </div>
       {mine && <SetPinModal member={mine} self onClose={() => setMine(null)} />}
