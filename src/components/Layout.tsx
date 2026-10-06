@@ -8,7 +8,7 @@ import { Spinner, cx } from './ui'
 import ErrorBoundary from './ErrorBoundary'
 import AutoMonthlyFees from './AutoMonthlyFees'
 import { AutoTrainings } from './WeeklySchedule'
-import { LoginScreen, WhoAmI } from './Team'
+import { ForceOwnPin, LoginScreen, WhoAmI } from './Team'
 import { profeCanOpen, useRole, PROFE_PATHS } from '@/lib/role'
 import { parentsOf, useCategories, useStudents } from '@/lib/api'
 
@@ -134,6 +134,7 @@ export default function Layout() {
 
   return (
     <div className="min-h-dvh lg:flex">
+      <ForceOwnPin />
       {/* Sidebar escritorio */}
       <aside className="theme-dark sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-ink-600 bg-ink-900 lg:flex">
         <div className="px-5 pb-4 pt-6"><Brand /></div>

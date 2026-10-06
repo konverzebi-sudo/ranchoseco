@@ -82,6 +82,8 @@ export interface TeamMember {
   active: boolean
   /** PIN cifrado (sólo administración) */
   pin_hash?: string | null
+  /** El PIN lo asignó administración: al entrar debe escoger el suyo */
+  pin_must_change?: boolean
 }
 
 export interface AppNotification {

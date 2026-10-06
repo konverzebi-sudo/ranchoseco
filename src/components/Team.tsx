@@ -127,8 +127,15 @@ export function WhoAmI() {
   )
 }
 
+/** Guarda el PIN; si lo asigna administración queda como temporal (al entrar se cambia). */
+async function savePin(id: string, hash: string, temporary: boolean) {
+  const r = await supabase.from('team_members').update({ pin_hash: hash, pin_must_change: temporary }).eq('id', id)
+  if (r.error && /pin_must_change/.test(r.error.message)) unwrap(await supabase.from('team_members').update({ pin_hash: hash }).eq('id', id))
+  else unwrap(r)
+}
+
 /** Asignar o cambiar el PIN de una persona (debe ser distinto al de los demás). */
-function SetPinModal({ member, self, onClose }: { member: TeamMember; self?: boolean; onClose: () => void }) {
+function SetPinModal({ member, self, onClose, forced }: { member: TeamMember; self?: boolean; onClose: () => void; forced?: boolean }) {
   const team = useTeam()
   const qc = useQueryClient()
   const toast = useToast()
@@ -143,16 +150,18 @@ function SetPinModal({ member, self, onClose }: { member: TeamMember; self?: boo
     try {
       const other = await whosePin((team.data ?? []).filter((m) => m.id !== member.id), pin)
       if (other) { setBusy(false); return toast.error('Ese PIN ya lo usa otra persona. Escoge otro.') }
-      unwrap(await supabase.from('team_members').update({ pin_hash: await pinHash(member.id, pin) }).eq('id', member.id))
+      await savePin(member.id, await pinHash(member.id, pin), !self)
       await qc.invalidateQueries({ queryKey: ['team'] })
-      toast.ok(self ? 'Tu PIN quedó cambiado' : `PIN de ${member.full_name} guardado. Dáselo en persona.`)
+      toast.ok(self ? 'Tu PIN quedó guardado' : `PIN temporal de ${member.full_name} guardado. Dáselo en persona: al entrar escogerá el suyo.`)
       onClose()
     } catch (e) { toast.error(e) } finally { setBusy(false) }
   }
   return (
-    <Modal open onClose={onClose} title={self ? 'Cambiar mi PIN' : `PIN de ${member.full_name}`}
-      footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button icon={KeyRound} loading={busy} onClick={save}>Guardar PIN</Button></>}>
+    <Modal open onClose={forced ? () => {} : onClose} title={forced ? `Hola, ${member.full_name.split(' ')[0]}: escoge tu PIN` : self ? 'Cambiar mi PIN' : `PIN temporal de ${member.full_name}`}
+      footer={<>{forced ? <Button variant="secondary" onClick={() => setActor('', '')}>Salir</Button> : <Button variant="secondary" onClick={onClose}>Cancelar</Button>}<Button icon={KeyRound} loading={busy} onClick={save}>Guardar PIN</Button></>}>
       <div className="space-y-3">
+        {forced && <p className="rounded-xl border border-brand/40 bg-brand-dim p-3 text-sm">Entraste con un PIN temporal. Escoge tu PIN personal de {PIN_LENGTH} números: sólo tú lo vas a saber.</p>}
+        {!self && <p className="rounded-xl border border-info/40 bg-info/10 p-3 text-sm text-info">Es un PIN temporal: dáselo en persona. La primera vez que entre, la plataforma le pedirá escoger el suyo.</p>}
         <p className="text-sm text-muted">{PIN_LENGTH} números. Con ese PIN la plataforma sabe quién es y qué puede ver{isAdminRole(member.role) ? ' (administración: todo, con los números)' : ' (vista de profesor, sin dinero)'}.</p>
         <Field label="Nuevo PIN"><Input type="password" inputMode="numeric" autoFocus value={pin} onChange={(e) => setPin(onlyDigits(e.target.value))} /></Field>
         <Field label="Repite el PIN"><Input type="password" inputMode="numeric" value={pin2} onChange={(e) => setPin2(onlyDigits(e.target.value))} onKeyDown={(e) => e.key === 'Enter' && save()} /></Field>
@@ -209,8 +218,8 @@ export function TeamSettings() {
           <li key={m.id} className={cx('flex flex-wrap items-center gap-2 px-3 py-2 text-sm', !m.active && 'opacity-50')}>
             <b className="min-w-0 flex-1">{m.full_name}</b>
             {m.role && <Badge tone={isAdminRole(m.role) ? 'brand' : 'neutral'}>{m.role}</Badge>}
-            <span className={cx('text-xs', m.pin_hash ? 'text-ok' : 'text-warn')}>{m.pin_hash ? '🔒 con PIN' : 'sin PIN (no puede entrar)'}</span>
-            <Button size="sm" variant="secondary" icon={KeyRound} onClick={() => setPinFor(m)}>{m.pin_hash ? 'Cambiar PIN' : 'Asignar PIN'}</Button>
+            <span className={cx('text-xs', !m.pin_hash ? 'text-warn' : m.pin_must_change ? 'text-info' : 'text-ok')}>{!m.pin_hash ? 'sin PIN (no puede entrar)' : m.pin_must_change ? '⏳ PIN temporal (aún no escoge el suyo)' : '🔒 ya tiene su PIN'}</span>
+            <Button size="sm" variant="secondary" icon={KeyRound} onClick={() => setPinFor(m)}>{m.pin_hash ? (m.id === getActorId() ? 'Cambiar mi PIN' : 'Darle PIN nuevo') : 'Asignar PIN temporal'}</Button>
             {m.pin_hash && <button className="text-xs text-muted hover:text-bad hover:underline" onClick={() => clearPin(m)}>Quitar PIN</button>}
             <button className="text-xs text-muted hover:text-brand hover:underline" onClick={() => toggle(m.id, !m.active)}>{m.active ? 'Dar de baja' : 'Volver a activar'}</button>
           </li>
@@ -225,4 +234,12 @@ export function TeamSettings() {
       {pinFor && <SetPinModal member={pinFor} self={pinFor.id === getActorId()} onClose={() => setPinFor(null)} />}
     </Card>
   )
+}
+
+/** Si entró con PIN temporal, primero escoge el suyo. */
+export function ForceOwnPin() {
+  const team = useTeam()
+  const me = team.data?.find((m) => m.id === getActorId())
+  if (!me?.pin_must_change) return null
+  return <SetPinModal member={me} self forced onClose={() => {}} />
 }
