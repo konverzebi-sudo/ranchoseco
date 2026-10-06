@@ -9,6 +9,7 @@ import { PayInstallmentModal } from '@/components/Installments'
 import { CloseTrialModal } from '@/components/TrialModals'
 import ActivityFeed from '@/components/ActivityFeed'
 import CoachNotes from '@/components/CoachNotes'
+import IncomeBreakdownModal from '@/components/IncomeBreakdown'
 import BirthdaysCard from '@/components/Birthdays'
 import { UnpaidDeliveries } from '@/components/Deliveries'
 import OverpaidAlert from '@/components/OverpaidAlert'
@@ -29,6 +30,7 @@ function byFamily<T extends { acc: { balance: number | string }; s: StudentRow }
 }
 
 export default function Dashboard() {
+  const [incomeOpen, setIncomeOpen] = useState(false)
   const nav = useNavigate()
   const monthStart = toISODate(startOfMonth(new Date()))
   const t = today()
@@ -134,7 +136,7 @@ export default function Dashboard() {
           )}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {boxes.total}{boxes.chica}{boxes.apartado}{boxes.ahorro}
-            <StatCard label={`Entradas de ${mes}`} value={money(data.collected)} icon={TrendingUp} tone="ok" hint="Cobrado en el mes" onClick={() => nav('/cobranza')} />
+            <StatCard label={`Entradas de ${mes}`} value={money(data.collected)} icon={TrendingUp} tone="ok" hint="Cobrado en el mes · toca para ver el desglose" onClick={() => setIncomeOpen(true)} />
             {fin.gastos}
             <StatCard label={`Pendiente de cobro a ${mes}`} value={money(data.pendingTotal)} icon={Wallet} hint={`${data.openFees.length} cargos abiertos · ${data.overdueStudents.length} alumnos atrasados`} onClick={() => nav('/cobranza?f=pendiente')} />
             <StatCard label="Recargos y extras pendientes" value={money(data.lateFees + data.extras)} icon={AlertTriangle} tone={data.lateFees + data.extras > 0 ? 'bad' : undefined}
@@ -281,6 +283,7 @@ export default function Dashboard() {
             )}
           </Card>
           <ActivityFeed />
+          {incomeOpen && <IncomeBreakdownModal title={`Entradas de ${mes}`} payments={payments.data ?? []} onClose={() => setIncomeOpen(false)} />}
         </div>
       )}
     </>
