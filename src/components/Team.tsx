@@ -88,8 +88,9 @@ export function LoginScreen({ logo }: { logo: string }) {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center bg-page p-6">
-      <div className="w-full max-w-sm rounded-2xl border border-ink-600 bg-ink-800 p-6 text-center">
+    <div className="flex min-h-dvh flex-col items-center justify-center bg-[#0b0d0b] bg-cover bg-center p-6"
+      style={{ backgroundImage: `linear-gradient(rgba(0,0,0,.55), rgba(0,0,0,.7)), url(${import.meta.env.BASE_URL}fondo-acceso.jpg)` }}>
+      <div className="w-full max-w-sm rounded-2xl border border-ink-600 bg-ink-800/95 p-6 text-center shadow-2xl backdrop-blur">
         <img src={logo} alt="Escudo Deportivo Rancho Seco" className="mx-auto h-20 w-20" />
         <p className="mt-3 font-display text-2xl font-bold uppercase">Rancho Seco</p>
         <p className="text-xs uppercase tracking-[0.2em] text-muted">Control de academia</p>
