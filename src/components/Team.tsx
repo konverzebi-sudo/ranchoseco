@@ -8,7 +8,7 @@ import { supabase, unwrap } from '@/lib/supabase'
 import { getActor, getActorId, getAdminOk, isAdminRole, pinHash, setActor } from '@/lib/actor'
 import type { TeamMember } from '@/lib/types'
 
-export const PIN_LENGTH = 6
+export const PIN_LENGTH = 4
 const onlyDigits = (v: string) => v.replace(/\D/g, '').slice(0, PIN_LENGTH)
 
 /** Nombre de quien entró con su PIN en este celular o computadora. */
@@ -98,7 +98,7 @@ export function LoginScreen({ logo }: { logo: string }) {
             <p className="text-sm text-muted">Escribe tu PIN de {PIN_LENGTH} números</p>
             <Input type="password" inputMode="numeric" autoFocus value={pin} aria-label="PIN"
               onChange={(e) => { const v = onlyDigits(e.target.value); setPin(v); if (v.length === PIN_LENGTH) enter(v) }}
-              className="text-center text-2xl tracking-[0.5em]" placeholder="••••••" />
+              className="text-center text-2xl tracking-[0.5em]" placeholder="••••" />
             <Button className="w-full" icon={KeyRound} loading={busy} disabled={pin.length !== PIN_LENGTH} onClick={() => enter()}>Entrar</Button>
             <p className="text-xs text-muted">¿No tienes PIN o lo olvidaste? Pídeselo a administración.</p>
           </div>
@@ -137,10 +137,10 @@ async function savePin(id: string, hash: string, tempPin: string | null) {
 /** Sólo Jany genera y ve las claves temporales. */
 export const isJany = (name: string | null | undefined) => (name ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase() === 'jany'
 
-/** PIN temporal al azar: 6 números, no obvio y distinto al de los demás. */
+/** PIN temporal al azar: 4 números, no obvio y distinto al de los demás. */
 async function randomPin(team: TeamMember[], exceptId: string) {
   for (let i = 0; i < 50; i++) {
-    const n = crypto.getRandomValues(new Uint32Array(1))[0] % 900000 + 100000
+    const n = crypto.getRandomValues(new Uint32Array(1))[0] % 9000 + 1000
     const pin = String(n)
     if (/^(\d)\1+$/.test(pin) || '0123456789'.includes(pin) || '9876543210'.includes(pin)) continue
     if (!(await whosePin(team.filter((m) => m.id !== exceptId), pin))) return pin
@@ -159,7 +159,7 @@ function SetPinModal({ member, self, onClose, forced, activate }: { member: Team
   const save = async () => {
     if (pin.length !== PIN_LENGTH) return toast.error(`El PIN son ${PIN_LENGTH} números.`)
     if (pin !== pin2) return toast.error('Los dos PIN no coinciden.')
-    if (/^(\d)\1+$/.test(pin) || pin === '123456') return toast.error('Ese PIN es muy fácil de adivinar. Escoge otro.')
+    if (/^(\d)\1+$/.test(pin) || pin === '1234' || pin === '4321') return toast.error('Ese PIN es muy fácil de adivinar. Escoge otro.')
     setBusy(true)
     try {
       const other = await whosePin((team.data ?? []).filter((m) => m.id !== member.id), pin)
