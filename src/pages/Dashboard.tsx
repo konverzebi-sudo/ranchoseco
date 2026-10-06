@@ -10,6 +10,7 @@ import { CloseTrialModal } from '@/components/TrialModals'
 import ActivityFeed from '@/components/ActivityFeed'
 import CoachNotes from '@/components/CoachNotes'
 import BirthdaysCard from '@/components/Birthdays'
+import { UnpaidDeliveries } from '@/components/Deliveries'
 import { pendingInstallments } from '@/lib/finance'
 import type { Expense, ExpenseInstallment } from '@/lib/types'
 import { useAccounts, useCategories, useCoaches, useFees, useMatches, usePayments, useSiblingGroups, useExtraClasses, useStudents, useTrainings, useAttendanceDetail, useExpenses, useNotifications, type StudentRow } from '@/lib/api'
@@ -238,6 +239,7 @@ export default function Dashboard() {
 
           {paying && <PayInstallmentModal expense={paying.expense} inst={paying.inst} onClose={() => setPaying(null)} />}
           {closing && <CloseTrialModal student={closing} onClose={() => setClosing(null)} />}
+          <UnpaidDeliveries />
           <BirthdaysCard />
           <CoachNotes />
           <Card>

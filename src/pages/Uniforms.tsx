@@ -6,8 +6,11 @@ import { Badge, Card, ErrorState, PageHeader, SearchInput, Select, Spinner, Stat
 import { useToast } from '@/components/toast'
 import { useCategories, useFees, useStudents } from '@/lib/api'
 import { supabase, unwrap } from '@/lib/supabase'
-import { date, money, today } from '@/lib/format'
+import { money } from '@/lib/format'
 import { DELIVERIES, SIZES, isUniformConcept, type DeliveryKey } from '@/lib/uniforms'
+import { DeliveryCheck, type Item } from '@/components/Deliveries'
+
+const ITEM_OF: Record<DeliveryKey, Item> = { uniform_delivered_on: 'uniforme', training_shirt_delivered_on: 'playera', credential_delivered_on: 'credencial' }
 
 const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
@@ -121,10 +124,7 @@ export default function Uniforms() {
                     </td>
                     {DELIVERIES.map((d) => (
                       <td key={d.key}>
-                        <label className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap text-xs">
-                          <input type="checkbox" checked={!!s[d.key]} onChange={(e) => save(s.id, { [d.key]: e.target.checked ? today() : null })} className="h-5 w-5 accent-[#22C55E]" aria-label={`${d.label} de ${s.full_name}`} />
-                          {s[d.key] ? <span className="text-ok">{date(s[d.key], 'd MMM')}</span> : <span className="text-muted">Pendiente</span>}
-                        </label>
+                        <DeliveryCheck student={s} item={ITEM_OF[d.key]} compact />
                       </td>
                     ))}
                     <td>
@@ -140,7 +140,7 @@ export default function Uniforms() {
               </tbody>
             </table>
           </Card>
-          <p className="text-xs text-muted">Para cobrar una playera de entrenamiento ($250), la credencial Chivas ($150) u otro concepto de uniforme: en el expediente del niño → Pagos → Nuevo cargo. Ese dinero se manda al fondo de uniformes en el corte de caja.</p>
+          <p className="text-xs text-muted">Al palomear una entrega se revisa si ya está pagada. Si no, puedes registrar el pago ahí mismo o entregarla sin pagar (queda como adeudo en el Dashboard). Ese dinero se manda al fondo de uniformes en el corte de caja.</p>
         </div>
       )}
     </>

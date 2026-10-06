@@ -11,6 +11,7 @@ import {
 import StudentForm from '@/components/StudentForm'
 import { CollectButton } from '@/components/WhatsAppButtons'
 import { PaymentModal, FeeModal, EditPaymentModal } from '@/components/PaymentForms'
+import { DeliveryCheck, DeliveryHistory } from '@/components/Deliveries'
 import { EvaluationModal, EvolutionChart, GroupSummary, SkillRadar } from '@/components/Evaluation'
 import ReportPanel from '@/components/ReportPanel'
 import { ScholarshipReviewModal } from '@/components/ScholarshipReview'
@@ -24,7 +25,7 @@ import {
   useMedical, usePayments, usePortalToken, useSettings, useSiblingGroups, useStudent, useStudents, useTrainings, portalUrl, primaryGuardian, parentsOf, type StudentRow,
 } from '@/lib/api'
 import {
-  ACCOUNT_LABEL, ATTENDANCE_LABEL, FEE_LABEL, METHOD_LABEL, STATUS_LABEL, age, date, money, monthName, prettyPhone, shortDate, time, today,
+  ACCOUNT_LABEL, ATTENDANCE_LABEL, FEE_LABEL, METHOD_LABEL, STATUS_LABEL, age, date, money, monthName, prettyPhone, shortDate, time,
 } from '@/lib/format'
 import { attendanceRate, consecutiveAbsences, overallAverage } from '@/lib/stats'
 import { supabase, unwrap, signedUrl, BUCKETS } from '@/lib/supabase'
@@ -139,18 +140,9 @@ function GeneralTab({ s }: { s: StudentRow }) {
         <InfoRow label="Uniforme">
           <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <span>Talla <b>{s.uniform_size || '—'}</b></span>
-            {([['uniform_delivered_on', 'Uniforme entregado'], ['training_shirt_delivered_on', 'Playera de entrenamiento'], ['credential_delivered_on', 'Credencial']] as const).map(([k, label]) => (
-              <label key={k} className="flex items-center gap-1.5">
-                <input type="checkbox" checked={!!s[k]} className="h-4 w-4 accent-[#F2E30A]" onChange={async (e) => {
-                  try {
-                    unwrap(await supabase.from('students').update({ [k]: e.target.checked ? today() : null }).eq('id', s.id))
-                    await Promise.all(['student', 'students'].map((q) => qc.invalidateQueries({ queryKey: [q] })))
-                  } catch (err) { toast.error(err) }
-                }} />
-                <span className={s[k] ? 'text-ok' : ''}>{label}{s[k] ? ` · ${date(s[k], 'd MMM')}` : ''}</span>
-              </label>
-            ))}
+            {(['uniforme', 'playera', 'credencial'] as const).map((k) => <DeliveryCheck key={k} student={s} item={k} />)}
           </span>
+          <DeliveryHistory studentId={s.id} />
         </InfoRow>
         <InfoRow label="Datos de la familia">
           {s.profile_completed_at

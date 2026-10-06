@@ -51,7 +51,13 @@ type Extra = { key: string; concept: string; amount: string; on: boolean; period
  * a qué corresponde el dinero; también se pueden cobrar en el mismo pago uniforme, playera,
  * credencial, un adelanto u otro concepto. Se anota quién del equipo recibió el pago.
  */
-export function PaymentModal({ student: fixed, feeId, onClose, onAddFee }: { student?: StudentRow; feeId?: string; onClose: () => void; onAddFee?: () => void }) {
+export function PaymentModal({ student: fixed, feeId, onClose, onAddFee, preset = [], presetAmount, onPaid }: {
+  student?: StudentRow; feeId?: string; onClose: () => void; onAddFee?: () => void
+  /** Conceptos extra que ya vienen marcados (p. ej. al entregar un uniforme) */
+  preset?: string[]; presetAmount?: string
+  /** Se llama cuando el pago quedó guardado */
+  onPaid?: () => void | Promise<void>
+}) {
   const students = useStudents()
   const allFees = useFees()
   const qc = useQueryClient()
@@ -77,7 +83,7 @@ export function PaymentModal({ student: fixed, feeId, onClose, onAddFee }: { stu
   useEffect(() => {
     // Al elegir al niño se preparan los conceptos extra con su precio
     setExtras([
-      ...UNIFORM_CONCEPTS.map((u) => ({ key: u.concept, concept: u.concept, amount: u.price != null ? String(u.price) : '', on: false, period: thisPeriod })),
+      ...UNIFORM_CONCEPTS.map((u) => ({ key: u.concept, concept: u.concept, amount: preset.includes(u.concept) && presetAmount ? presetAmount : u.price != null ? String(u.price) : '', on: preset.includes(u.concept), period: thisPeriod })),
       ...(nextMonth ? [{ key: 'adv', concept: `Mensualidad ${monthName(nextMonth)} (adelanto)`, amount: String(price.toPay), on: false, period: nextMonth }] : []),
       { key: 'otro', concept: '', amount: '', on: false, period: thisPeriod, editable: true },
     ])
@@ -160,6 +166,7 @@ export function PaymentModal({ student: fixed, feeId, onClose, onAddFee }: { stu
       await refresh(qc)
       const left = owed - debtTotal
       toast.ok(`Pago de ${money(total)} registrado${left > 0.5 ? `. Todavía debe ${money(left)}` : open.length ? '. Quedó al corriente' : ''}.`)
+      if (onPaid) { await onPaid(); return }
       onClose()
     } catch (err) { toast.error(err) } finally { setSaving(false) }
   }
