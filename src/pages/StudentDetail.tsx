@@ -6,7 +6,7 @@ import {
   MessageCircle, RefreshCw, UserX, Receipt, Phone, PauseCircle, PlayCircle,
 } from 'lucide-react'
 import {
-  Avatar, Badge, Button, Card, ConfirmDialog, Empty, ErrorState, Field, Input, Modal, Spinner, Tabs, Textarea, feeTone, cx } from '@/components/ui'
+  Avatar, Badge, Button, Card, ConfirmDialog, Empty, ErrorState, Field, Input, Modal, Spinner, Tabs, Textarea, feeTone, Select, cx } from '@/components/ui'
 import StudentForm from '@/components/StudentForm'
 import { CollectButton } from '@/components/WhatsAppButtons'
 import { PaymentModal, FeeModal, EditPaymentModal } from '@/components/PaymentForms'
@@ -144,6 +144,7 @@ function GeneralTab({ s }: { s: StudentRow }) {
         <InfoRow label="Profesor">{coachNames || '—'}</InfoRow>
         <InfoRow label="Inscripción">{date(s.enrolled_at)}</InfoRow>
         <InfoRow label="Estatus">{STATUS_LABEL[s.status]}</InfoRow>
+        <InfoRow label="Posición"><PositionPicker s={s} /></InfoRow>
         <InfoRow label="Uniforme">
           <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <span>Talla <b>{s.uniform_size || '—'}</b></span>
@@ -701,5 +702,25 @@ function ActivityTab({ s }: { s: StudentRow }) {
         )}
       </Card>
     </div>
+  )
+}
+
+export const POSITIONS = ['Portero', 'Defensa', 'Medio', 'Delantero', 'Ala', 'Pívot', 'Cierre']
+/** Posición del jugador: sale sola en cada partido (ahí se puede cambiar). */
+function PositionPicker({ s }: { s: StudentRow }) {
+  const qc = useQueryClient()
+  const toast = useToast()
+  const save = async (position: string) => {
+    try {
+      unwrap(await supabase.from('students').update({ position: position || null }).eq('id', s.id))
+      await Promise.all(['student', 'students'].map((k) => qc.invalidateQueries({ queryKey: [k] })))
+      toast.ok('Posición guardada')
+    } catch (e) { toast.error(e) }
+  }
+  return (
+    <Select value={s.position ?? ''} onChange={(e) => save(e.target.value)} className="h-9 w-44 text-sm" aria-label="Posición">
+      <option value="">Sin definir</option>
+      {[...new Set([...POSITIONS, ...(s.position ? [s.position] : [])])].map((p) => <option key={p} value={p}>{p}</option>)}
+    </Select>
   )
 }

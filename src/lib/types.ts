@@ -164,6 +164,8 @@ export interface Guardian {
 }
 
 export interface Student {
+  /** Posición en la cancha (se pone en su perfil) */
+  position?: string | null
   id: string
   full_name: string
   photo_path: string | null

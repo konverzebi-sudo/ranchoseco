@@ -47,7 +47,7 @@ export default function MatchDetail() {
     const saved = new Map(players.data.map((p) => [p.student_id, p]))
     setRows(Object.fromEntries(roster.map((s) => {
       const p = saved.get(s.id)
-      return [s.id, { student_id: s.id, called: !!p, attended: p?.attended ?? true, starter: p?.starter ?? false, position: p?.position ?? '', goals: p?.goals ?? 0, assists: p?.assists ?? 0, minutes: p?.minutes ?? 0, notes: p?.notes ?? '', injured: !!p?.injured }]
+      return [s.id, { student_id: s.id, called: !!p, attended: p?.attended ?? true, starter: p?.starter ?? false, position: p?.position ?? s.position ?? '', goals: p?.goals ?? 0, assists: p?.assists ?? 0, minutes: p?.minutes ?? 0, notes: p?.notes ?? '', injured: !!p?.injured }]
     })))
     setDirty(false)
   }, [players.data, roster, match])
@@ -135,27 +135,21 @@ export default function MatchDetail() {
                     </div>
                   </div>
                   {r.called && r.attended && (
-                    <div className="mt-3 grid grid-cols-2 gap-3 border-t border-ink-700 pt-3 text-sm sm:grid-cols-[auto_1fr_auto_auto_auto] sm:items-center">
+                    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-ink-700 pt-3 text-sm">
                       <button onClick={() => upd(s.id, { starter: !r.starter })}
                         className={cx('rounded-xl border px-3 py-2 text-sm', r.starter ? 'border-ok bg-ok/15 text-ok' : 'border-ink-600 text-muted')}>
                         {r.starter ? 'Titular' : 'Suplente'}
                       </button>
-                      <Input list="positions" value={r.position ?? ''} onChange={(e) => upd(s.id, { position: e.target.value })} placeholder="Posición" className="h-10" aria-label="Posición" />
-                      <div className="flex items-center gap-2"><span className="text-xs text-muted">Goles</span><Counter label="goles" value={r.goals} onChange={(v) => upd(s.id, { goals: v })} /></div>
-                      <div className="flex items-center gap-2"><span className="text-xs text-muted">Asist.</span><Counter label="asistencias" value={r.assists} onChange={(v) => upd(s.id, { assists: v })} /></div>
-                      <div className="flex items-center gap-2"><span className="text-xs text-muted">Min</span>
-                        <Input type="number" min="0" max="200" inputMode="numeric" value={r.minutes || ''} onChange={(e) => upd(s.id, { minutes: Math.min(200, Math.max(0, Number(e.target.value) || 0)) })} className="h-10 w-20" aria-label="Minutos jugados" />
-                      </div>
+                      <Input list="positions" value={r.position ?? ''} onChange={(e) => upd(s.id, { position: e.target.value })} placeholder="Posición" className="h-10 w-36" aria-label="Posición" />
+                      <button onClick={() => upd(s.id, { injured: !r.injured })}
+                        className={cx('inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm', r.injured ? 'border-bad bg-bad/15 text-bad' : 'border-ink-600 text-muted')}>
+                        <HeartPulse className="h-4 w-4" /> {r.injured ? 'Se lesionó' : '¿Lesión?'}
+                      </button>
+                      <div className="ml-auto flex items-center gap-2"><span className="text-xs text-muted">Goles</span><Counter label="goles" value={r.goals} onChange={(v) => upd(s.id, { goals: v })} /></div>
                     </div>
                   )}
                   {r.called && (
                     <div className="mt-2 flex flex-wrap items-center gap-2">
-                      {r.attended && (
-                        <button onClick={() => upd(s.id, { injured: !r.injured })}
-                          className={cx('inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm', r.injured ? 'border-bad bg-bad/15 text-bad' : 'border-ink-600 text-muted')}>
-                          <HeartPulse className="h-4 w-4" /> {r.injured ? 'Se lesionó' : '¿Lesionado?'}
-                        </button>
-                      )}
                       <Input value={r.notes} onChange={(e) => upd(s.id, { notes: e.target.value })} className="h-10 min-w-0 flex-1"
                         placeholder={r.attended ? 'Nota (comportamiento, lesión, algo a destacar…)' : 'Por qué faltó (opcional)'} aria-label="Nota del niño" />
                     </div>
