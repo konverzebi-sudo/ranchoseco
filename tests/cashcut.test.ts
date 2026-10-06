@@ -122,3 +122,17 @@ describe('sueldos pendientes y vacaciones', () => {
     expect(prepaidUntil([{ id: 'x', items: v }]).get('Tonny')).toBe('2026-12-30')
   })
 })
+
+describe('sueldos semanales en cada corte', () => {
+  const base = { payments: [], fees: [], names: new Map<string, string>(), expenses: [], coaches: [{ id: 'c', full_name: 'Juan', active: true }], coachPay: [{ coach_id: 'c', amount: 700, frequency: 'semanal' as const }] }
+  const sal = (from: string, to: string) => periodSummary({ ...base, from, to } as never).outs.map((o) => o.date)
+  it('un corte que termina en lunes trae los sueldos del miércoles de esa semana', () => {
+    expect(sal('2026-10-01', '2026-10-05')).toEqual(['2026-10-07'])
+  })
+  it('el siguiente corte no los repite', () => {
+    expect(sal('2026-10-06', '2026-10-12')).toEqual(['2026-10-14'])
+  })
+  it('cortes de jueves a miércoles quedan igual que antes', () => {
+    expect(sal('2026-09-24', '2026-09-30')).toEqual(['2026-09-30'])
+  })
+})

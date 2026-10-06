@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { startOfWeek } from 'date-fns'
-import { TrendingUp, TrendingDown, Scale, Banknote, Download, MessageCircle, Printer, Plus, Trash2, Vault, PiggyBank, Check, Pencil, CheckCheck, X } from 'lucide-react'
+import { TrendingUp, TrendingDown, Scale, Banknote, Download, MessageCircle, Printer, Plus, Trash2, Vault, PiggyBank, Check, Pencil, CheckCheck, X, ChevronDown } from 'lucide-react'
 import { Badge, Button, Card, ConfirmDialog, ErrorState, Field, IconButton, Input, Modal, PageHeader, Spinner, StatCard, Textarea, cx } from '@/components/ui'
 import { useToast } from '@/components/toast'
 import RangePicker from '@/components/RangePicker'
@@ -73,6 +73,8 @@ export default function WeeklyCut() {
   const [review, setReview] = useState<Review>({})
   const [editing, setEditing] = useState<string | null>(null)
   const [manual, setManual] = useState<CutItem[]>([])
+  // Entradas / Salidas encogidas (toca el título para abrir o cerrar)
+  const [folded, setFolded] = useState<Record<string, boolean>>({})
   const items: CutItem[] = useMemo(() => {
     // Sueldos que quedaron pendientes en cortes anteriores y vacaciones ya pagadas por adelantado
     const pend = pendingSalaries(cuts.data ?? [], editingCut?.id)
@@ -208,10 +210,20 @@ export default function WeeklyCut() {
   const ReviewList = ({ type, title }: { type: CutItem['type']; title: string }) => {
     const list = items.filter((i) => i.type === type)
     const done = list.filter((i) => i.approved).length
+    const isFolded = !!folded[type]
+    const sumAll = list.filter(counts).reduce((a, i) => a + itemValue(i), 0)
     return (
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-600 px-5 py-4">
-          <h3 className="font-display text-lg font-bold uppercase tracking-wide">{title} <span className="font-sans text-sm font-normal normal-case text-muted">· {done} de {list.length} revisadas</span></h3>
+          <button type="button" onClick={() => setFolded((f) => ({ ...f, [type]: !f[type] }))} aria-expanded={!isFolded}
+            className="-m-2 flex items-center gap-2 rounded-xl p-2 text-left hover:bg-ink-700/50" title={isFolded ? 'Toca para ver el desglose' : 'Toca para encoger'}>
+            <ChevronDown className={cx('h-5 w-5 shrink-0 text-brand transition-transform', isFolded && '-rotate-90')} />
+            <span>
+              <span className="font-display text-lg font-bold uppercase tracking-wide">{title}</span>
+              <span className="text-sm text-muted"> · {done} de {list.length} revisadas · {cents(sumAll)}</span>
+              <span className="block text-xs text-muted">{isFolded ? 'Toca para ver el desglose' : 'Toca aquí para encoger'}</span>
+            </span>
+          </button>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="ghost" icon={Plus} onClick={() => setAdding(type)}>{type === 'entrada' ? 'Agregar pago' : 'Agregar gasto'}</Button>
             {type === 'salida' && <Button size="sm" variant="ghost" onClick={() => setVacation(vacation ? null : { weeks: '2', until: '' })}>🏖 Vacaciones</Button>}
@@ -245,7 +257,7 @@ export default function WeeklyCut() {
           <ManualLineForm type={type} defaultDate={to} onCancel={() => setAdding(null)}
             onAdd={(it) => { setManual((m) => [...m, it]); setAdding(null) }} />
         )}
-        {list.length === 0 ? <p className="px-5 py-6 text-center text-sm text-muted">Nada en estas fechas.</p> : (
+        {isFolded ? null : list.length === 0 ? <p className="px-5 py-6 text-center text-sm text-muted">Nada en estas fechas.</p> : (
           <ul className="divide-y divide-ink-700">
             {(type === 'salida'
               ? OUT_GROUPS.flatMap((g) => {

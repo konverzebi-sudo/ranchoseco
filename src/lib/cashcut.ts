@@ -43,6 +43,13 @@ export function carryOver(prev: Pick<CashCut, 'distribution'> | undefined) {
  * entradas = cobros a alumnos + préstamos recibidos;
  * salidas = sueldos, gastos y pagos de préstamos (los pagos en partes pendientes no cuentan).
  */
+/** Lunes de la semana de esa fecha. */
+export function weekMonday(iso: string) {
+  const d = new Date(iso + 'T12:00:00')
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export function periodSummary(opts: {
   from: string; to: string
   payments: Payment[]; fees: FeeBalance[]; names: Map<string, string>
@@ -55,10 +62,17 @@ export function periodSummary(opts: {
     return { ...p, day: p.paid_at.slice(0, 10), student: names.get(p.student_id) ?? '—', concept: f ? `${f.concept}` : 'Pago', kind: f?.concept ?? 'Otro' }
   }).sort((a, b) => a.day.localeCompare(b.day) || a.student.localeCompare(b.student))
   const loans = loansReceived(expenses, from, to)
+  // Lo semanal (sueldos del miércoles) va en el corte que tiene el LUNES de esa semana:
+  // así cada corte trae los sueldos de su semana aunque se haga antes del miércoles.
+  const toPlus2 = nextDay(nextDay(to))
   const months = new Set<string>()
-  for (let d = from; d <= to; d = nextDay(d)) months.add(d.slice(0, 7))
+  for (let d = from; d <= toPlus2; d = nextDay(d)) months.add(d.slice(0, 7))
   const outs = [...months].flatMap((month) => expenseEntries({ month, expenses, coaches, coachPay }))
-    .filter((e) => e.date >= from && e.date <= to && !e.pending)
+    .filter((e) => {
+      if (e.pending) return false
+      const day = e.detail.endsWith('semanal') ? weekMonday(e.date) : e.date
+      return day >= from && day <= to
+    })
   const byMethod = new Map<PaymentMethod, { n: number; total: number }>()
   for (const p of ins) { const r = byMethod.get(p.method) ?? { n: 0, total: 0 }; r.n++; r.total += Number(p.amount); byMethod.set(p.method, r) }
   const byKind = new Map<string, { n: number; total: number }>()
