@@ -5,7 +5,7 @@ import { Badge, Button, Card, Field, Input, Modal, Select, cx } from './ui'
 import { useToast } from './toast'
 import { useTeam } from '@/lib/api'
 import { supabase, unwrap } from '@/lib/supabase'
-import { getActor, getActorId, getAdminOk, isAdminRole, pinHash, setActor } from '@/lib/actor'
+import { getActor, getActorId, getAdminOk, getViewAs, isAdminRole, pinHash, setActor, setViewAs } from '@/lib/actor'
 import type { TeamMember } from '@/lib/types'
 
 export const PIN_LENGTH = 4
@@ -21,6 +21,17 @@ export function useActor() {
     return () => window.removeEventListener('rs-actor', on)
   }, [])
   return actor
+}
+
+/** A quién está "viendo como" Jany (vacío = su propia vista). */
+export function useViewAs() {
+  const [v, set] = useState(getViewAs)
+  useEffect(() => {
+    const on = () => set(getViewAs())
+    window.addEventListener('rs-actor', on)
+    return () => window.removeEventListener('rs-actor', on)
+  }, [])
+  return v
 }
 
 /** Busca de quién es el PIN (cada persona tiene uno distinto). */
@@ -114,6 +125,7 @@ export function WhoAmI() {
   const actor = useActor()
   const me = team.data?.find((m) => m.id === getActorId())
   const [changing, setChanging] = useState(false)
+  const viewAs = useViewAs()
   return (
     <div className="text-xs text-muted">
       <p className="mb-1 flex items-center gap-1.5"><UserRound className="h-3.5 w-3.5" /> Entraste como</p>
@@ -122,7 +134,31 @@ export function WhoAmI() {
         <button onClick={() => setChanging(true)} className="rounded-lg p-1.5 hover:bg-ink-700 hover:text-fg" title="Cambiar mi PIN" aria-label="Cambiar mi PIN"><KeyRound className="h-4 w-4" /></button>
         <button onClick={() => setActor('', '')} className="flex items-center gap-1 rounded-lg px-2 py-1.5 hover:bg-ink-700 hover:text-fg" title="Salir"><LogOut className="h-4 w-4" /> Salir</button>
       </div>
+      {isJany(me?.full_name) && (
+        <label className="mt-2 block">
+          <span className="mb-1 block">Ver como…</span>
+          <Select value={viewAs} onChange={(e) => setViewAs(e.target.value)} className="h-9 text-sm" aria-label="Ver la plataforma como otra persona">
+            <option value="">Mi vista (Jany)</option>
+            {(team.data ?? []).filter((m) => m.active && m.id !== me?.id).map((m) => <option key={m.id} value={m.id}>{m.full_name}{m.role ? ` · ${m.role}` : ''}</option>)}
+          </Select>
+        </label>
+      )}
       {changing && me && <SetPinModal member={me} self onClose={() => setChanging(false)} />}
+    </div>
+  )
+}
+
+/** Aviso arriba cuando Jany está viendo como otra persona. */
+export function ViewAsBanner() {
+  const team = useTeam()
+  const viewAs = useViewAs()
+  const me = team.data?.find((m) => m.id === getActorId())
+  const other = team.data?.find((m) => m.id === viewAs)
+  if (!isJany(me?.full_name) || !other) return null
+  return (
+    <div className="sticky top-0 z-40 flex flex-wrap items-center justify-center gap-3 bg-info px-4 py-2 text-sm font-semibold text-ink">
+      Estás viendo la plataforma como {other.full_name}{other.role ? ` (${other.role})` : ''}
+      <button onClick={() => setViewAs('')} className="rounded-lg bg-ink px-3 py-1 text-xs text-white">Volver a mi vista</button>
     </div>
   )
 }

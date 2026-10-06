@@ -8,8 +8,17 @@ export const getActor = () => read(NAME_KEY)
 export const getActorId = () => read(ID_KEY)
 /** Administración que ya puso su PIN en este aparato (id de la persona). */
 export const getAdminOk = () => read(ADMIN_OK_KEY)
+const VIEW_AS_KEY = 'rs-view-as'
+/** Jany puede ver la plataforma como otra persona (id de esa persona). */
+export const getViewAs = () => read(VIEW_AS_KEY)
+export function setViewAs(id: string) {
+  try { if (id) localStorage.setItem(VIEW_AS_KEY, id); else localStorage.removeItem(VIEW_AS_KEY) } catch { /* sin almacenamiento */ }
+  window.dispatchEvent(new Event('rs-actor'))
+}
+
 export function setActor(id: string, name: string, adminOk = false) {
   try {
+    localStorage.removeItem(VIEW_AS_KEY)
     if (id) { localStorage.setItem(ID_KEY, id); localStorage.setItem(NAME_KEY, name) }
     else { localStorage.removeItem(ID_KEY); localStorage.removeItem(NAME_KEY) }
     if (id && adminOk) localStorage.setItem(ADMIN_OK_KEY, id)

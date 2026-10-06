@@ -8,7 +8,7 @@ import { Spinner, cx } from './ui'
 import ErrorBoundary from './ErrorBoundary'
 import AutoMonthlyFees from './AutoMonthlyFees'
 import { AutoTrainings } from './WeeklySchedule'
-import { ForceOwnPin, LoginScreen, WhoAmI } from './Team'
+import { ForceOwnPin, LoginScreen, ViewAsBanner, WhoAmI } from './Team'
 import { profeCanOpen, useRole, PROFE_PATHS } from '@/lib/role'
 import { parentsOf, useCategories, useStudents } from '@/lib/api'
 
@@ -160,7 +160,7 @@ export default function Layout() {
         </button>
       </header>
 
-      <main className="min-w-0 flex-1 px-4 pb-28 pt-5 sm:px-6 lg:px-8 lg:pb-10 lg:pt-8">
+      <main className="min-w-0 flex-1 px-4 pb-28 pt-5 sm:px-6 lg:px-8 lg:pb-10 lg:pt-8"><ViewAsBanner />
         <div className="mx-auto max-w-7xl"><AutoMonthlyFees /><AutoTrainings /><ErrorBoundary resetKey={loc.pathname}><Suspense fallback={<Spinner />}>{role.isProfe && !profeCanOpen(loc.pathname) ? <NoAccess /> : <Outlet />}</Suspense></ErrorBoundary></div>
       </main>
 
