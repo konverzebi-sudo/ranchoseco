@@ -16,16 +16,16 @@ import type { FeeBalance } from '@/lib/types'
 export type Item = 'uniforme' | 'playera' | 'credencial'
 export const ITEMS: Record<Item, { key: 'uniform_delivered_on' | 'training_shirt_delivered_on' | 'credential_delivered_on'; label: string; concept: string; price: number | null; match: RegExp }> = {
   uniforme: { key: 'uniform_delivered_on', label: 'Uniforme', concept: 'Uniforme', price: null, match: /^uniforme|alta en chivas/i },
-  playera: { key: 'training_shirt_delivered_on', label: 'Playera de entrenamiento', concept: 'Playera de entrenamiento', price: 250, match: /playera/i },
+  playera: { key: 'training_shirt_delivered_on', label: 'Playera de entrenamiento', concept: 'Playera de entrenamiento (reposición)', price: 250, match: /playera/i },
   credencial: { key: 'credential_delivered_on', label: 'Credencial', concept: 'Credencial Chivas', price: 150, match: /credencial|alta en chivas/i },
 }
 /** Sólo en octubre 2026: entregas que ya se habían pagado antes de usar la plataforma. */
 const PRE_PLATFORM_UNTIL = '2026-10-31'
-const PAY_LABEL = { pagado: 'Pagado', adeudo: 'Sin pagar (adeudo)', previo: 'Pagado antes de la plataforma' } as const
+const PAY_LABEL = { pagado: 'Pagado', adeudo: 'Sin pagar (adeudo)', previo: 'Pagado antes de la plataforma', incluida: 'Incluida en la inscripción' } as const
 
 export interface Delivery {
   id: string; student_id: string; item: Item; delivered_on: string; delivered_by: string | null
-  payment: 'pagado' | 'adeudo' | 'previo'; fee_id: string | null; notes: string | null; created_at: string
+  payment: 'pagado' | 'adeudo' | 'previo' | 'incluida'; fee_id: string | null; notes: string | null; created_at: string
 }
 
 export function useDeliveries() {
@@ -101,13 +101,16 @@ function DeliverModal({ student, item, onClose }: { student: StudentRow; item: I
   const [who, setWho] = useState(getActor)
   const [on, setOn] = useState(today())
   const [mode, setMode] = useState<'pagar' | 'adeudo' | 'previo'>('pagar')
+  // Playera: la primera va incluida en la inscripción; sólo se cobra si es reposición (se perdió)
+  const isShirt = item === 'playera'
+  const [replacement, setReplacement] = useState(false)
   const [amount, setAmount] = useState(() => String(st.unpaid ? st.unpaid.balance : d.price ?? ''))
   const [notes, setNotes] = useState('')
   const [paying, setPaying] = useState(false)
   const [saving, setSaving] = useState(false)
   const canPrevio = today() <= PRE_PLATFORM_UNTIL
 
-  const record = async (payment: 'pagado' | 'adeudo' | 'previo', feeId: string | null) => {
+  const record = async (payment: Delivery['payment'], feeId: string | null) => {
     unwrap(await supabase.from('deliveries').insert({ student_id: student.id, item, delivered_on: on, delivered_by: who, payment, fee_id: feeId, notes: notes.trim() || null }))
     unwrap(await supabase.from('students').update({ [d.key]: on }).eq('id', student.id))
     await Promise.all(['students', 'student', 'deliveries', 'fees', 'accounts', 'payments'].map((k) => qc.invalidateQueries({ queryKey: [k] })))
@@ -117,7 +120,8 @@ function DeliverModal({ student, item, onClose }: { student: StudentRow; item: I
     if (!who) return toast.error('Escoge quién lo entregó.')
     setSaving(true)
     try {
-      if (st.paid && !st.unpaid) await record('pagado', st.paid.id)
+      if (isShirt && !replacement) await record('incluida', null)
+      else if (st.paid && !st.unpaid) await record('pagado', st.paid.id)
       else if (mode === 'previo') await record('previo', null)
       else if (mode === 'adeudo') {
         let feeId = st.unpaid?.id ?? null
@@ -148,14 +152,25 @@ function DeliverModal({ student, item, onClose }: { student: StudentRow; item: I
   }
 
   const isPaid = !!st.paid && !st.unpaid
+  const free = isShirt && !replacement
   return (
     <Modal open onClose={onClose} title={`Entregar ${d.label.toLowerCase()} · ${student.full_name}`}
       footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button>
-        <Button icon={isPaid || mode !== 'pagar' ? PackageCheck : Wallet} loading={saving} onClick={save}>
-          {isPaid ? 'Registrar entrega' : mode === 'pagar' ? 'Registrar el pago' : mode === 'adeudo' ? 'Entregar sin pagar' : 'Registrar entrega'}
+        <Button icon={free || isPaid || mode !== 'pagar' ? PackageCheck : Wallet} loading={saving} onClick={save}>
+          {free || isPaid ? 'Registrar entrega' : mode === 'pagar' ? 'Registrar el pago' : mode === 'adeudo' ? 'Entregar sin pagar' : 'Registrar entrega'}
         </Button></>}>
       <div className="space-y-4">
-        {isPaid ? (
+        {isShirt && (
+          <div className="space-y-2">
+            {([[false, 'Va incluida en la inscripción', 'No se cobra aparte.'], [true, 'Es reposición: se le perdió', `Se cobra ${money(d.price ?? 0)}.`]] as [boolean, string, string][]).map(([v, t, h]) => (
+              <label key={String(v)} className={cx('flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-sm', replacement === v ? 'border-brand bg-brand-dim' : 'border-ink-600')}>
+                <input type="radio" name="playera" checked={replacement === v} onChange={() => setReplacement(v)} className="mt-1 h-4 w-4 accent-[#F2E30A]" />
+                <span><b>{t}</b><span className="block text-xs text-muted">{h}</span></span>
+              </label>
+            ))}
+          </div>
+        )}
+        {free ? null : isPaid ? (
           <p className="flex items-start gap-2 rounded-xl border border-ok/50 bg-ok/10 p-3 text-sm"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-ok" />
             <span>Ya está pagado: <b>{st.paid!.concept}</b> ({money(st.paid!.total_due)}). Sólo falta anotar quién lo entregó.</span></p>
         ) : (

@@ -10,7 +10,8 @@ export const SIZES = ['4', '6', '8', '10', '12', '14', '16', 'XCH', 'CH', 'M', '
 
 /** Conceptos de cobro de uniformes: ese dinero se guarda aparte, en el fondo de uniformes. */
 export const UNIFORM_CONCEPTS: { concept: string; price: number | null }[] = [
-  { concept: 'Playera de entrenamiento', price: 250 },
+  // La primera playera va incluida en la inscripción; sólo se cobra si se pierde
+  { concept: 'Playera de entrenamiento (reposición)', price: 250 },
   { concept: 'Credencial Chivas', price: 150 },
   { concept: 'Alta en Chivas (uniforme y credencial)', price: 100 },
   { concept: 'Uniforme', price: null },
