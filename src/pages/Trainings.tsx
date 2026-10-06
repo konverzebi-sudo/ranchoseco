@@ -2,16 +2,18 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { subDays } from 'date-fns'
-import { Plus, Dumbbell, Pencil, ClipboardCheck, Trash2 } from 'lucide-react'
+import { Plus, Dumbbell, Pencil, ClipboardCheck, Trash2, CalendarClock } from 'lucide-react'
 import { Badge, Button, Card, ConfirmDialog, Empty, ErrorState, Field, Input, Modal, PageHeader, Select, Spinner, Textarea } from '@/components/ui'
 import { useToast } from '@/components/toast'
 import { useAttendanceDetail, useCategories, useCoachCategories, useCoaches, useTrainings } from '@/lib/api'
 import { supabase, unwrap } from '@/lib/supabase'
+import { ScheduleModal } from '@/components/WeeklySchedule'
 import { date, time, toISODate, today } from '@/lib/format'
 import { attendanceRate } from '@/lib/stats'
 import type { Training } from '@/lib/types'
 
 export default function Trainings() {
+  const [weekly, setWeekly] = useState(false)
   const categories = useCategories()
   const coaches = useCoaches()
   const [cat, setCat] = useState('')
@@ -33,7 +35,8 @@ export default function Trainings() {
   return (
     <>
       <PageHeader title="Entrenamientos" subtitle="Objetivos, ejercicios y asistencia de cada sesión."
-        actions={<Button icon={Plus} onClick={() => setEditing('new')}>Registrar entrenamiento</Button>} />
+        actions={<div className="flex flex-wrap gap-2"><Button variant="secondary" icon={CalendarClock} onClick={() => setWeekly(true)}>Horario semanal</Button><Button icon={Plus} onClick={() => setEditing('new')}>Registrar entrenamiento</Button></div>} />
+      {weekly && <ScheduleModal defaultCategory={cat || undefined} onClose={() => setWeekly(false)} />}
       <div className="mb-4 grid gap-2 sm:grid-cols-[1fr_200px]">
         <Select value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Categoría">
           <option value="">Todas las categorías</option>

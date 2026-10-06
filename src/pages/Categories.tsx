@@ -8,6 +8,8 @@ import { useCategories, useCoachCategories, useCoaches, useExtraClasses, useSett
 import { supabase, unwrap } from '@/lib/supabase'
 import { money } from '@/lib/format'
 import type { Category } from '@/lib/types'
+import { ScheduleEditor, generateTrainings, saveSchedule } from '@/components/WeeklySchedule'
+import { sortSlots, type Slot } from '@/lib/schedule'
 
 export default function Categories() {
   const categories = useCategories()
@@ -83,6 +85,7 @@ function CategoryModal({ category, onClose }: { category?: Category; onClose: ()
     ? (allStudents ?? []).filter((s) => s.status === 'activo' && !members.includes(s.id) && normTxt(s.full_name).includes(normTxt(q.trim()))).slice(0, 6)
     : []
   const [assigned, setAssigned] = useState<Set<string>>(new Set((cc ?? []).filter((x) => x.category_id === category?.id).map((x) => x.coach_id)))
+  const [slots, setSlots] = useState<Slot[]>(() => sortSlots((category?.weekly_schedule ?? []) as Slot[]))
   const [saving, setSaving] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
 
@@ -92,7 +95,7 @@ function CategoryModal({ category, onClose }: { category?: Category; onClose: ()
     setSaving(true)
     try {
       const payload = {
-        name: f.name.trim(), description: f.description.trim() || null, schedule: f.schedule.trim() || null,
+        name: f.name.trim(), description: f.description.trim() || null,
         monthly_fee: f.monthly_fee ? Number(f.monthly_fee) : null, active: f.active, is_extra: f.is_extra,
         ...(category ? {} : { sort_order: (categories?.length ?? 0) }),
       }
@@ -101,13 +104,19 @@ function CategoryModal({ category, onClose }: { category?: Category; onClose: ()
       else id = (unwrap(await supabase.from('categories').insert(payload).select('id').single()) as { id: string }).id
       unwrap(await supabase.from('coach_categories').delete().eq('category_id', id!))
       if (assigned.size) unwrap(await supabase.from('coach_categories').insert([...assigned].map((coach_id) => ({ coach_id, category_id: id }))))
+      if (slots.some((s) => !s.start)) throw new Error('Pon la hora de inicio de cada día de entrenamiento.')
+      const saved = (unwrap(await supabase.from('categories').select('*').eq('id', id!)) as Category[])[0]
+      if (saved && (slots.length || (saved.weekly_schedule ?? []).length)) {
+        await saveSchedule(saved, slots)
+        await generateTrainings(unwrap(await supabase.from('categories').select('*').eq('id', id!)) as Category[])
+      }
       if (f.is_extra) {
         const removed = initialMembers.filter((m) => !members.includes(m))
         const added = members.filter((m) => !initialMembers.includes(m))
         if (removed.length) unwrap(await supabase.from('student_extra_classes').delete().eq('category_id', id!).in('student_id', removed))
         if (added.length) unwrap(await supabase.from('student_extra_classes').insert(added.map((student_id) => ({ student_id, category_id: id }))))
       }
-      await Promise.all(['categories', 'coach_categories', 'extra_classes'].map((k) => qc.invalidateQueries({ queryKey: [k] })))
+      await Promise.all(['categories', 'coach_categories', 'extra_classes', 'trainings'].map((k) => qc.invalidateQueries({ queryKey: [k] })))
       toast.ok('Categoría guardada')
       onClose()
     } catch (err) { toast.error(err) } finally { setSaving(false) }
@@ -134,9 +143,11 @@ function CategoryModal({ category, onClose }: { category?: Category; onClose: ()
         <Field label="Nombre *"><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Ej. 2014 o Sub-12" autoFocus /></Field>
         <Field label="Descripción"><Input value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="Nacidos en 2014" /></Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Horario"><Input value={f.schedule} onChange={(e) => setF({ ...f, schedule: e.target.value })} placeholder="Lun y Mié 6:00 pm" /></Field>
           <Field label="Mensualidad" hint="Vacío = usar la mensualidad general"><Input type="number" inputMode="decimal" min="0" value={f.monthly_fee} onChange={(e) => setF({ ...f, monthly_fee: e.target.value })} /></Field>
         </div>
+        <Field label="Días y horario de entrenamiento" hint="Igual cada semana. Los entrenamientos se crean solos.">
+          <ScheduleEditor value={slots} onChange={setSlots} />
+        </Field>
         <Field label="Profesor de la categoría" hint="Cada categoría tiene un solo profesor. Un profesor puede llevar varias categorías.">
           {coaches?.length ? (
             <div className="flex flex-wrap gap-2">

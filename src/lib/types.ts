@@ -28,6 +28,9 @@ export interface Category {
   sort_order: number
   active: boolean
   is_extra?: boolean
+  /** Días y horas que entrena cada semana */
+  weekly_schedule?: { dow: number; start: string; end: string }[] | null
+  schedule_generated_until?: string | null
 }
 
 export interface ExtraClass {
