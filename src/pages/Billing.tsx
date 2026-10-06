@@ -73,6 +73,12 @@ export default function Billing() {
         r.balance === 0 && r.hasFees)
       .sort((a, b) => b.balance - a.balance)
   }, [fees.data, students.data, cat, period, q, filter, soon, t])
+  // Hermanos juntos: un adeudo por familia
+  const families = useMemo(() => {
+    const m = new Map<string, typeof rows>()
+    for (const r of rows) { const k = r.s.sibling_group_id ?? r.s.id; m.set(k, [...(m.get(k) ?? []), r]) }
+    return [...m.values()].sort((a, b) => b.reduce((x, r) => x + r.balance, 0) - a.reduce((x, r) => x + r.balance, 0))
+  }, [rows])
 
   const totals = useMemo(() => {
     const active = new Set((students.data ?? []).filter((s) => s.status === 'activo').map((s) => s.id))
@@ -146,7 +152,10 @@ export default function Billing() {
  /></Card>
             ) : (
               <ul className="space-y-2">
-                {rows.map((r) => {
+                {families.map((fam) => {
+                  const famTotal = fam.reduce((x, r) => x + r.balance, 0)
+                  const isFam = fam.length > 1
+                  const cards = fam.map((r) => {
                   const g = primaryGuardian(r.s)
                   return (
                     <li key={r.s.id}>
@@ -174,7 +183,7 @@ export default function Billing() {
                           {r.balance > 0 && (
                             <div className="flex gap-2">
                               {r.toReview.length > 0 && <Button icon={HelpCircle} onClick={() => setReviewing({ fee: r.toReview[0], name: r.s.full_name })}>¿Beca?</Button>}
-                              {r.collectible > 0 && <CollectButton student={r.s} size="md" />}
+                              {r.collectible > 0 && !isFam && <CollectButton student={r.s} size="md" />}
                               <Button variant="secondary" icon={Receipt} onClick={() => setPaying(r.s)}>Pago</Button>
                             </div>
                           )}
@@ -182,6 +191,17 @@ export default function Billing() {
                       </Card>
                     </li>
                   )
+                  })
+                  return isFam ? (
+                    <li key={'fam' + fam[0].s.id} className="rounded-2xl border-2 border-info/40 p-2">
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-2 pt-1">
+                        <p className="text-sm"><b>Familia</b> <span className="text-muted">· hermanos · un solo adeudo</span></p>
+                        <div className="flex items-center gap-2"><span className="font-display text-xl font-bold">{money(famTotal)}</span>
+                          {fam.some((r) => r.collectible > 0) && <CollectButton student={fam[0].s} size="md" label="Cobrar a la familia" />}</div>
+                      </div>
+                      <ul className="space-y-2">{cards}</ul>
+                    </li>
+                  ) : cards
                 })}
               </ul>
             )}

@@ -73,6 +73,7 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase/migrations/0026_lista_doble_reporte_partido.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0027_horario_semanal.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0028_entregas.sql', 'utf8'))
+  await db.exec(readFileSync('supabase/migrations/0029_nunca_pagado_de_mas.sql', 'utf8'))
   await db.exec('update academia.settings set open_mode = false') // las pruebas por rol corren con el sitio cerrado
 
   const users: [string, string, string][] = [
@@ -535,5 +536,22 @@ describe('corregir pagos', () => {
     const r = (await db.query<any>(`select balance from academia.fee_balances where id = '${fee}'`)).rows[0]
     expect(Number(r.balance)).toBe(0)
     await expect(db.exec(`update academia.payments set amount = 551 where id = '${pay}'`)).rejects.toThrow(/excede/)
+  })
+})
+
+describe('nunca pagado de más', () => {
+  it('no se puede pasar un pago a otro cargo que ya está pagado', async () => {
+    const a = (await db.query<any>(`insert into academia.fees (student_id, concept, period, amount, due_date) values ('${STU_2}', 'Mensualidad', '2027-01-01', 500, '2099-01-10') returning id`)).rows[0].id
+    const b = (await db.query<any>(`insert into academia.fees (student_id, concept, period, amount, due_date) values ('${STU_2}', 'Mensualidad', '2027-02-01', 500, '2099-02-10') returning id`)).rows[0].id
+    await db.exec(`insert into academia.payments (fee_id, student_id, amount) values ('${a}', '${STU_2}', 500)`)
+    const p = (await db.query<any>(`insert into academia.payments (fee_id, student_id, amount) values ('${b}', '${STU_2}', 50) returning id`)).rows[0].id
+    await expect(db.exec(`update academia.payments set fee_id = '${a}' where id = '${p}'`)).rejects.toThrow(/excede/)
+  })
+  it('un descuento no puede dejar el cargo pagado de más', async () => {
+    const f = (await db.query<any>(`insert into academia.fees (student_id, concept, period, amount, due_date) values ('${STU_2}', 'Mensualidad', '2027-03-01', 550, '2099-03-10') returning id`)).rows[0].id
+    await db.exec(`insert into academia.payments (fee_id, student_id, amount) values ('${f}', '${STU_2}', 500)`)
+    await expect(db.exec(`update academia.fees set discount = 100 where id = '${f}'`)).rejects.toThrow(/pagado de más/)
+    await db.exec(`update academia.fees set discount = 50 where id = '${f}'`)
+    expect(Number((await db.query<any>(`select balance from academia.fee_balances where id = '${f}'`)).rows[0].balance)).toBe(0)
   })
 })

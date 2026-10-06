@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { MessageCircle, Phone } from 'lucide-react'
 import { Button, Field, Input, Modal, Textarea } from './ui'
 import { useToast } from './toast'
-import { useFees, usePortalToken, useSettings, portalUrl, primaryGuardian, type StudentRow } from '@/lib/api'
+import { useFees, usePortalToken, useSettings, useStudents, portalUrl, primaryGuardian, type StudentRow } from '@/lib/api'
 import { collectionMessage, waLink } from '@/lib/whatsapp'
 import { isValidPhone, money, normalizePhone, prettyPhone } from '@/lib/format'
 import { supabase, unwrap } from '@/lib/supabase'
@@ -75,11 +75,25 @@ function CollectModal({ student, onClose }: { student: StudentRow; onClose: () =
   const { data: settings } = useSettings()
   const { data: fees } = useFees()
   const { data: token } = usePortalToken(student.id)
-  const guardian = primaryGuardian(student)
-  const studentFees = useMemo(() => (fees ?? []).filter((f) => f.student_id === student.id && Number(f.balance) > 0 && f.status !== 'por_confirmar'), [fees, student.id])
+  const { data: all } = useStudents()
+  // Hermanos: un solo adeudo y un solo mensaje para la familia
+  const family = useMemo(() => {
+    const g = student.sibling_group_id
+    const sibs = g ? (all ?? []).filter((x) => x.sibling_group_id === g && x.status !== 'baja') : []
+    return sibs.length > 1 ? [student, ...sibs.filter((x) => x.id !== student.id)] : [student]
+  }, [all, student])
+  const ids = new Set(family.map((x) => x.id))
+  const guardian = family.map(primaryGuardian).find((g) => g && isValidPhone(g.phone)) ?? primaryGuardian(student)
+  const studentFees = useMemo(() => (fees ?? []).filter((f) => ids.has(f.student_id) && Number(f.balance) > 0 && f.status !== 'por_confirmar'), [fees, family]) // eslint-disable-line react-hooks/exhaustive-deps
+  const first = (n: string) => n.split(' ')[0]
+  const names = family.length > 1 ? `${family.slice(0, -1).map((x) => first(x.full_name)).join(', ')} y ${first(family.at(-1)!.full_name)}` : student.full_name
+  const hasBeca = family.length > 1 || family.some((x) => x.monthly_fee != null) || (fees ?? []).some((f) => ids.has(f.student_id) && Number(f.discount) > 0)
   const built = useMemo(
-    () => settings && collectionMessage(settings.collection_template, student.full_name, studentFees, token ? portalUrl(token) : undefined),
-    [settings, student.full_name, studentFees, token],
+    () => settings && collectionMessage(settings.collection_template, names, studentFees, token ? portalUrl(token) : undefined, {
+      kids: family.map((x) => ({ name: first(x.full_name), fees: studentFees.filter((f) => f.student_id === x.id) })),
+      beca: hasBeca ? { label: family.length > 1 ? 'la promoción de hermanos' : 'beca', dueDay: settings.due_day ?? 10 } : null,
+    }),
+    [settings, names, studentFees, token, family, hasBeca],
   )
   const [edited, setEdited] = useState<string | null>(null)
   const text = edited ?? built?.text ?? ''
@@ -99,9 +113,10 @@ function CollectModal({ student, onClose }: { student: StudentRow; onClose: () =
       {!hasPhone ? (
         <GuardianQuickForm student={student} onSaved={() => {}} />
       ) : studentFees.length === 0 ? (
-        <p className="text-sm text-muted">{student.full_name} no tiene saldo pendiente. ¡Está al corriente!</p>
+        <p className="text-sm text-muted">{names} no tiene{family.length > 1 ? 'n' : ''} saldo pendiente. ¡Al corriente!</p>
       ) : (
         <div className="space-y-4">
+          {family.length > 1 && <p className="rounded-xl border border-info/40 bg-info/10 p-2 text-xs text-info">Hermanos: se cobra en un solo mensaje a la familia ({family.map((x) => x.full_name).join(', ')}).</p>}
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="rounded-xl bg-ink-900 p-3">
               <p className="text-xs text-muted">Para</p>

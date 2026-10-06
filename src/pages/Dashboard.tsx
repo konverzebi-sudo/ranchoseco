@@ -11,6 +11,7 @@ import ActivityFeed from '@/components/ActivityFeed'
 import CoachNotes from '@/components/CoachNotes'
 import BirthdaysCard from '@/components/Birthdays'
 import { UnpaidDeliveries } from '@/components/Deliveries'
+import OverpaidAlert from '@/components/OverpaidAlert'
 import { pendingInstallments } from '@/lib/finance'
 import type { Expense, ExpenseInstallment } from '@/lib/types'
 import { useAccounts, useCategories, useCoaches, useFees, useMatches, usePayments, useSiblingGroups, useExtraClasses, useStudents, useTrainings, useAttendanceDetail, useExpenses, useNotifications, type StudentRow } from '@/lib/api'
@@ -19,6 +20,13 @@ import { useQueryClient } from '@tanstack/react-query'
 import { promoStatus } from '@/lib/siblings'
 import { date, money, time, toISODate, today } from '@/lib/format'
 import { consecutiveAbsences } from '@/lib/stats'
+
+/** Junta a los hermanos en un solo renglón (un adeudo por familia). */
+function byFamily<T extends { acc: { balance: number | string }; s: StudentRow }>(rows: T[]) {
+  const m = new Map<string, T[]>()
+  for (const r of rows) { const k = r.s.sibling_group_id ?? r.s.id; m.set(k, [...(m.get(k) ?? []), r]) }
+  return [...m.values()].map((list) => ({ list, total: list.reduce((a, r) => a + Number(r.acc.balance), 0) })).sort((a, b) => b.total - a.total)
+}
 
 export default function Dashboard() {
   const nav = useNavigate()
@@ -189,17 +197,20 @@ export default function Dashboard() {
                       </Link>
                     </li>
                   ))}
-                  {data.overdueStudents.slice(0, 6).map(({ acc, s }) => (
-                    <li key={s.id} className="flex items-center gap-3 px-5 py-3">
-                      <Avatar name={s.full_name} path={s.photo_path} size={36} />
-                      <Link to={`/alumnos/${s.id}`} className="min-w-0 flex-1">
-                        <p className="truncate font-medium">{s.full_name}</p>
-                        <p className="text-xs text-muted">{catName(s.category_id ?? '')} · Pago vencido</p>
-                      </Link>
-                      <span className="font-semibold text-bad">{money(acc.balance)}</span>
-                      <CollectButton student={s} />
-                    </li>
-                  ))}
+                  {byFamily(data.overdueStudents).slice(0, 6).map(({ list, total }) => {
+                    const s = list[0].s
+                    return (
+                      <li key={s.id} className="flex items-center gap-3 px-5 py-3">
+                        <Avatar name={s.full_name} path={s.photo_path} size={36} />
+                        <Link to={`/alumnos/${s.id}`} className="min-w-0 flex-1">
+                          <p className="truncate font-medium">{list.length > 1 ? `Familia: ${list.map((x) => x.s.full_name.split(' ')[0]).join(' y ')}` : s.full_name}</p>
+                          <p className="truncate text-xs text-muted">{list.length > 1 ? `Hermanos · ${list.map((x) => x.s.full_name).join(', ')}` : catName(s.category_id ?? '')} · Pago vencido</p>
+                        </Link>
+                        <span className="font-semibold text-bad">{money(total)}</span>
+                        <CollectButton student={s} />
+                      </li>
+                    )
+                  })}
                   {data.absent.slice(0, 5).map(({ s, n }) => (
                     <li key={'a' + s.id} className="flex items-center gap-3 px-5 py-3">
                       <Avatar name={s.full_name} path={s.photo_path} size={36} />
@@ -239,6 +250,7 @@ export default function Dashboard() {
 
           {paying && <PayInstallmentModal expense={paying.expense} inst={paying.inst} onClose={() => setPaying(null)} />}
           {closing && <CloseTrialModal student={closing} onClose={() => setClosing(null)} />}
+          <OverpaidAlert />
           <UnpaidDeliveries />
           <BirthdaysCard />
           <CoachNotes />

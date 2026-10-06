@@ -206,17 +206,20 @@ function SiblingGroupModal({ group, preset, onClose }: { group?: SiblingGroup; p
       }
       // Aplicar la promo a la mensualidad de este mes (sin tocar las que ya tienen beca individual)
       let applied = 0
+      const skipped: string[] = []
       if (applyNow) {
         for (const [i, m] of members.entries()) {
           const fee = (fees ?? []).find((f) => f.student_id === m.id && f.concept === 'Mensualidad' && f.period === month)
           if (!fee) continue
           const price = priceOf(m.id, i)
+          // Si ya pagó más que el precio de promo, no se aplica (quedaría pagado de más)
+          if (Number(fee.paid) > price + 0.001) { skipped.push(m.full_name); continue }
           unwrap(await supabase.from('fees').update({ discount: Math.max(0, Number(fee.amount) - price), discount_reason: PROMO_REASON, review: null }).eq('id', fee.id))
           applied++
         }
       }
       await refresh()
-      toast.ok(`Promo guardada${applied ? ` y aplicada a ${applied} mensualidades de ${monthName(month)}` : ''}`)
+      toast.ok(`Promo guardada${applied ? ` y aplicada a ${applied} mensualidades de ${monthName(month)}` : ''}${skipped.length ? `. No se aplicó a ${skipped.join(', ')}: ya pagó más que el precio de promo` : ''}`)
       onClose()
     } catch (e) { toast.error(e) } finally { setSaving(false) }
   }

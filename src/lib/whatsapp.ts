@@ -23,7 +23,12 @@ export function fillTemplate(template: string, vars: Record<string, string>) {
 }
 
 /** Mensaje de cobranza con el saldo real de los cargos pendientes. */
-export function collectionMessage(template: string, studentName: string, fees: FeeBalance[], portalUrl?: string) {
+export function collectionMessage(template: string, studentName: string, fees: FeeBalance[], portalUrl?: string, opts: {
+  /** Hermanos: el detalle de cada niño en el mismo mensaje */
+  kids?: { name: string; fees: FeeBalance[] }[]
+  /** Tiene beca o promoción: se recuerda pagar en los primeros días para conservarla */
+  beca?: { label: string; dueDay: number } | null
+} = {}) {
   const pending = fees.filter((f) => Number(f.balance) > 0 && f.status !== 'por_confirmar').sort((a, b) => a.period.localeCompare(b.period))
   const months = [...new Set(pending.map((f) => monthOnly(f.period)))]
   const monthText = months.length <= 1 ? (months[0] ?? '') : `${months.slice(0, -1).join(', ')} y ${months.at(-1)}`
@@ -34,7 +39,14 @@ export function collectionMessage(template: string, studentName: string, fees: F
     'NOMBRE DEL ALUMNO': studentName,
     SALDO: plainAmount(total),
   })
+  const kids = (opts.kids ?? []).map((k) => ({ ...k, fees: k.fees.filter((f) => Number(f.balance) > 0 && f.status !== 'por_confirmar') })).filter((k) => k.fees.length)
+  if (kids.length > 1) {
+    msg += '\n\nDetalle:'
+    for (const k of kids) msg += `\n• ${k.name}: ${k.fees.sort((a, b) => a.period.localeCompare(b.period)).map((f) => `${f.concept} ${monthOnly(f.period)} $${plainAmount(Number(f.balance))}`).join(', ')}`
+    msg += `\nTotal: $${plainAmount(total)} MXN`
+  }
   if (late > 0) msg += `\n\nEl saldo incluye $${plainAmount(late)} MXN de recargo por pago tardío.`
+  if (opts.beca) msg += `\n\nLes recordamos que cuentan con ${opts.beca.label}. Para conservarla es muy importante mantener el compromiso de pagar en los primeros días de cada mes (a más tardar el día ${opts.beca.dueDay}).`
   if (portalUrl) msg += `\n\nPuedes consultar su estado de cuenta aquí: ${portalUrl}`
   return { text: msg, total, months, late }
 }
