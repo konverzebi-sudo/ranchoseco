@@ -50,9 +50,11 @@ export function LoginScreen({ logo }: { logo: string }) {
   const fails = useRef(0)
   const [waitUntil, setWaitUntil] = useState(0)
   const list = team.data ?? []
-  // Primera vez: nadie de administración tiene PIN todavía
-  const setup = !!team.data && !list.some((m) => m.active && isAdminRole(m.role) && m.pin_hash)
-  const admins = list.filter((m) => m.active && isAdminRole(m.role))
+  // Activar acceso: sólo aparecen quienes todavía no tienen PIN (nadie puede cambiar el de otro)
+  const pending = list.filter((m) => m.active && !m.pin_hash).sort((a, b) => a.full_name.localeCompare(b.full_name, 'es'))
+  const nobody = !!team.data && !list.some((m) => m.active && m.pin_hash)
+  const [mode, setMode] = useState<'pin' | 'activar'>('pin')
+  const setup = nobody || mode === 'activar'
   const [who, setWho] = useState('')
   const [pin2, setPin2] = useState('')
 
@@ -74,16 +76,22 @@ export function LoginScreen({ logo }: { logo: string }) {
   }
 
   const createFirst = async () => {
-    const m = admins.find((x) => x.id === who)
+    const m = pending.find((x) => x.id === who)
     if (!m) return toast.error('Escoge tu nombre.')
-    if (pin.length !== PIN_LENGTH) return toast.error(`El PIN son ${PIN_LENGTH} números.`)
-    if (pin !== pin2) return toast.error('Los dos PIN no coinciden.')
+    if (pin.length !== PIN_LENGTH) return toast.error(`El código son ${PIN_LENGTH} números.`)
+    if (pin !== pin2) return toast.error('Los dos códigos no coinciden. Escríbelo otra vez.')
+    if (/^(\d)\1+$/.test(pin) || pin === '1234' || pin === '4321') return toast.error('Ese código es muy fácil de adivinar. Escoge otro.')
     setBusy(true)
     try {
+      // Que nadie más lo esté usando
+      if (await whosePin(list, pin)) { setBusy(false); return toast.error('Ese código ya lo usa otra persona. Escoge otro.') }
+      // Y que en lo que se escribía nadie haya activado a esta persona
+      const fresh = unwrap(await supabase.from('team_members').select('pin_hash').eq('id', m.id).single()) as { pin_hash: string | null }
+      if (fresh.pin_hash) { setBusy(false); await qc.invalidateQueries({ queryKey: ['team'] }); return toast.error(`${m.full_name} ya tiene código. Si lo olvidó, pídele a Jany que lo active de nuevo.`) }
       unwrap(await supabase.from('team_members').update({ pin_hash: await pinHash(m.id, pin) }).eq('id', m.id))
       await qc.invalidateQueries({ queryKey: ['team'] })
       setActor(m.id, m.full_name, true)
-      toast.ok('PIN creado. Ahora asigna el PIN de los demás en Configuración → Equipo.')
+      toast.ok(`¡Listo, ${m.full_name.split(' ')[0]}! Tu código quedó guardado. La próxima vez sólo escríbelo.`)
     } catch (e) { toast.error(e) } finally { setBusy(false) }
   }
 
@@ -96,14 +104,20 @@ export function LoginScreen({ logo }: { logo: string }) {
         <p className="text-xs uppercase tracking-[0.2em] text-muted">Control de academia</p>
         {team.isLoading ? <p className="mt-6 text-sm text-muted">Cargando…</p> : setup ? (
           <div className="mt-6 space-y-3 text-left">
-            <p className="text-sm text-muted">Primera vez: la persona de <b>administración</b> escoge su nombre y crea su PIN de {PIN_LENGTH} números.</p>
-            <Select value={who} onChange={(e) => setWho(e.target.value)} aria-label="Tu nombre">
-              <option value="">Escoge tu nombre…</option>
-              {admins.map((m) => <option key={m.id} value={m.id}>{m.full_name}</option>)}
-            </Select>
-            <Input type="password" inputMode="numeric" value={pin} onChange={(e) => setPin(onlyDigits(e.target.value))} placeholder={`PIN de ${PIN_LENGTH} números`} />
-            <Input type="password" inputMode="numeric" value={pin2} onChange={(e) => setPin2(onlyDigits(e.target.value))} placeholder="Repite el PIN" onKeyDown={(e) => e.key === 'Enter' && createFirst()} />
-            <Button className="w-full" icon={KeyRound} loading={busy} onClick={createFirst}>Crear PIN y entrar</Button>
+            <p className="text-center font-semibold">Activar mi acceso</p>
+            <p className="text-sm text-muted">Escoge tu nombre, escribe tu código de {PIN_LENGTH} números y repítelo. Ese código será tu entrada.</p>
+            {!pending.length ? <p className="text-sm text-ok">Todo el equipo ya tiene su código.</p> : (
+              <>
+                <Select value={who} onChange={(e) => setWho(e.target.value)} aria-label="Tu nombre">
+                  <option value="">Escoge tu nombre…</option>
+                  {pending.map((m) => <option key={m.id} value={m.id}>{m.full_name}{m.role ? ` · ${m.role}` : ''}</option>)}
+                </Select>
+                <Input type="password" inputMode="numeric" value={pin} onChange={(e) => setPin(onlyDigits(e.target.value))} placeholder={`Tu código (${PIN_LENGTH} números)`} className="text-center text-xl tracking-[0.4em]" />
+                <Input type="password" inputMode="numeric" value={pin2} onChange={(e) => setPin2(onlyDigits(e.target.value))} placeholder="Repite tu código" className="text-center text-xl tracking-[0.4em]" onKeyDown={(e) => e.key === 'Enter' && createFirst()} />
+                <Button className="w-full" icon={KeyRound} loading={busy} onClick={createFirst}>Guardar mi código y entrar</Button>
+              </>
+            )}
+            {!nobody && <button onClick={() => { setMode('pin'); setPin(''); setPin2('') }} className="w-full text-center text-sm text-brand hover:underline">Ya tengo mi código</button>}
           </div>
         ) : (
           <div className="mt-6 space-y-3">
@@ -112,7 +126,8 @@ export function LoginScreen({ logo }: { logo: string }) {
               onChange={(e) => { const v = onlyDigits(e.target.value); setPin(v); if (v.length === PIN_LENGTH) enter(v) }}
               className="text-center text-2xl tracking-[0.5em]" placeholder="••••" />
             <Button className="w-full" icon={KeyRound} loading={busy} disabled={pin.length !== PIN_LENGTH} onClick={() => enter()}>Entrar</Button>
-            <p className="text-xs text-muted">¿No tienes PIN o lo olvidaste? Pídeselo a administración.</p>
+            {pending.length > 0 && <button onClick={() => { setMode('activar'); setPin(''); setPin2('') }} className="w-full rounded-xl border border-ink-600 py-2.5 text-sm font-semibold hover:border-brand">Activar mi acceso (primera vez)</button>}
+            <p className="text-xs text-muted">¿Olvidaste tu código? Pídele a Jany que te active de nuevo.</p>
           </div>
         )}
       </div>
