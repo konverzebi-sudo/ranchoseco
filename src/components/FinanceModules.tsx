@@ -19,7 +19,7 @@ export default function FinanceModules() {
 }
 
 /** Las tarjetas de dinero por separado, para acomodarlas en el orden que se quiera. */
-export function useFinanceCards() {
+export function useFinanceCards(onDetail?: (k: 'seguro' | 'nuevas' | 'becas') => void) {
   const nav = useNavigate()
   const month = today().slice(0, 7)
   const expenses = useExpenses()
@@ -52,21 +52,21 @@ export function useFinanceCards() {
         hint={!d.ins ? 'Agrega el seguro como gasto anual' : d.ins.startsIn
           ? `Empieza en ${d.ins.startsIn}: apartar ${money(Math.round(d.ins.monthly))} al mes`
           : `${d.ins.months} de 12 meses · de ${money(d.ins.total)} · se paga en ${d.ins.dueLabel}`}
-        onClick={() => nav('/gastos')} />
+        onClick={() => (onDetail ? onDetail('seguro') : nav('/gastos'))} />
     ),
     nuevas: (
       <StatCard key="nuevas" label={`Nuevas inscripciones de ${MONTH_NAME[Number(month.slice(5, 7)) - 1]}`} value={d.nuevos} icon={UserPlus} tone={d.nuevos ? 'ok' : undefined}
-        hint={`Alumnos que entraron en ${MONTH_NAME[Number(month.slice(5, 7)) - 1]}`} onClick={() => nav(`/alumnos?nuevos=${month}&st=todos`)} />
+        hint={`Alumnos que entraron en ${MONTH_NAME[Number(month.slice(5, 7)) - 1]}`} onClick={() => (onDetail ? onDetail('nuevas') : nav(`/alumnos?nuevos=${month}&st=todos`))} />
     ),
     becas: (
       <StatCard key="becas" label={`Becas y descuentos de ${MONTH_NAME[Number(month.slice(5, 7)) - 1]}`} value={money(d.disc.total)} icon={GraduationCap}
-        hint={`${d.disc.students} alumnos${discHint ? ' · ' + discHint : ''}`} onClick={() => nav('/becas')} />
+        hint={`${d.disc.students} alumnos${discHint ? ' · ' + discHint : ''}`} onClick={() => (onDetail ? onDetail('becas') : nav('/becas'))} />
     ),
   }
 }
 
 /** Las cajas según el último corte: caja chica, apartado de próximos gastos, caja de ahorro y total. */
-export function useCashBoxCards() {
+export function useCashBoxCards(onDetail?: (k: 'total' | 'chica' | 'apartado' | 'ahorro' | 'uniformes') => void) {
   const nav = useNavigate()
   const cuts = useCashCuts()
   const expenses = useExpenses()
@@ -80,13 +80,13 @@ export function useCashBoxCards() {
     return { last, chica: openingCash(last, list[1]), ahorro, apartado, uniformes }
   }, [cuts.data, expenses.data])
   const since = b.last ? `Al corte del ${b.last.cut_date.slice(8, 10)}/${b.last.cut_date.slice(5, 7)}` : 'Aún no hay cortes'
-  const go = () => nav('/corte')
+  const go = (k: 'total' | 'chica' | 'apartado' | 'ahorro') => () => (onDetail ? onDetail(k) : nav('/corte'))
   return {
-    total: <StatCard key="total" label="Caja total" value={money(Math.round(b.ahorro + b.apartado))} icon={Wallet} tone="brand" hint={`Caja de ahorro + apartado · ${since}`} onClick={go} />,
+    total: <StatCard key="total" label="Caja total" value={money(Math.round(b.ahorro + b.apartado))} icon={Wallet} tone="brand" hint={`Caja de ahorro + apartado · ${since}`} onClick={go('total')} />,
     chica: <StatCard key="chica" label="Caja chica" value={money(Math.round(b.chica))} icon={Banknote} tone={b.chica < 0 ? 'bad' : undefined}
-      hint={b.chica < 0 ? `En negativo: faltó dinero y no se anotó de dónde salió · ${since}` : `Efectivo en caja · ${since}`} onClick={go} />,
-    apartado: <StatCard key="apartado" label="Apartado de próximos gastos" value={money(Math.round(b.apartado))} icon={Vault} hint="Regalías, renta, seguro, partes y préstamos" onClick={go} />,
-    uniformes: <StatCard key="uniformes" label="Fondo de uniformes" value={money(Math.round(b.uniformes))} icon={Shirt} hint="Playeras, altas en Chivas, uniformes y credenciales" onClick={() => nav('/uniformes')} />,
-    ahorro: <StatCard key="ahorro" label="Caja de ahorro" value={money(Math.round(b.ahorro))} icon={PiggyBank} tone="ok" hint="Ahorro libre (inscripciones, etc.)" onClick={go} />,
+      hint={b.chica < 0 ? `En negativo: faltó dinero y no se anotó de dónde salió · ${since}` : `Efectivo en caja · ${since}`} onClick={go('chica')} />,
+    apartado: <StatCard key="apartado" label="Apartado de próximos gastos" value={money(Math.round(b.apartado))} icon={Vault} hint="Regalías, renta, seguro, partes y préstamos" onClick={go('apartado')} />,
+    uniformes: <StatCard key="uniformes" label="Fondo de uniformes" value={money(Math.round(b.uniformes))} icon={Shirt} hint="Playeras, altas en Chivas, uniformes y credenciales" onClick={() => (onDetail ? onDetail('uniformes') : nav('/uniformes'))} />,
+    ahorro: <StatCard key="ahorro" label="Caja de ahorro" value={money(Math.round(b.ahorro))} icon={PiggyBank} tone="ok" hint="Ahorro libre (inscripciones, etc.)" onClick={go('ahorro')} />,
   }
 }

@@ -10,6 +10,7 @@ import { CloseTrialModal } from '@/components/TrialModals'
 import ActivityFeed from '@/components/ActivityFeed'
 import CoachNotes from '@/components/CoachNotes'
 import IncomeBreakdownModal from '@/components/IncomeBreakdown'
+import CardDetailModal, { type CardKind } from '@/components/CardDetails'
 import BirthdaysCard from '@/components/Birthdays'
 import { UnpaidDeliveries } from '@/components/Deliveries'
 import OverpaidAlert from '@/components/OverpaidAlert'
@@ -31,6 +32,7 @@ function byFamily<T extends { acc: { balance: number | string }; s: StudentRow }
 
 export default function Dashboard() {
   const [incomeOpen, setIncomeOpen] = useState(false)
+  const [detail, setDetail] = useState<CardKind | null>(null)
   const nav = useNavigate()
   const monthStart = toISODate(startOfMonth(new Date()))
   const t = today()
@@ -47,7 +49,7 @@ export default function Dashboard() {
   const expenses = useExpenses()
   const [paying, setPaying] = useState<{ expense: Expense; inst: ExpenseInstallment } | null>(null)
   const [closing, setClosing] = useState<StudentRow | null>(null)
-  const fin = useFinanceCards()
+  const fin = useFinanceCards(setDetail)
   const notes = useNotifications()
   const qc = useQueryClient()
   const markSeen = async (ids: string[]) => {
@@ -56,7 +58,7 @@ export default function Dashboard() {
       await qc.invalidateQueries({ queryKey: ['notifications'] })
     } catch { /* se reintenta la próxima vez */ }
   }
-  const boxes = useCashBoxCards()
+  const boxes = useCashBoxCards(setDetail)
   const mes = monthNameOf(monthStart)
   const weekEnd = toISODate(endOfWeek(new Date(), { weekStartsOn: 1 }))
   const dueTasks = pendingInstallments(expenses.data ?? [], weekEnd)
@@ -138,21 +140,21 @@ export default function Dashboard() {
             {boxes.total}{boxes.chica}{boxes.apartado}{boxes.ahorro}
             <StatCard label={`Entradas de ${mes}`} value={money(data.collected)} icon={TrendingUp} tone="ok" hint="Cobrado en el mes · toca para ver el desglose" onClick={() => setIncomeOpen(true)} />
             {fin.gastos}
-            <StatCard label={`Pendiente de cobro a ${mes}`} value={money(data.pendingTotal)} icon={Wallet} hint={`${data.openFees.length} cargos abiertos · ${data.overdueStudents.length} alumnos atrasados`} onClick={() => nav('/cobranza?f=pendiente')} />
+            <StatCard label={`Pendiente de cobro a ${mes}`} value={money(data.pendingTotal)} icon={Wallet} hint={`${data.openFees.length} cargos abiertos · ${data.overdueStudents.length} alumnos atrasados`} onClick={() => setDetail('pendiente')} />
             <StatCard label="Recargos y extras pendientes" value={money(data.lateFees + data.extras)} icon={AlertTriangle} tone={data.lateFees + data.extras > 0 ? 'bad' : undefined}
-              hint={`Recargos ${money(data.lateFees)} · Extras ${money(data.extras)}`} onClick={() => nav('/cobranza?f=vencido')} />
+              hint={`Recargos ${money(data.lateFees)} · Extras ${money(data.extras)}`} onClick={() => setDetail('recargos')} />
             {fin.becas}
             {fin.nuevas}
             <StatCard label="Clases muestra" value={trials.length} icon={UserPlus} tone={trials.length ? 'brand' : undefined}
-              hint={trials.length ? 'Pendientes de cerrar registro' : 'Nadie a prueba ahorita'} onClick={() => nav('/alumnos?st=muestra')} />
-            <StatCard label="Asistencia de hoy" value={data.todayAtt.length ? `${data.present}/${data.todayAtt.length}` : '—'} icon={ClipboardCheck} hint={data.todayAtt.length ? 'presentes' : 'Aún no se pasa lista'} onClick={() => nav('/asistencias')} />
+              hint={trials.length ? 'Pendientes de cerrar registro' : 'Nadie a prueba ahorita'} onClick={() => setDetail('muestra')} />
+            <StatCard label="Asistencia de hoy" value={data.todayAtt.length ? `${data.present}/${data.todayAtt.length}` : '—'} icon={ClipboardCheck} hint={data.todayAtt.length ? 'presentes' : 'Aún no se pasa lista'} onClick={() => setDetail('asistencia')} />
           </div>
           <div className="!mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatCard label="Alumnos activos" value={data.active.length} icon={Users} onClick={() => nav('/alumnos?st=activo')} />
-            <StatCard label="Profesores" value={(coaches.data ?? []).filter((c) => c.active).length} icon={UserCog} onClick={() => nav('/profesores')} />
+            <StatCard label="Alumnos activos" value={data.active.length} icon={Users} onClick={() => setDetail('activos')} />
+            <StatCard label="Profesores" value={(coaches.data ?? []).filter((c) => c.active).length} icon={UserCog} onClick={() => setDetail('profes')} />
             {fin.seguro}
             {boxes.uniformes}
-            <StatCard label="¿Beca? Por confirmar" value={money(data.reviewTotal)} icon={HelpCircle} hint={`${data.openFees.filter((f) => f.status === 'por_confirmar').length} pagos menores a la cuota`} onClick={() => nav('/cobranza?f=por_confirmar')} />
+            <StatCard label="¿Beca? Por confirmar" value={money(data.reviewTotal)} icon={HelpCircle} hint={`${data.openFees.filter((f) => f.status === 'por_confirmar').length} pagos menores a la cuota`} onClick={() => setDetail('porconfirmar')} />
           </div>
 
           <div className="grid gap-6 lg:grid-cols-3">
@@ -283,6 +285,7 @@ export default function Dashboard() {
             )}
           </Card>
           <ActivityFeed />
+          {detail && <CardDetailModal kind={detail} onClose={() => setDetail(null)} />}
           {incomeOpen && <IncomeBreakdownModal title={`Entradas de ${mes}`} payments={payments.data ?? []} onClose={() => setIncomeOpen(false)} />}
         </div>
       )}
