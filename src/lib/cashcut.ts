@@ -39,6 +39,27 @@ export function carryOver(prev: Pick<CashCut, 'distribution'> | undefined) {
 }
 
 /**
+ * Saldo con el que terminó un corte: lo que había en caja chica + lo que entró − lo que salió
+ * − lo que se apartó de ahorro + lo que vino de otro lado para cubrir. Negativo = faltó dinero
+ * y no se explicó de dónde salió.
+ */
+export function cutBalance(cut: Pick<CashCut, 'income' | 'outflow' | 'savings' | 'distribution'>, prev?: Pick<CashCut, 'distribution'>) {
+  const saved = (cut.savings ?? []).reduce((a, s) => a + (Number(s.saved) || 0), 0)
+  const covered = (cut.distribution ?? []).filter((d) => Number(d.amount) < 0).reduce((a, d) => a - Number(d.amount), 0)
+  return carryOver(prev) + Number(cut.income) - Number(cut.outflow) - saved + covered
+}
+
+/**
+ * Con cuánto empieza el siguiente corte: lo que se dejó en caja chica, o el saldo negativo
+ * si en ese corte faltó dinero (para que no se pierda de vista).
+ */
+export function openingCash(cut: Pick<CashCut, 'income' | 'outflow' | 'savings' | 'distribution'> | undefined, prev?: Pick<CashCut, 'distribution'>) {
+  if (!cut) return 0
+  const bal = cutBalance(cut, prev)
+  return bal < -0.5 ? Math.round(bal * 100) / 100 : carryOver(cut)
+}
+
+/**
  * Lo que entró y salió entre dos fechas:
  * entradas = cobros a alumnos + préstamos recibidos;
  * salidas = sueldos, gastos y pagos de préstamos (los pagos en partes pendientes no cuentan).

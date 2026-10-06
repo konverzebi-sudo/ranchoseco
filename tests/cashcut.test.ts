@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildItems, carryOver, cutGaps, pendingSalaries, prepaidUntil, vacationItems, itemTotals, nextPeriodStart, periodSummary, savingFunds } from '../src/lib/cashcut'
+import { buildItems, carryOver, cutGaps, pendingSalaries, prepaidUntil, vacationItems, itemTotals, nextPeriodStart, periodSummary, savingFunds, cutBalance, openingCash } from '../src/lib/cashcut'
 import type { Expense, FeeBalance, Payment } from '../src/lib/types'
 
 const exp = (p: Partial<Expense>): Expense => ({ id: p.name ?? 'x', name: 'x', amount: 0, frequency: 'mensual', paid_month: null, paid_year: null, down_payment: null, installments: null, paid_on: null, notes: null, active: true, sort_order: 0, ...p })
@@ -134,5 +134,22 @@ describe('sueldos semanales en cada corte', () => {
   })
   it('cortes de jueves a miércoles quedan igual que antes', () => {
     expect(sal('2026-09-24', '2026-09-30')).toEqual(['2026-09-30'])
+  })
+})
+
+describe('saldo negativo de la caja', () => {
+  const prev = { distribution: [{ to: 'Caja chica', amount: 5400 }] }
+  const sep30 = { income: 7250, outflow: 15050, savings: [{ key: 'a', name: 'Regalías', target: 7500, due: '', suggested: 0, saved: 1450 }, { key: 'b', name: 'Renta', target: 5000, due: '', suggested: 0, saved: 5000 }], distribution: [{ to: 'Ahorros apartados', amount: 6450 }] }
+  it('si salió más de lo que había, el saldo queda en negativo', () => {
+    expect(cutBalance(sep30 as never, prev as never)).toBe(-8850)
+    expect(openingCash(sep30 as never, prev as never)).toBe(-8850)
+  })
+  it('si se anotó de dónde salió lo que faltó, ya no queda negativo', () => {
+    const cubierto = { ...sep30, distribution: [...sep30.distribution, { to: 'Vino de: Préstamo de Marco', amount: -8850 }] }
+    expect(cutBalance(cubierto as never, prev as never)).toBe(0)
+    expect(openingCash(cubierto as never, prev as never)).toBe(0)
+  })
+  it('si sobró, empieza con lo que se dejó en caja chica', () => {
+    expect(openingCash({ income: 1000, outflow: 0, savings: [], distribution: [{ to: 'Caja chica', amount: 300 }] } as never, undefined)).toBe(300)
   })
 })

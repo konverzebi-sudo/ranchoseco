@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Receipt, ShieldCheck, UserPlus, GraduationCap, Vault, PiggyBank, Banknote, Wallet, Shirt } from 'lucide-react'
 import { StatCard } from '@/components/ui'
 import { useCashCuts, useCoachPay, useCoaches, useExpenses, useFees, useStudents } from '@/lib/api'
-import { carryOver, savingFunds } from '@/lib/cashcut'
+import { openingCash, savingFunds } from '@/lib/cashcut'
 import { DISCOUNT_LABEL, discountsFor, expenseEntries, insuranceSaving, isNewEnrollment } from '@/lib/finance'
 import { money, today } from '@/lib/format'
 
@@ -77,13 +77,14 @@ export function useCashBoxCards() {
     const ahorro = funds.find((f) => f.kind === 'ahorro')?.saved ?? 0
     const apartado = funds.filter((f) => f.kind !== 'ahorro' && f.kind !== 'uniformes').reduce((a, f) => a + f.saved, 0)
     const uniformes = funds.find((f) => f.kind === 'uniformes')?.saved ?? 0
-    return { last, chica: carryOver(last), ahorro, apartado, uniformes }
+    return { last, chica: openingCash(last, list[1]), ahorro, apartado, uniformes }
   }, [cuts.data, expenses.data])
   const since = b.last ? `Al corte del ${b.last.cut_date.slice(8, 10)}/${b.last.cut_date.slice(5, 7)}` : 'Aún no hay cortes'
   const go = () => nav('/corte')
   return {
     total: <StatCard key="total" label="Caja total" value={money(Math.round(b.ahorro + b.apartado))} icon={Wallet} tone="brand" hint={`Caja de ahorro + apartado · ${since}`} onClick={go} />,
-    chica: <StatCard key="chica" label="Caja chica" value={money(Math.round(b.chica))} icon={Banknote} hint={`Efectivo en caja · ${since}`} onClick={go} />,
+    chica: <StatCard key="chica" label="Caja chica" value={money(Math.round(b.chica))} icon={Banknote} tone={b.chica < 0 ? 'bad' : undefined}
+      hint={b.chica < 0 ? `En negativo: faltó dinero y no se anotó de dónde salió · ${since}` : `Efectivo en caja · ${since}`} onClick={go} />,
     apartado: <StatCard key="apartado" label="Apartado de próximos gastos" value={money(Math.round(b.apartado))} icon={Vault} hint="Regalías, renta, seguro, partes y préstamos" onClick={go} />,
     uniformes: <StatCard key="uniformes" label="Fondo de uniformes" value={money(Math.round(b.uniformes))} icon={Shirt} hint="Playeras, altas en Chivas, uniformes y credenciales" onClick={() => nav('/uniformes')} />,
     ahorro: <StatCard key="ahorro" label="Caja de ahorro" value={money(Math.round(b.ahorro))} icon={PiggyBank} tone="ok" hint="Ahorro libre (inscripciones, etc.)" onClick={go} />,

@@ -8,7 +8,7 @@ import { useToast } from '@/components/toast'
 import RangePicker from '@/components/RangePicker'
 import { useCashCuts, useCoachPay, useCoaches, useExpenses, useFees, usePayments, useStudents } from '@/lib/api'
 import {
-  CARRY_DESTINATION, DESTINATIONS, OUT_GROUPS, SAVINGS_BOX_KEY, cutGaps, isManual, isSalary, manualItem, nextDay, pendingSalaries, prepaidUntil, vacationItems, buildItems, carryOver, counts, itemTotals, itemValue, nextPeriodStart, outGroup, periodSummary, savingFunds,
+  CARRY_DESTINATION, DESTINATIONS, OUT_GROUPS, SAVINGS_BOX_KEY, cutGaps, isManual, isSalary, manualItem, nextDay, pendingSalaries, prepaidUntil, vacationItems, buildItems, counts, openingCash, itemTotals, itemValue, nextPeriodStart, outGroup, periodSummary, savingFunds,
   type CutItem, type SavingFund,
 } from '@/lib/cashcut'
 import { METHOD_LABEL, date, money, toISODate, today } from '@/lib/format'
@@ -61,7 +61,9 @@ export default function WeeklyCut() {
   const to = params.get('hasta') ?? t
   const setRange = (k: 'desde' | 'hasta', v: string) => { const p = new URLSearchParams(params); p.set(k, v); setParams(p, { replace: true }) }
   const prev = (cuts.data ?? []).find((c) => c.period_to < from && c.id !== editingCut?.id)
-  const carry = carryOver(prev)
+  const prevPrev = prev ? (cuts.data ?? []).find((c) => c.period_to < prev.period_from && c.id !== editingCut?.id) : undefined
+  // Si el corte anterior quedó en negativo, se empieza con ese negativo (no con $0)
+  const carry = openingCash(prev, prevPrev)
 
   const d = useMemo(() => periodSummary({
     from, to, payments: payments.data ?? [], fees: fees.data ?? [],
@@ -117,9 +119,10 @@ export default function WeeklyCut() {
   const [sources, setSources] = useState<{ from: string; amount: string }[]>([])
   const sourcesTotal = sources.reduce((a, r) => a + (Number(r.amount) || 0), 0)
   const toJustify = deficit - sourcesTotal
-  const available = Math.max(0, saldo + sourcesTotal)
+  // Puede ser negativo: faltó dinero y no se ha dicho de dónde salió
+  const available = saldo + sourcesTotal
   const [counted, setCounted] = useState('')
-  const countedN = counted === '' ? Math.round(available * 100) / 100 : Number(counted) || 0
+  const countedN = counted === '' ? Math.round(Math.max(0, available) * 100) / 100 : Number(counted) || 0
   const [rows, setRows] = useState<{ to: string; amount: string }[]>([])
   const assigned = rows.reduce((a, r) => a + (Number(r.amount) || 0), 0)
   const left = countedN - assigned
@@ -403,7 +406,7 @@ export default function WeeklyCut() {
       <Card className="mb-5 flex flex-wrap items-end gap-3 p-4">
         <RangePicker label="Fechas del corte (inicio y día del corte)" from={from} to={to}
           onChange={(a, b) => { const p = new URLSearchParams(params); p.set('desde', a); p.set('hasta', b); setParams(p, { replace: true }) }} />
-        <p className="pb-2 text-sm text-muted">{prev ? <>Último corte: <b className="text-white">{date(prev.cut_date)}</b> · se quedaron {cents(carry)} en caja chica</> : 'Todavía no hay cortes: el primero empieza este lunes.'}</p>
+        <p className="pb-2 text-sm text-muted">{prev ? <>Último corte: <b className="text-white">{date(prev.cut_date)}</b> · {carry < 0 ? <span className="text-bad">quedó en negativo {cents(carry)} (faltó dinero)</span> : <>se quedaron {cents(carry)} en caja chica</>}</> : 'Todavía no hay cortes: el primero empieza este lunes.'}</p>
         {!editingCut && (params.get('desde') || params.get('hasta')) && <Button size="sm" variant="ghost" onClick={() => setParams({}, { replace: true })}>Desde el último corte</Button>}
       </Card>
 
@@ -421,7 +424,7 @@ export default function WeeklyCut() {
               hint="Regalías, renta, seguro, partes y préstamos" />
             <StatCard label="Caja total" value={cents(cajaAhorro + apartado)} icon={Banknote}
               hint="Caja de ahorro + apartado de próximos gastos" />
-            <StatCard label="Caja chica" value={cents(countedN)} icon={Banknote} tone={saldo < 0 ? 'bad' : undefined}
+            <StatCard label="Caja chica" value={cents(available < -0.5 ? available : countedN)} icon={Banknote} tone={available < -0.5 ? 'bad' : undefined}
               hint={`Efectivo que queda después del corte (antes ${cents(carry)})`} />
           </div>
 
@@ -532,7 +535,7 @@ export default function WeeklyCut() {
             <div className="grid gap-5 lg:grid-cols-2">
               <div className="space-y-3">
                 <div className="divide-y divide-ink-700 rounded-xl bg-ink-900 text-sm">
-                  <div className="flex justify-between px-3 py-2"><span>Caja chica anterior</span><b>{cents(carry)}</b></div>
+                  <div className="flex justify-between px-3 py-2"><span>{carry < 0 ? 'Faltante del corte anterior' : 'Caja chica anterior'}</span><b className={carry < 0 ? 'text-bad' : ''}>{cents(carry)}</b></div>
                   <Breakdown label="+ Total de entradas" total={tot.income} tone="text-ok"
                     lines={(() => {
                       // Agrupado por concepto: inscripciones, mensualidades, etc., con su subtotal y el total al final
