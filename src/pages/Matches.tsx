@@ -19,14 +19,17 @@ export function resultBadge(m: Match) {
 }
 
 export default function Matches() {
+  const role = useRole()
   const categories = useCategories()
+  const mine = (id: string) => !role.isProfe || role.categoryIds.includes(id)
   const [cat, setCat] = useState('')
   const [when, setWhen] = useState<'proximos' | 'jugados'>('proximos')
   const matches = useMatches({ categoryId: cat || undefined })
   const [creating, setCreating] = useState(false)
   const nav = useNavigate()
   const t = today()
-  const list = (matches.data ?? []).filter((m) => (when === 'proximos' ? m.date >= t && m.status === 'programado' : m.date < t || m.status !== 'programado'))
+  // El profe sólo ve los partidos de sus categorías
+  const list = (matches.data ?? []).filter((m) => mine(m.category_id)).filter((m) => (when === 'proximos' ? m.date >= t && m.status === 'programado' : m.date < t || m.status !== 'programado'))
   if (when === 'proximos') list.sort((a, b) => (a.date + (a.time ?? '')).localeCompare(b.date + (b.time ?? '')))
   const catName = (id: string) => categories.data?.find((c) => c.id === id)?.name ?? ''
 
@@ -37,8 +40,8 @@ export default function Matches() {
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <Segmented value={when} onChange={setWhen} options={[{ id: 'proximos', label: 'Próximos' }, { id: 'jugados', label: 'Jugados' }]} />
         <Select value={cat} onChange={(e) => setCat(e.target.value)} className="w-auto min-w-[200px]" aria-label="Categoría">
-          <option value="">Todas las categorías</option>
-          {categories.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          <option value="">{role.isProfe ? 'Todas mis categorías' : 'Todas las categorías'}</option>
+          {categories.data?.filter((c) => mine(c.id)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </Select>
       </div>
       {matches.error ? <ErrorState error={matches.error} /> : matches.isLoading ? <Spinner /> : !list.length ? (

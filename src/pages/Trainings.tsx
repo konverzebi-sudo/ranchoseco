@@ -23,6 +23,8 @@ export default function Trainings() {
   const [cat, setCat] = useState('')
   const [from, setFrom] = useState(toISODate(subDays(new Date(), 30)))
   const trainings = useTrainings({ categoryId: cat || undefined, from })
+  // El profe sólo ve los entrenamientos de sus categorías
+  const myTrainings = (trainings.data ?? []).filter((t) => !role.isProfe || role.categoryIds.includes(t.category_id))
   const att = useAttendanceDetail({ categoryId: cat || undefined, from })
   const [editing, setEditing] = useState<Training | 'new' | null>(null)
   const nav = useNavigate()
@@ -51,17 +53,17 @@ export default function Trainings() {
       )}
       <div className="mb-4 grid gap-2 sm:grid-cols-[1fr_200px]">
         <Select value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Categoría">
-          <option value="">Todas las categorías</option>
-          {categories.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          <option value="">{role.isProfe ? 'Todas mis categorías' : 'Todas las categorías'}</option>
+          {categories.data?.filter((c) => !role.isProfe || role.categoryIds.includes(c.id)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </Select>
         <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label="Desde" />
       </div>
-      {trainings.error ? <ErrorState error={trainings.error} /> : trainings.isLoading ? <Spinner /> : !trainings.data?.length ? (
+      {trainings.error ? <ErrorState error={trainings.error} /> : trainings.isLoading ? <Spinner /> : !myTrainings.length ? (
         <Card><Empty icon={Dumbbell} title="Sin entrenamientos en este periodo" text="Al pasar lista se crea automáticamente el entrenamiento del día. También puedes registrarlo aquí con objetivos y ejercicios."
           action={<Button icon={Plus} onClick={() => setEditing('new')}>Registrar entrenamiento</Button>} /></Card>
       ) : (
         <ul className="space-y-2">
-          {trainings.data.map((t) => {
+          {myTrainings.map((t) => {
             const list = attByTraining.get(t.id) ?? []
             const rate = attendanceRate(list)
             return (
