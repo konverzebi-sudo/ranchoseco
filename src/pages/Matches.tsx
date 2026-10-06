@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Plus, Trophy, ChevronRight, MapPin } from 'lucide-react'
-import { Badge, Button, Card, Empty, ErrorState, Field, Input, Modal, PageHeader, Segmented, Select, Spinner, Textarea } from '@/components/ui'
+import { Plus, Trophy, ChevronRight, MapPin, Copy } from 'lucide-react'
+import { Badge, Button, Card, Empty, ErrorState, Field, Input, Modal, PageHeader, Segmented, Select, Spinner, Textarea, cx } from '@/components/ui'
 import { useToast } from '@/components/toast'
-import { useCategories, useMatches } from '@/lib/api'
+import { useCategories, useMatches, useStudents } from '@/lib/api'
+import { useRole } from '@/lib/role'
 import { supabase, unwrap } from '@/lib/supabase'
 import { date, time, today } from '@/lib/format'
 import type { Match, MatchStatus } from '@/lib/types'
@@ -75,70 +76,144 @@ export default function Matches() {
   )
 }
 
+/** Mensaje de convocatoria para copiar y mandar a los papás. */
+export function invitationMessage(m: { category: string; opponent: string; date: string; time: string; venue: string; is_home: boolean; notes: string }, players: string[]) {
+  const cita = m.time ? (() => { const [h, mi] = m.time.split(':').map(Number); const d = new Date(2000, 0, 1, h, mi - 30); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` })() : ''
+  const lines = [
+    `⚽ ¡CONVOCATORIA RANCHO SECO! ⚽`,
+    `Categoría ${m.category}`,
+    '',
+    `📅 ${date(m.date, "EEEE d 'de' MMMM")}`,
+    m.time ? `🕐 Partido: ${time(m.time)}` : '',
+    cita ? `⏰ Cita: ${time(cita)} (30 minutos antes para calentar)` : '⏰ Cita: 30 minutos antes del partido para calentar',
+    `🆚 Rival: ${m.opponent} (${m.is_home ? 'local' : 'visitante'})`,
+    m.venue ? `📍 ${m.venue}` : '',
+    m.notes.trim() ? `\n📝 ${m.notes.trim()}` : '',
+    players.length ? `\nConvocados:\n${players.map((p, i) => `${i + 1}. ${p}`).join('\n')}` : '',
+    '',
+    'Recuerden:',
+    '✅ Uniforme completo',
+    '✅ Termo de hidratación',
+    '✅ Llegar 30 minutos antes para calentar',
+    '💛 Actitud de divertirnos y crecer en la cancha.',
+    '',
+    '¡Vamos Rancho Seco! 🐎',
+  ]
+  return lines.filter((l, i) => l !== '' || lines[i - 1] !== '').join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
 export function MatchModal({ match, defaultCategory, defaultDate, onClose, onSaved }: { match?: Match; defaultCategory?: string; defaultDate?: string; onClose: () => void; onSaved?: (id: string) => void }) {
-  const { data: categories } = useCategories()
+  const role = useRole()
+  const { data: allCategories } = useCategories()
+  const students = useStudents()
   const qc = useQueryClient()
   const toast = useToast()
+  // El profe sólo programa partidos de sus categorías
+  const categories = (allCategories ?? []).filter((c) => !role.isProfe || role.categoryIds.includes(c.id))
   const [f, setF] = useState({
-    category_id: match?.category_id ?? defaultCategory ?? '', opponent: match?.opponent ?? '', date: match?.date ?? defaultDate ?? today(),
+    category_id: match?.category_id ?? (defaultCategory && categories.some((c) => c.id === defaultCategory) ? defaultCategory : categories.length === 1 ? categories[0].id : ''),
+    opponent: match?.opponent ?? '', date: match?.date ?? defaultDate ?? today(),
     time: match?.time?.slice(0, 5) ?? '', venue: match?.venue ?? '', is_home: match?.is_home ?? true,
     goals_for: match?.goals_for != null ? String(match.goals_for) : '', goals_against: match?.goals_against != null ? String(match.goals_against) : '',
     status: (match?.status ?? 'programado') as MatchStatus, notes: match?.notes ?? '',
   })
+  const [called, setCalled] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
+  const [invite, setInvite] = useState<{ id: string; text: string } | null>(null)
+  const roster = (students.data ?? []).filter((s) => s.status === 'activo' && s.category_id === f.category_id).sort((a, b) => a.full_name.localeCompare(b.full_name, 'es'))
+  const played = f.status === 'jugado'
+  const toggle = (id: string) => setCalled((c) => { const n = new Set(c); if (n.has(id)) n.delete(id); else n.add(id); return n })
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     if (!f.category_id) return toast.error('Elige la categoría.')
     if (!f.opponent.trim()) return toast.error('Escribe el nombre del rival.')
-    const hasScore = f.goals_for !== '' && f.goals_against !== ''
+    // Sólo un partido jugado lleva marcador
+    const hasScore = played && f.goals_for !== '' && f.goals_against !== ''
     setSaving(true)
     try {
       const payload = {
         category_id: f.category_id, opponent: f.opponent.trim(), date: f.date, time: f.time || null, venue: f.venue.trim() || null,
         is_home: f.is_home, notes: f.notes.trim() || null,
         goals_for: hasScore ? Number(f.goals_for) : null, goals_against: hasScore ? Number(f.goals_against) : null,
-        status: hasScore && f.status === 'programado' ? 'jugado' : f.status,
+        status: f.status,
       }
       let id = match?.id
       if (id) unwrap(await supabase.from('matches').update(payload).eq('id', id))
-      else id = (unwrap(await supabase.from('matches').insert(payload).select('id').single()) as { id: string }).id
-      await qc.invalidateQueries({ queryKey: ['matches'] })
+      else {
+        id = (unwrap(await supabase.from('matches').insert(payload).select('id').single()) as { id: string }).id
+        if (called.size) unwrap(await supabase.from('match_players').insert([...called].map((student_id) => ({ match_id: id, student_id }))))
+      }
+      await Promise.all(['matches', 'match_players'].map((k) => qc.invalidateQueries({ queryKey: [k] })))
       toast.ok('Partido guardado')
-      onSaved?.(id!)
-      onClose()
+      if (match) { onSaved?.(id!); onClose(); return }
+      const names = roster.filter((s) => called.has(s.id)).map((s) => s.full_name)
+      setInvite({ id: id!, text: invitationMessage({ ...f, category: categories.find((c) => c.id === f.category_id)?.name ?? '' }, names) })
     } catch (err) { toast.error(err) } finally { setSaving(false) }
+  }
+
+  if (invite) {
+    const copy = async () => { try { await navigator.clipboard.writeText(invite.text); toast.ok('Mensaje copiado. Pégalo en el grupo de WhatsApp.') } catch { toast.error('No se pudo copiar; selecciónalo y cópialo.') } }
+    const done = () => { onSaved?.(invite.id); onClose() }
+    return (
+      <Modal open onClose={done} title="¡Partido creado! Mensaje de convocatoria"
+        footer={<><Button variant="secondary" onClick={done}>Ir al partido</Button><Button variant="whatsapp" onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(invite.text)}`, '_blank', 'noopener')}>Enviar por WhatsApp</Button><Button icon={Copy} onClick={copy}>Copiar mensaje</Button></>}>
+        <p className="mb-2 text-sm text-muted">Cópialo y pégalo en el grupo de papás (puedes editarlo antes).</p>
+        <Textarea rows={16} value={invite.text} onChange={(e) => setInvite({ ...invite, text: e.target.value })} />
+      </Modal>
+    )
   }
 
   return (
     <Modal open onClose={onClose} title={match ? 'Editar partido' : 'Nuevo partido'}
-      footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button type="submit" form="match-form" loading={saving}>Guardar</Button></>}>
+      footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button type="submit" form="match-form" loading={saving}>{match ? 'Guardar' : 'Crear partido'}</Button></>}>
       <form id="match-form" onSubmit={submit} className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Categoría *">
-            <Select value={f.category_id} onChange={(e) => setF({ ...f, category_id: e.target.value })}>
+            <Select value={f.category_id} onChange={(e) => { setF({ ...f, category_id: e.target.value }); setCalled(new Set()) }} disabled={!!match}>
               <option value="">Elige…</option>
-              {categories?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Select>
           </Field>
-          <Field label="Rival *"><Input value={f.opponent} onChange={(e) => setF({ ...f, opponent: e.target.value })} autoFocus={!match} /></Field>
+          <Field label="Rival *"><Input value={f.opponent} onChange={(e) => setF({ ...f, opponent: e.target.value })} /></Field>
           <Field label="Fecha"><Input type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} /></Field>
-          <Field label="Hora"><Input type="time" value={f.time} onChange={(e) => setF({ ...f, time: e.target.value })} /></Field>
-          <Field label="Sede"><Input value={f.venue} onChange={(e) => setF({ ...f, venue: e.target.value })} placeholder="Cancha / dirección" /></Field>
+          <Field label="Hora del partido"><Input type="time" value={f.time} onChange={(e) => setF({ ...f, time: e.target.value })} /></Field>
+          <Field label="Sede y dirección"><Input value={f.venue} onChange={(e) => setF({ ...f, venue: e.target.value })} placeholder="Cancha, calle y colonia" /></Field>
           <Field label="Condición">
             <Segmented value={f.is_home ? 'l' : 'v'} onChange={(v) => setF({ ...f, is_home: v === 'l' })} options={[{ id: 'l', label: 'Local' }, { id: 'v', label: 'Visitante' }]} />
           </Field>
         </div>
         <div className="grid grid-cols-3 gap-3">
-          <Field label="Goles R. Seco"><Input type="number" min="0" inputMode="numeric" value={f.goals_for} onChange={(e) => setF({ ...f, goals_for: e.target.value })} /></Field>
-          <Field label="Goles rival"><Input type="number" min="0" inputMode="numeric" value={f.goals_against} onChange={(e) => setF({ ...f, goals_against: e.target.value })} /></Field>
           <Field label="Estado">
             <Select value={f.status} onChange={(e) => setF({ ...f, status: e.target.value as MatchStatus })}>
               <option value="programado">Programado</option><option value="jugado">Jugado</option><option value="cancelado">Cancelado</option>
             </Select>
           </Field>
+          {played && <>
+            <Field label="Goles R. Seco"><Input type="number" min="0" inputMode="numeric" value={f.goals_for} onChange={(e) => setF({ ...f, goals_for: e.target.value })} /></Field>
+            <Field label="Goles rival"><Input type="number" min="0" inputMode="numeric" value={f.goals_against} onChange={(e) => setF({ ...f, goals_against: e.target.value })} /></Field>
+          </>}
         </div>
-        <Field label="Observaciones del profesor"><Textarea value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></Field>
+        <Field label="Observaciones del profesor"><Textarea value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} placeholder="Ej. traer short negro, el partido es en la cancha 2…" /></Field>
+        {!match && f.category_id && (
+          <Field label={`Convocados (${called.size} de ${roster.length})`}>
+            <div className="mb-2 flex gap-3 text-xs">
+              <button type="button" className="text-brand hover:underline" onClick={() => setCalled(new Set(roster.map((s) => s.id)))}>Convocar a todos</button>
+              <button type="button" className="text-muted hover:underline" onClick={() => setCalled(new Set())}>Quitar todos</button>
+            </div>
+            <ul className="grid max-h-64 gap-1.5 overflow-y-auto sm:grid-cols-2">
+              {roster.map((s) => (
+                <li key={s.id}>
+                  <label className={cx('flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm', called.has(s.id) ? 'border-brand bg-brand-dim' : 'border-ink-600')}>
+                    <input type="checkbox" checked={called.has(s.id)} onChange={() => toggle(s.id)} className="h-4 w-4 accent-[#F2E30A]" />
+                    <span className="truncate">{s.full_name}</span>
+                  </label>
+                </li>
+              ))}
+              {!roster.length && <li className="text-sm text-muted">No hay alumnos activos en esta categoría.</li>}
+            </ul>
+          </Field>
+        )}
       </form>
     </Modal>
   )

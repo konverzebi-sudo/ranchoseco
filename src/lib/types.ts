@@ -321,6 +321,8 @@ export interface MatchReport {
   referees?: string
   tournament?: string
   other?: string
+  /** Fotos de evidencia (rutas en el almacenamiento) */
+  photos?: string[]
 }
 
 export interface MatchPlayer {

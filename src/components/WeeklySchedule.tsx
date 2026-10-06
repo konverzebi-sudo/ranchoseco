@@ -9,6 +9,7 @@ import { supabase, unwrap } from '@/lib/supabase'
 import { today } from '@/lib/format'
 import { DOW_LONG, datesFor, scheduleText, sortSlots, type Slot } from '@/lib/schedule'
 import type { Category } from '@/lib/types'
+import { useRole } from '@/lib/role'
 
 const AHEAD_DAYS = 13 // se crean los entrenamientos de hoy a 2 semanas
 const plus = (d: string, n: number) => format(addDays(new Date(d + 'T12:00:00'), n), 'yyyy-MM-dd')
@@ -113,7 +114,8 @@ export function ScheduleModal({ onClose, defaultCategory }: { onClose: () => voi
   const cats = useCategories()
   const qc = useQueryClient()
   const toast = useToast()
-  const list = (cats.data ?? []).filter((c) => c.active)
+  const role = useRole()
+  const list = (cats.data ?? []).filter((c) => c.active && (!role.isProfe || role.categoryIds.includes(c.id)))
   const [cat, setCat] = useState(defaultCategory || list[0]?.id || '')
   const current = list.find((c) => c.id === cat)
   const [slots, setSlots] = useState<Slot[]>([])

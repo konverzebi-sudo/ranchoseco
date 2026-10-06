@@ -9,6 +9,7 @@ import { useCategories, useMatchPlayers, useMatches, useStudents } from '@/lib/a
 import { supabase, unwrap } from '@/lib/supabase'
 import { date, time } from '@/lib/format'
 import type { Match, MatchPlayer, MatchReport } from '@/lib/types'
+import { MatchPhotos } from '@/components/MatchPhotos'
 
 const POSITIONS = ['Portero', 'Defensa', 'Medio', 'Delantero', 'Ala', 'Pívot', 'Cierre']
 type Row = Omit<MatchPlayer, 'match_id' | 'notes' | 'injured'> & { called: boolean; notes: string; injured: boolean }
@@ -174,7 +175,8 @@ export default function MatchDetail() {
   )
 }
 
-const REPORT_FIELDS: [keyof MatchReport, string, string][] = [
+type TextKey = Exclude<keyof MatchReport, 'photos'>
+const REPORT_FIELDS: [TextKey, string, string][] = [
   ['injuries', '¿Hubo lesionados?', 'Quién, qué le pasó y qué se hizo (ej. se torció el tobillo, se le puso hielo, se avisó al papá)'],
   ['kids', 'Comportamiento de los niños', 'Actitud, disciplina, compañerismo…'],
   ['parents', 'Comportamiento de los papás', 'Porra, quejas, algún incidente…'],
@@ -196,7 +198,8 @@ function MatchReportCard({ match, injured }: { match: Match; injured: string[] }
     if (gf === '' || ga === '') return toast.error('Escribe cómo quedó el partido.')
     setSaving(true)
     try {
-      const clean = Object.fromEntries(Object.entries(rep).map(([k, v]) => [k, (v ?? '').trim()]).filter(([, v]) => v)) as MatchReport
+      const clean = Object.fromEntries(Object.entries(rep).filter(([k]) => k !== 'photos').map(([k, v]) => [k, String(v ?? '').trim()]).filter(([, v]) => v)) as MatchReport
+      if (rep.photos?.length) clean.photos = rep.photos
       if (injured.length && !clean.injuries) clean.injuries = injured.join(', ')
       unwrap(await supabase.from('matches').update({ goals_for: Number(gf), goals_against: Number(ga), status: 'jugado', report: clean, report_at: new Date().toISOString() }).eq('id', match.id))
       await qc.invalidateQueries({ queryKey: ['matches'] })
@@ -216,6 +219,7 @@ function MatchReportCard({ match, injured }: { match: Match; injured: string[] }
         <Field label={match.opponent}><Input type="number" min="0" inputMode="numeric" value={ga} onChange={(e) => setGa(e.target.value)} className="w-24 text-center text-lg font-bold" /></Field>
       </div>
       {injured.length > 0 && <p className="rounded-xl bg-bad/10 p-3 text-sm text-bad">Marcados como lesionados: <b>{injured.join(', ')}</b></p>}
+      <Field label="Fotos de evidencia (opcional)"><MatchPhotos matchId={match.id} photos={rep.photos ?? []} onChange={(photos) => setRep({ ...rep, photos })} /></Field>
       <div className="grid gap-3 sm:grid-cols-2">
         {REPORT_FIELDS.map(([k, label, ph]) => (
           <Field key={k} label={label}><Textarea rows={2} value={rep[k] ?? ''} onChange={(e) => setRep({ ...rep, [k]: e.target.value })} placeholder={ph} /></Field>

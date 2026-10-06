@@ -11,6 +11,7 @@ import ActivityFeed from '@/components/ActivityFeed'
 import ProfeDashboard from '@/components/ProfeDashboard'
 import { useRole } from '@/lib/role'
 import CoachNotes from '@/components/CoachNotes'
+import { MatchReportsCard } from '@/components/MatchPhotos'
 import IncomeBreakdownModal from '@/components/IncomeBreakdown'
 import CardDetailModal, { type CardKind } from '@/components/CardDetails'
 import BirthdaysCard from '@/components/Birthdays'
@@ -264,6 +265,7 @@ function AdminDashboard() {
           {closing && <CloseTrialModal student={closing} onClose={() => setClosing(null)} />}
           <OverpaidAlert />
           <UnpaidDeliveries />
+          <MatchReportsCard />
           <BirthdaysCard />
           <CoachNotes />
           <Card>

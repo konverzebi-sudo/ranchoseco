@@ -31,7 +31,9 @@ export default function CalendarPage() {
   const [cursor, setCursor] = useState(startOfMonth(new Date()))
   const role = useRole()
   const [catPicked, setCat] = useState('')
-  const cat = role.isProfe && !role.categoryIds.includes(catPicked) ? role.categoryIds[0] ?? '' : catPicked
+  // El profe ve todas sus categorías juntas (o una sola si la escoge)
+  const cat = role.isProfe && catPicked && !role.categoryIds.includes(catPicked) ? '' : catPicked
+  const mine = (id: string | null) => !role.isProfe || (!!id && role.categoryIds.includes(id))
   const [dayOpen, setDayOpen] = useState<string | null>(null)
   // Qué se ve en el calendario (toca un tipo para ver sólo eso)
   const [show, setShow] = useState<Show>('todo')
@@ -44,7 +46,7 @@ export default function CalendarPage() {
   const matches = useMatches(range)
   const expenses = useExpenses()
   const students = useStudents()
-  const bdays = (k: string) => birthdaysOn((students.data ?? []).filter((s) => !cat || s.category_id === cat), k)
+  const bdays = (k: string) => birthdaysOn((students.data ?? []).filter((s) => (cat ? s.category_id === cat : mine(s.category_id))), k)
   const [paying, setPaying] = useState<{ expense: Expense; inst: ExpenseInstallment } | null>(null)
   // Pagos de gastos en partes y préstamos (pendientes en su fecha; pagados el día que se pagaron)
   const bills = useMemo(() => {
@@ -63,11 +65,11 @@ export default function CalendarPage() {
   const events = useMemo(() => {
     const m = new Map<string, { kind: 'tr' | 'ma'; id: string; label: string; time: string | null; cat: string }[]>()
     const push = (d: string, e: { kind: 'tr' | 'ma'; id: string; label: string; time: string | null; cat: string }) => m.set(d, [...(m.get(d) ?? []), e])
-    for (const x of trainings.data ?? []) push(x.date, { kind: 'tr', id: x.id, label: x.objectives || 'Entrenamiento', time: x.start_time, cat: x.category_id })
-    for (const x of matches.data ?? []) if (x.status !== 'cancelado') push(x.date, { kind: 'ma', id: x.id, label: `vs ${x.opponent}`, time: x.time, cat: x.category_id })
+    for (const x of (trainings.data ?? []).filter((x) => mine(x.category_id))) push(x.date, { kind: 'tr', id: x.id, label: x.objectives || 'Entrenamiento', time: x.start_time, cat: x.category_id })
+    for (const x of (matches.data ?? []).filter((x) => mine(x.category_id))) if (x.status !== 'cancelado') push(x.date, { kind: 'ma', id: x.id, label: `vs ${x.opponent}`, time: x.time, cat: x.category_id })
     for (const list of m.values()) list.sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''))
     return m
-  }, [trainings.data, matches.data])
+  }, [trainings.data, matches.data, role.isProfe, role.categoryIds]) // eslint-disable-line react-hooks/exhaustive-deps
   const catName = (id: string) => categories.data?.find((c) => c.id === id)?.name ?? ''
   const days = eachDayOfInterval({ start: gridStart, end: gridEnd })
 
@@ -75,7 +77,7 @@ export default function CalendarPage() {
     <>
       <PageHeader title="Calendario" subtitle="Entrenamientos y partidos por categoría."
         actions={<Select value={cat} onChange={(e) => setCat(e.target.value)} className="min-w-[200px]" aria-label="Categoría">
-          {!role.isProfe && <option value="">Todas las categorías</option>}
+          <option value="">{role.isProfe ? 'Todas mis categorías' : 'Todas las categorías'}</option>
           {categories.data?.filter((c) => !role.isProfe || role.categoryIds.includes(c.id)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </Select>} />
       <Card className="p-3 sm:p-5">
@@ -85,7 +87,7 @@ export default function CalendarPage() {
           <IconButton icon={ChevronRight} label="Mes siguiente" onClick={() => setCursor((c) => addMonths(c, 1))} />
         </div>
         <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Qué ver">
-          {FILTERS.filter((f) => !f.money || !cat).map((f) => (
+          {FILTERS.filter((f) => !f.money || (!cat && !role.isProfe)).map((f) => (
             <button key={f.id} onClick={() => setShow(show === f.id && f.id !== 'todo' ? 'todo' : f.id)} aria-pressed={show === f.id}
               className={cx('flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition sm:text-sm',
                 show === f.id ? 'border-brand bg-brand text-ink' : 'border-ink-600 text-muted hover:text-fg')}>
@@ -99,7 +101,7 @@ export default function CalendarPage() {
             {days.map((d) => {
               const k = toISODate(d)
               const list = (events.get(k) ?? []).filter((e) => see(e.kind))
-              const dayBills = cat ? [] : (bills.get(k) ?? []).filter((b) => see(b.inst.paid_on ? 'paid' : 'pend'))
+              const dayBills = cat || role.isProfe ? [] : (bills.get(k) ?? []).filter((b) => see(b.inst.paid_on ? 'paid' : 'pend'))
               const max = show === 'todo' ? 3 : 8
               return (
                 <button key={k} onClick={() => setDayOpen(k)}
@@ -134,7 +136,7 @@ export default function CalendarPage() {
           <Button variant="secondary" icon={Plus} onClick={() => { setCreate({ kind: 'tr', day: dayOpen! }); setDayOpen(null) }}>Entrenamiento</Button>
           <Button icon={Plus} onClick={() => { setCreate({ kind: 'ma', day: dayOpen! }); setDayOpen(null) }}>Partido</Button>
         </>}>
-        {!cat && (bills.get(dayOpen ?? '') ?? []).filter((b) => see(b.inst.paid_on ? 'paid' : 'pend')).length > 0 && (
+        {!cat && !role.isProfe && (bills.get(dayOpen ?? '') ?? []).filter((b) => see(b.inst.paid_on ? 'paid' : 'pend')).length > 0 && (
           <ul className="mb-3 space-y-2">
             {(bills.get(dayOpen ?? '') ?? []).filter((b) => see(b.inst.paid_on ? 'paid' : 'pend')).map((b) => (
               <li key={b.inst.id}>
