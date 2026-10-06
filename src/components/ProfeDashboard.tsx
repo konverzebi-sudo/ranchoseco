@@ -59,7 +59,7 @@ export default function ProfeDashboard({ name, categoryIds, myCategoryIds = [], 
           <StatCard label="Por evaluar" value={d.toEvaluate.length} icon={Star} hint="Sin evaluación en 45 días" onClick={() => nav('/evaluaciones')} />
         </div>
         {coordinator && <CategoryRequestsCard />}
-        <MySchedule categoryIds={coordinator ? (myCategoryIds.length ? myCategoryIds : categoryIds) : categoryIds} title={coordinator ? 'Horarios de entrenamiento' : 'Mis categorías y horarios'} all={coordinator} />
+        <MySchedule categoryIds={categoryIds} mine={coordinator ? myCategoryIds : []} title={coordinator ? 'Horarios de entrenamiento' : 'Mis categorías y horarios'} all={coordinator} />
         <BirthdaysCard categoryIds={categoryIds} />
         <div className="grid gap-6 lg:grid-cols-2">
           <Card>
@@ -102,9 +102,10 @@ export default function ProfeDashboard({ name, categoryIds, myCategoryIds = [], 
 }
 
 /** Las categorías del profe y qué días entrenan (en cuanto registren su horario). */
-function MySchedule({ categoryIds, title, all }: { categoryIds: string[]; title: string; all?: boolean }) {
+function MySchedule({ categoryIds, title, all, mine = [] }: { categoryIds: string[]; title: string; all?: boolean; mine?: string[] }) {
   const cats = useCategories()
-  const list = (cats.data ?? []).filter((c) => c.active && (all || categoryIds.includes(c.id)))
+  // Las suyas primero (el coordinador ve todas, con las suyas marcadas)
+  const list = (cats.data ?? []).filter((c) => c.active && (all || categoryIds.includes(c.id))).sort((a, b) => Number(mine.includes(b.id)) - Number(mine.includes(a.id)))
   if (!list.length) return null
   return (
     <Card>
@@ -116,8 +117,8 @@ function MySchedule({ categoryIds, title, all }: { categoryIds: string[]; title:
         {list.map((c) => {
           const slots = (c.weekly_schedule ?? []) as Slot[]
           return (
-            <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-2.5 text-sm">
-              <b>{c.name}</b>
+            <li key={c.id} className={"flex flex-wrap items-center justify-between gap-2 px-5 py-2.5 text-sm" + (mine.includes(c.id) ? ' bg-brand-dim' : '')}>
+              <span className="flex items-center gap-2"><b>{c.name}</b>{mine.includes(c.id) && <Badge tone="brand">Mi categoría</Badge>}</span>
               {slots.length ? <span className="text-muted">{scheduleText(slots)}</span> : <Link to="/entrenamientos" className="text-warn hover:underline">Falta registrar su horario</Link>}
             </li>
           )
