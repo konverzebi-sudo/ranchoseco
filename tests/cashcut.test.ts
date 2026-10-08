@@ -153,3 +153,18 @@ describe('saldo negativo de la caja', () => {
     expect(openingCash({ income: 1000, outflow: 0, savings: [], distribution: [{ to: 'Caja chica', amount: 300 }] } as never, undefined)).toBe(300)
   })
 })
+
+describe('gasto pagado desde otra caja', () => {
+  const ex = { id: 'e1', name: 'Balones', amount: 1200, frequency: 'unico', paid_month: 10, paid_year: 2026, paid_on: '2026-10-06', down_payment: null, installments: null, notes: null, active: true, sort_order: 0, paid_from: 'ahorro' }
+  it('no sale de la caja chica y queda anotado de dónde salió', () => {
+    const d = periodSummary({ from: '2026-10-05', to: '2026-10-11', payments: [], fees: [], names: new Map(), expenses: [ex] as never, coaches: [], coachPay: [] })
+    const it = buildItems(d).find((i) => i.concept === 'Balones')!
+    expect(it.excluded).toBe(true)
+    expect(it.note).toContain('Caja de ahorro')
+  })
+  it('se resta de lo guardado en la caja de ahorro', () => {
+    const cuts = [{ id: 'c', savings: [{ key: 'x:caja-ahorro', name: 'Caja de ahorro', target: 0, due: '', suggested: 0, saved: 3000 }] }]
+    const box = savingFunds({ cutDate: '2026-10-12', expenses: [ex] as never, cuts: cuts as never }).find((f) => f.kind === 'ahorro')!
+    expect(box.saved).toBe(1800)
+  })
+})

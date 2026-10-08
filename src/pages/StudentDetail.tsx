@@ -112,6 +112,7 @@ function InfoRow({ label, children }: { label: string; children: React.ReactNode
 }
 
 function GeneralTab({ s }: { s: StudentRow }) {
+  const role = useRole()
   const { data: categories } = useCategories()
   const { data: coaches } = useCoaches()
   const { data: cc } = useCoachCategories()
@@ -145,6 +146,7 @@ function GeneralTab({ s }: { s: StudentRow }) {
         <InfoRow label="Inscripción">{date(s.enrolled_at)}</InfoRow>
         <InfoRow label="Estatus">{STATUS_LABEL[s.status]}</InfoRow>
         <InfoRow label="Posición"><PositionPicker s={s} /></InfoRow>
+        {!role.isProfe && <InfoRow label="Seguro">{s.insured ? <span className="text-ok">Dado de alta{s.insured_on ? ` desde ${date(s.insured_on)}` : ''}</span> : <Link to="/seguro" className="text-warn hover:underline">No está dado de alta</Link>}</InfoRow>}
         <InfoRow label="Uniforme">
           <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <span>Talla <b>{s.uniform_size || '—'}</b></span>

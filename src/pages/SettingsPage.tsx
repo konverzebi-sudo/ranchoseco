@@ -79,7 +79,7 @@ export default function SettingsPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Mensualidad general" hint="Si la categoría no define otra"><Input type="number" min="0" inputMode="decimal" value={f.default_monthly_fee} onChange={(e) => setF({ ...f, default_monthly_fee: e.target.value })} /></Field>
             <Field label="Último día para pagar sin recargo"><Input type="number" min="1" max="28" value={f.due_day} onChange={(e) => setF({ ...f, due_day: e.target.value })} /></Field>
-            <Field label="Recargo por mes de atraso" hint={Number(f.late_fee_amount) > 0 ? `Desde el día ${Number(f.due_day) + 1} se suman $${f.late_fee_amount}, y otros $${f.late_fee_amount} por cada mes más sin pagar` : 'Déjalo en 0 si no se cobra recargo'}>
+            <Field label="Recargo por mes de atraso" hint={Number(f.late_fee_amount) > 0 ? `Desde el día ${Number(f.due_day) + 1} se suma un recargo de $${f.late_fee_amount} por mes atrasado (no es acumulable). Nuevo ingreso: 15 días de tolerancia` : 'Déjalo en 0 si no se cobra recargo'}>
               <Input type="number" min="0" inputMode="decimal" value={f.late_fee_amount} onChange={(e) => setF({ ...f, late_fee_amount: e.target.value })} />
             </Field>
             <Field label="Lada del país"><Input value={f.default_country_code} onChange={(e) => setF({ ...f, default_country_code: e.target.value })} inputMode="numeric" /></Field>

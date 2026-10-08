@@ -151,6 +151,8 @@ export interface Expense {
   /** Préstamos: quién prestó y cuándo llegó el dinero */
   lender?: string | null
   received_on?: string | null
+  /** De dónde sale el dinero: caja del mes, caja de ahorro, apartado, fondo de uniformes u otro */
+  paid_from?: 'caja' | 'ahorro' | 'apartado' | 'uniformes' | 'otro'
   active: boolean
   sort_order: number
 }
@@ -164,6 +166,9 @@ export interface Guardian {
 }
 
 export interface Student {
+  /** Dado de alta en el seguro */
+  insured?: boolean
+  insured_on?: string | null
   /** Posición en la cancha (se pone en su perfil) */
   position?: string | null
   id: string

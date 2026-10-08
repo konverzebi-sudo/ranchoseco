@@ -155,7 +155,7 @@ export default function Portal() {
             </ul>
           )}
           {Number(d.academy.late_fee_amount) > 0 && (
-            <p className="mt-3 text-xs text-muted">La mensualidad se paga del día 1 al {d.academy.due_day} de cada mes. A partir del día {d.academy.due_day + 1} se suma un recargo de {money(d.academy.late_fee_amount)}, y otro igual por cada mes más sin pagar.</p>
+            <p className="mt-3 text-xs text-muted">La mensualidad se paga del día 1 al {d.academy.due_day} de cada mes. A partir del día {d.academy.due_day + 1} se suma un recargo de {money(d.academy.late_fee_amount)} (uno solo por cada mes atrasado).</p>
           )}
           {d.academy.payment_instructions && balance > 0 && (
             <div className="mt-4 rounded-xl border border-brand/30 bg-brand-dim p-3 text-sm whitespace-pre-line"><p className="mb-1 font-semibold text-brand">Cómo pagar</p>{d.academy.payment_instructions}</div>

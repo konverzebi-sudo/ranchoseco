@@ -14,6 +14,7 @@ import { CREDENTIAL_CONCEPT, CREDENTIAL_FEE, UNIFORM_CONCEPTS, isUniformConcept 
 import type { FeeBalance, Payment, PaymentMethod } from '@/lib/types'
 import { allocatePayment, payOrder } from '@/lib/allocate'
 import { notify } from '@/lib/notify'
+import { SEASON_START } from '@/lib/finance'
 import { getActor } from '@/lib/actor'
 import { TeamSelect } from './Team'
 
@@ -83,6 +84,8 @@ export function PaymentModal({ student: fixed, feeId, onClose, onAddFee, preset 
   useEffect(() => {
     // Al elegir al niño se preparan los conceptos extra con su precio
     setExtras([
+      { key: 'insc', concept: 'Inscripción', amount: preset.includes('Inscripción') && presetAmount ? presetAmount : String(INSCRIPTION_FEE), on: preset.includes('Inscripción'), period: thisPeriod },
+      { key: 'reinsc', concept: 'Reinscripción', amount: String(REINSCRIPTION_FEE), on: false, period: thisPeriod },
       ...UNIFORM_CONCEPTS.map((u) => ({ key: u.concept, concept: u.concept, amount: preset.includes(u.concept) && presetAmount ? presetAmount : u.price != null ? String(u.price) : '', on: preset.includes(u.concept), period: thisPeriod })),
       ...(nextMonth ? [{ key: 'adv', concept: `Mensualidad ${monthName(nextMonth)} (adelanto)`, amount: String(price.toPay), on: false, period: nextMonth }] : []),
       { key: 'otro', concept: '', amount: '', on: false, period: thisPeriod, editable: true },
@@ -240,7 +243,7 @@ export function PaymentModal({ student: fixed, feeId, onClose, onAddFee, preset 
 
             {/* 3. Otros conceptos */}
             <div>
-              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted">3. ¿Paga algo más? (uniforme, playera, credencial, adelanto…)</p>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted">3. ¿Paga algo más? (inscripción, uniforme, credencial, adelanto…)</p>
               <ul className="divide-y divide-ink-700 rounded-xl border border-ink-600">
                 {extras.map((x, k) => (
                   <li key={x.key} className={cx('flex flex-wrap items-center gap-3 px-3 py-2 text-sm', x.on && 'bg-brand-dim')}>
@@ -421,10 +424,15 @@ export function dueDateFor(period: string, dueDay: number) {
  * entonces tiene los mismos días que todos (del 1 al 8 = 8 días) contados desde que entró,
  * para que un alumno nuevo no nazca con recargo.
  */
+/** Nuevo ingreso: días de tolerancia para liquidar su primera mensualidad sin recargo. */
+export const NEW_STUDENT_TOLERANCE_DAYS = 15
+
 export function dueDateForStudent(period: string, dueDay: number, enrolledAt: string | null | undefined) {
   const base = dueDateFor(period, dueDay)
-  if (!enrolledAt || enrolledAt <= base) return base
-  return toISODate(addDays(new Date(enrolledAt + 'T12:00:00'), Math.max(0, dueDay - 1)))
+  // Su primer mes (no cuenta la lista con la que arrancó la temporada): 15 días desde que entró
+  if (!enrolledAt || enrolledAt === SEASON_START || enrolledAt.slice(0, 7) !== period.slice(0, 7)) return enrolledAt && enrolledAt > base ? toISODate(addDays(new Date(enrolledAt + 'T12:00:00'), NEW_STUDENT_TOLERANCE_DAYS)) : base
+  const tol = toISODate(addDays(new Date(enrolledAt + 'T12:00:00'), NEW_STUDENT_TOLERANCE_DAYS))
+  return tol > base ? tol : base
 }
 
 /** Crear un cargo (mensualidad, inscripción, uniforme, torneo…) para un alumno. */

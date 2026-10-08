@@ -80,6 +80,7 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase/migrations/0033_pin_temporal.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0034_cambio_categoria.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0035_posicion.sql', 'utf8'))
+  await db.exec(readFileSync('supabase/migrations/0036_recargo_seguro_origen.sql', 'utf8'))
   await db.exec('update academia.settings set open_mode = false') // las pruebas por rol corren con el sitio cerrado
 
   const users: [string, string, string][] = [
@@ -325,12 +326,11 @@ describe('recargo por mes de atraso ($550 del 1 al 5, $50 por mes)', () => {
       values ($1, 'Mensualidad', '2026-10-01', 550, current_date + 2) returning id`, [STU_2])).rows[0].id
   })
 
-  it('cuenta meses de atraso: 1 al pasar el día 5, 2 al pasar el siguiente 5', async () => {
-    expect(await lm('2026-09-05', '2026-09-05')).toBe(0)
-    expect(await lm('2026-09-05', '2026-09-06')).toBe(1)
-    expect(await lm('2026-09-05', '2026-10-05')).toBe(1)
-    expect(await lm('2026-09-05', '2026-10-06')).toBe(2)
-    expect(await lm('2026-09-05', '2026-12-10')).toBe(4)
+  it('el recargo no es acumulable: un solo recargo por mes atrasado aunque pasen más meses', async () => {
+    expect(await lm('2026-09-08', '2026-09-08')).toBe(0)
+    expect(await lm('2026-09-08', '2026-09-09')).toBe(1)
+    expect(await lm('2026-09-08', '2026-10-09')).toBe(1)
+    expect(await lm('2026-09-08', '2026-12-10')).toBe(1)
   })
   it('unos días tarde suma un solo recargo de $50', async () => {
     expect(await bal(late)).toMatchObject({ late_months: 1, late_fee: 50, total_due: 600, balance: 600, status: 'vencido' })

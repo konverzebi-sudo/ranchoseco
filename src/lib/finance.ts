@@ -243,6 +243,17 @@ export interface ExpenseEntry {
   detail: string
   /** Pago de gasto en partes que todavía no se hace */
   pending?: boolean
+  /** De dónde salió el dinero (sólo gastos; los sueldos salen de la caja) */
+  from?: PaidFrom
+}
+
+export type PaidFrom = 'caja' | 'ahorro' | 'apartado' | 'uniformes' | 'otro'
+export const PAID_FROM_LABEL: Record<PaidFrom, string> = {
+  caja: 'Dinero del mes (caja)',
+  ahorro: 'Caja de ahorro (inscripciones)',
+  apartado: 'Apartado de próximos gastos',
+  uniformes: 'Fondo de uniformes',
+  otro: 'Otro (préstamo, alguien lo puso…)',
 }
 
 /**
@@ -261,12 +272,12 @@ export function expenseEntries(opts: {
   const last = daysIn(y, m)
   const day = (d: number) => `${month}-${pad(Math.min(Math.max(d, 1), last))}`
   const out: ExpenseEntry[] = []
-  const recurring = (name: string, amount: number, frequency: 'semanal' | 'quincenal' | 'mensual', kind: ExpenseEntry['kind'], detail: string) => {
+  const recurring = (name: string, amount: number, frequency: 'semanal' | 'quincenal' | 'mensual', kind: ExpenseEntry['kind'], detail: string, from?: PaidFrom) => {
     if (frequency === 'semanal') {
-      for (let d = 1; d <= last; d++) if (weekday(y, m, d) === PAYDAY) out.push({ date: day(d), name, amount, kind, detail: `${detail} · semanal` })
+      for (let d = 1; d <= last; d++) if (weekday(y, m, d) === PAYDAY) out.push({ date: day(d), name, amount, kind, detail: `${detail} · semanal`, from })
     } else if (frequency === 'quincenal') {
-      out.push({ date: day(15), name, amount, kind, detail: `${detail} · 1a quincena` }, { date: day(last), name, amount, kind, detail: `${detail} · 2a quincena` })
-    } else out.push({ date: day(1), name, amount, kind, detail: `${detail} · mensual` })
+      out.push({ date: day(15), name, amount, kind, detail: `${detail} · 1a quincena`, from }, { date: day(last), name, amount, kind, detail: `${detail} · 2a quincena`, from })
+    } else out.push({ date: day(1), name, amount, kind, detail: `${detail} · mensual`, from })
   }
   for (const c of coaches) {
     if (!c.active) continue
@@ -277,26 +288,27 @@ export function expenseEntries(opts: {
     if (!e.active || !(Number(e.amount) > 0)) continue
     const a = Number(e.amount)
     const onDay = e.paid_on && e.paid_on.startsWith(month) ? Number(e.paid_on.slice(8, 10)) : 1
+    const from: PaidFrom = e.paid_from ?? 'caja'
     switch (e.frequency) {
       case 'semanal': case 'quincenal': case 'mensual':
-        if (!skipsMonth(e, m)) recurring(e.name, a, e.frequency, 'fijo', 'Gasto fijo')
+        if (!skipsMonth(e, m)) recurring(e.name, a, e.frequency, 'fijo', 'Gasto fijo', from)
         break
       case 'anual':
-        if (e.paid_month === m) out.push({ date: day(1), name: e.name, amount: a, kind: 'fijo', detail: 'Pago anual' }); break
+        if (e.paid_month === m) out.push({ date: day(1), name: e.name, amount: a, kind: 'fijo', detail: 'Pago anual', from }); break
       case 'unico':
-        if (expenseForMonth(e, month) > 0) out.push({ date: day(onDay), name: e.name, amount: a, kind: 'mes', detail: 'Gasto del mes' }); break
+        if (expenseForMonth(e, month) > 0) out.push({ date: day(onDay), name: e.name, amount: a, kind: 'mes', detail: 'Gasto del mes', from }); break
       case 'partes': {
         const rows = installmentsOf(e)
         if (rows) {
           for (const i of rows.filter((x) => installmentDate(x).startsWith(month)))
             out.push({
               date: installmentDate(i), name: isLoan(e) ? `Préstamo · ${e.lender ?? e.name}` : e.name, amount: Number(i.amount), kind: isLoan(e) ? 'prestamo' : 'mes',
-              detail: `${isLoan(e) ? 'Pago de préstamo · ' : ''}${installmentLabel(i, rows)}${i.paid_on ? '' : ' · pendiente'}`, pending: !i.paid_on,
+              detail: `${isLoan(e) ? 'Pago de préstamo · ' : ''}${installmentLabel(i, rows)}${i.paid_on ? '' : ' · pendiente'}`, pending: !i.paid_on, from,
             })
           break
         }
         for (const p of installmentPlan(e, y).schedule.filter((x) => x.key === month))
-          out.push({ date: day(onDay), name: e.name, amount: p.amount, kind: 'mes', detail: p.kind === 'anticipo' ? 'Anticipo' : `Pago ${p.n + (Number(e.down_payment) > 0 ? 1 : 0)} de ${(Number(e.installments) || 1) + (Number(e.down_payment) > 0 ? 1 : 0)}` })
+          out.push({ date: day(onDay), name: e.name, amount: p.amount, kind: 'mes', detail: p.kind === 'anticipo' ? 'Anticipo' : `Pago ${p.n + (Number(e.down_payment) > 0 ? 1 : 0)} de ${(Number(e.installments) || 1) + (Number(e.down_payment) > 0 ? 1 : 0)}`, from })
         break
       }
     }
@@ -366,4 +378,14 @@ export function loanStatus(e: Expense) {
   const total = Number(e.amount)
   const next = rows.find((i) => !i.paid_on) ?? null
   return { total, paid, remaining: Math.max(0, total - paid), next, rows, done: rows.length > 0 && !next }
+}
+
+/** Lo que se ha gastado de una caja (ahorro, fondo de uniformes…) desde que arrancó la temporada hasta una fecha. */
+export function spentFrom(expenses: Expense[], source: PaidFrom, until: string) {
+  let total = 0
+  for (let d = new Date(SEASON_START + 'T12:00:00'); d.toISOString().slice(0, 7) <= until.slice(0, 7); d.setMonth(d.getMonth() + 1)) {
+    const month = d.toISOString().slice(0, 7)
+    for (const e of expenseEntries({ month, expenses, coaches: [], coachPay: [] })) if (e.from === source && !e.pending && e.date <= until) total += e.amount
+  }
+  return total
 }

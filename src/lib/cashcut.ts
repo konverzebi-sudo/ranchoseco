@@ -1,5 +1,5 @@
 import { addDays } from 'date-fns'
-import { expenseEntries, skipsMonth, installmentLabel, installmentsOf, isLoan, loanStatus, loansReceived } from './finance'
+import { expenseEntries, skipsMonth, installmentLabel, installmentsOf, isLoan, loanStatus, loansReceived, PAID_FROM_LABEL, spentFrom, type PaidFrom } from './finance'
 import { toISODate } from './format'
 import { UNIFORMS_FUND_KEY } from './uniforms'
 import type { CashCut, CoachPay, Expense, FeeBalance, Payment, PaymentMethod } from './types'
@@ -154,11 +154,13 @@ export function buildItems(d: ReturnType<typeof periodSummary>, prev: CutItem[] 
   const base: Omit<CutItem, 'approved' | 'adjusted' | 'note'>[] = [
     ...d.ins.map((p) => ({ key: `p:${p.id}`, type: 'entrada' as const, date: p.day, concept: p.student, detail: `${p.concept} · ${p.method}`, amount: Number(p.amount) })),
     ...d.loans.map((e) => ({ key: `l:${e.id}`, type: 'entrada' as const, date: e.received_on ?? '', concept: `Préstamo de ${e.lender ?? ''}`.trim(), detail: 'Préstamo recibido', amount: Number(e.amount) })),
-    ...d.outs.map((e) => ({ key: `o:${e.date}:${e.name}:${e.detail}`, type: 'salida' as const, date: e.date, concept: e.name, detail: e.detail, amount: e.amount })),
+    ...d.outs.map((e) => ({ key: `o:${e.date}:${e.name}:${e.detail}`, type: 'salida' as const, date: e.date, concept: e.name, detail: e.detail, amount: e.amount, from: e.from })),
   ]
-  return base.map((b) => {
+  return base.map(({ from, ...b }: typeof base[number] & { from?: PaidFrom }) => {
     const k = kept.get(b.key)
-    return { ...b, approved: k?.approved ?? false, adjusted: k?.adjusted ?? null, note: k?.note ?? '', excluded: k?.excluded ?? false }
+    // Si el gasto se pagó de otra caja (ahorro, fondo de uniformes…), no sale de la caja chica
+    const other = !!from && from !== 'caja'
+    return { ...b, approved: k?.approved ?? false, adjusted: k?.adjusted ?? null, note: k?.note ?? (other ? `Salió de: ${PAID_FROM_LABEL[from!]}` : ''), excluded: k?.excluded ?? other }
   })
 }
 
@@ -257,9 +259,10 @@ export function savingFunds(opts: { cutDate: string; expenses: Expense[]; cuts: 
     }
   }
   // Caja de ahorro: dinero guardado sin un pago asignado (por ejemplo, las inscripciones). Se acumula siempre.
-  out.push({ key: SAVINGS_BOX_KEY, name: 'Caja de ahorro', kind: 'ahorro', target: 0, due: '9999-12-31', saved: savedFor(SAVINGS_BOX_KEY), weeksLeft: 0, suggested: 0 })
+  // Lo que se pagó de la caja de ahorro o del fondo de uniformes se resta de lo guardado
+  out.push({ key: SAVINGS_BOX_KEY, name: 'Caja de ahorro', kind: 'ahorro', target: 0, due: '9999-12-31', saved: savedFor(SAVINGS_BOX_KEY) - spentFrom(expenses, 'ahorro', cutDate), weeksLeft: 0, suggested: 0 })
   // Fondo de uniformes: lo que se cobra de playeras, altas en Chivas, uniformes y credenciales
-  out.push({ key: UNIFORMS_FUND_KEY, name: 'Fondo de uniformes', kind: 'uniformes', target: 0, due: '9999-12-31', saved: savedFor(UNIFORMS_FUND_KEY), weeksLeft: 0, suggested: 0 })
+  out.push({ key: UNIFORMS_FUND_KEY, name: 'Fondo de uniformes', kind: 'uniformes', target: 0, due: '9999-12-31', saved: savedFor(UNIFORMS_FUND_KEY) - spentFrom(expenses, 'uniformes', cutDate), weeksLeft: 0, suggested: 0 })
   const order = { fijo: 0, seguro: 1, parte: 2, prestamo: 3, ahorro: 4, uniformes: 5 }
   return out.sort((a, b) => order[a.kind] - order[b.kind] || a.due.localeCompare(b.due))
 }

@@ -2,7 +2,7 @@ import { Suspense, useMemo, useState, useEffect, type FormEvent } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Layers, UserCog, ClipboardCheck, Wallet, Receipt, GraduationCap, Dumbbell, Trophy, CalendarDays,
-  FileText, Settings, Menu, X, Search, Scale, Shirt, Star,
+  FileText, Settings, Menu, X, Search, Scale, Shirt, Star, ShieldCheck,
 } from 'lucide-react'
 import { Spinner, cx } from './ui'
 import ErrorBoundary from './ErrorBoundary'
@@ -19,6 +19,7 @@ export const NAV = [
   { to: '/cobranza', label: 'Mensualidades y pagos', short: 'Cobranza', icon: Wallet },
   { to: '/becas', label: 'Becas', icon: GraduationCap },
   { to: '/uniformes', label: 'Uniformes', icon: Shirt },
+  { to: '/seguro', label: 'Seguro', icon: ShieldCheck },
   { to: '/gastos', label: 'Gastos', icon: Receipt },
   { to: '/corte', label: 'Corte de caja', short: 'Corte', icon: Scale },
   { to: '/categorias', label: 'Categorías', icon: Layers },

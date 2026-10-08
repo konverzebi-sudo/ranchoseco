@@ -14,7 +14,7 @@ import { useToast } from '@/components/toast'
 import { useCategories, useCoachCategories, useCoachPay, useCoaches, useExpenses, useExtraClasses, useStudents } from '@/lib/api'
 import { supabase, unwrap } from '@/lib/supabase'
 import { money, shortDate, toISODate, today } from '@/lib/format'
-import { EXPENSE_FREQUENCY, FREQUENCY_LABEL, expenseForMonth, installmentDate, installmentLabel, installmentPlan, installmentsOf, monthlyCost, pendingInstallments, isLoan } from '@/lib/finance'
+import { EXPENSE_FREQUENCY, FREQUENCY_LABEL, expenseForMonth, installmentDate, installmentLabel, installmentPlan, installmentsOf, monthlyCost, pendingInstallments, isLoan, PAID_FROM_LABEL, type PaidFrom } from '@/lib/finance'
 import type { Coach, Expense, ExpenseInstallment } from '@/lib/types'
 
 const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
@@ -280,7 +280,7 @@ function ExpenseModal({ mode, expense, defaultMonth, onClose, nextOrder, onPayIn
     frequency: expense?.frequency ?? ((mode === 'mes' ? 'unico' : 'mensual') as Expense['frequency']),
     paid_month: expense?.paid_month ?? Number(today().slice(5, 7)), day: initDate,
     down: expense?.down_payment != null ? String(expense.down_payment) : '', installments: String(expense?.installments ?? 2),
-    notes: expense?.notes ?? '', active: expense?.active ?? true,
+    notes: expense?.notes ?? '', active: expense?.active ?? true, paid_from: (expense?.paid_from ?? 'caja') as PaidFrom,
     skip: (expense?.skip_months ?? []).map(Number),
   })
   // Calendario editable de un gasto nuevo en partes: fecha y monto de cada pago
@@ -320,7 +320,7 @@ function ExpenseModal({ mode, expense, defaultMonth, onClose, nextOrder, onPayIn
     }
     setSaving(true)
     const payload = hasRows
-      ? { name: f.name.trim(), amount: liveRows!.reduce((a, i) => a + Number(i.amount), 0), notes: f.notes.trim() || null, active: f.active }
+      ? { name: f.name.trim(), amount: liveRows!.reduce((a, i) => a + Number(i.amount), 0), notes: f.notes.trim() || null, active: f.active, paid_from: f.paid_from }
       : {
           name: f.name.trim(), amount: Number(f.amount), frequency: f.frequency,
           paid_month: isOnce || isPlan ? dMonth : f.frequency === 'anual' ? f.paid_month : null,
@@ -330,6 +330,7 @@ function ExpenseModal({ mode, expense, defaultMonth, onClose, nextOrder, onPayIn
           installments: isPlan ? Math.round(Number(f.installments)) : null,
           notes: f.notes.trim() || null, active: f.active,
           skip_months: ['semanal', 'quincenal', 'mensual'].includes(f.frequency) ? f.skip : [],
+          paid_from: f.paid_from,
         }
     try {
       let id = expense?.id
@@ -428,6 +429,11 @@ function ExpenseModal({ mode, expense, defaultMonth, onClose, nextOrder, onPayIn
             )}
           </>
         )}
+        <Field label="¿De dónde sale el dinero?" hint={f.paid_from === 'caja' ? 'Sale del dinero que entra en la semana (corte de caja)' : 'No sale de la caja chica: se descuenta de esa caja'}>
+          <Select value={f.paid_from} onChange={(e) => setF({ ...f, paid_from: e.target.value as PaidFrom })}>
+            {(Object.keys(PAID_FROM_LABEL) as PaidFrom[]).map((k) => <option key={k} value={k}>{PAID_FROM_LABEL[k]}</option>)}
+          </Select>
+        </Field>
         <Field label="Notas (opcional)"><Textarea rows={2} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></Field>
         {expense && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} className="h-4 w-4 accent-[#F2E30A]" /> Gasto activo (desmárcalo para pausarlo sin borrarlo)</label>}
       </form>
