@@ -7,7 +7,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 npm test
 npm run build
-tmp="$(mktemp -d)"
+# La copia temporal va en el disco del proyecto (el disco C: suele estar lleno)
+mkdir -p ../.publicar-tmp
+tmp="$(mktemp -d -p ../.publicar-tmp)"
 # La copia temporal se borra siempre al terminar (antes se quedaban y llenaban el disco)
 trap 'rm -rf "$tmp"' EXIT
 git clone -q --depth 1 https://github.com/konverzebi-sudo/hub-jany.git "$tmp/hub"
