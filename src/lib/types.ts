@@ -316,6 +316,8 @@ export interface Match {
   goals_against: number | null
   status: MatchStatus
   notes: string | null
+  /** Uniforme del partido */
+  uniform?: 'rayado' | 'liso' | null
   /** Reporte al terminar el partido */
   report?: MatchReport | null
   report_at?: string | null

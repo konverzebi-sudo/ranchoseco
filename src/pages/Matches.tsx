@@ -80,7 +80,7 @@ export default function Matches() {
 }
 
 /** Mensaje de convocatoria para copiar y mandar a los papás. */
-export function invitationMessage(m: { category: string; opponent: string; date: string; time: string; venue: string; is_home: boolean; notes: string }, players: string[]) {
+export function invitationMessage(m: { category: string; opponent: string; date: string; time: string; venue: string; is_home: boolean; notes: string; uniform?: string }, players: string[]) {
   const cita = m.time ? (() => { const [h, mi] = m.time.split(':').map(Number); const d = new Date(2000, 0, 1, h, mi - 30); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` })() : ''
   const lines = [
     `⚽ ¡CONVOCATORIA RANCHO SECO! ⚽`,
@@ -95,7 +95,7 @@ export function invitationMessage(m: { category: string; opponent: string; date:
     players.length ? `\nConvocados:\n${players.map((p, i) => `${i + 1}. ${p}`).join('\n')}` : '',
     '',
     'Recuerden:',
-    '✅ Uniforme completo',
+    m.uniform ? `✅ Uniforme ${m.uniform} completo` : '✅ Uniforme completo',
     '✅ Termo de hidratación',
     '✅ Llegar 30 minutos antes para calentar',
     '💛 Actitud de divertirnos y crecer en la cancha.',
@@ -119,6 +119,7 @@ export function MatchModal({ match, defaultCategory, defaultDate, onClose, onSav
     time: match?.time?.slice(0, 5) ?? '', venue: match?.venue ?? '', is_home: match?.is_home ?? true,
     goals_for: match?.goals_for != null ? String(match.goals_for) : '', goals_against: match?.goals_against != null ? String(match.goals_against) : '',
     status: (match?.status ?? 'programado') as MatchStatus, notes: match?.notes ?? '',
+    uniform: (match?.uniform ?? 'rayado') as 'rayado' | 'liso',
   })
   const [called, setCalled] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
@@ -137,14 +138,21 @@ export function MatchModal({ match, defaultCategory, defaultDate, onClose, onSav
     try {
       const payload = {
         category_id: f.category_id, opponent: f.opponent.trim(), date: f.date, time: f.time || null, venue: f.venue.trim() || null,
-        is_home: f.is_home, notes: f.notes.trim() || null,
+        is_home: f.is_home, notes: f.notes.trim() || null, uniform: f.uniform,
         goals_for: hasScore ? Number(f.goals_for) : null, goals_against: hasScore ? Number(f.goals_against) : null,
         status: f.status,
       }
       let id = match?.id
-      if (id) unwrap(await supabase.from('matches').update(payload).eq('id', id))
-      else {
-        id = (unwrap(await supabase.from('matches').insert(payload).select('id').single()) as { id: string }).id
+      // Si la base de datos todavía no tiene la columna del uniforme, se guarda sin ella
+      const noUniform = (e: { message: string } | null) => !!e && /uniform/.test(e.message)
+      const { uniform: _u, ...basic } = payload
+      if (id) {
+        const r = await supabase.from('matches').update(payload).eq('id', id)
+        if (noUniform(r.error)) unwrap(await supabase.from('matches').update(basic).eq('id', id)); else unwrap(r)
+      } else {
+        let r = await supabase.from('matches').insert(payload).select('id').single()
+        if (noUniform(r.error)) r = await supabase.from('matches').insert(basic).select('id').single()
+        id = (unwrap(r) as { id: string }).id
         if (called.size) unwrap(await supabase.from('match_players').insert([...called].map((student_id) => ({ match_id: id, student_id }))))
       }
       await Promise.all(['matches', 'match_players'].map((k) => qc.invalidateQueries({ queryKey: [k] })))
@@ -184,6 +192,9 @@ export function MatchModal({ match, defaultCategory, defaultDate, onClose, onSav
           <Field label="Sede y dirección"><Input value={f.venue} onChange={(e) => setF({ ...f, venue: e.target.value })} placeholder="Cancha, calle y colonia" /></Field>
           <Field label="Condición">
             <Segmented value={f.is_home ? 'l' : 'v'} onChange={(v) => setF({ ...f, is_home: v === 'l' })} options={[{ id: 'l', label: 'Local' }, { id: 'v', label: 'Visitante' }]} />
+          </Field>
+          <Field label="Uniforme">
+            <Segmented value={f.uniform} onChange={(v) => setF({ ...f, uniform: v })} options={[{ id: 'rayado', label: 'Rayado' }, { id: 'liso', label: 'Liso' }]} />
           </Field>
         </div>
         <div className="grid grid-cols-3 gap-3">

@@ -93,6 +93,7 @@ export default function MatchDetail() {
             <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted">
               {match.venue && <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{match.venue}</span>}
               <span>{match.is_home ? 'Local' : 'Visitante'}</span>
+              {match.uniform && <span>· Uniforme {match.uniform}</span>}
               {resultBadge(match)}
             </p>
             {match.notes && <p className="mt-3 rounded-xl bg-ink-900 p-3 text-sm text-muted">{match.notes}</p>}

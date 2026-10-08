@@ -15,3 +15,10 @@ describe('mensaje de convocatoria', () => {
     expect(t).toContain('divertirnos y crecer en la cancha')
   })
 })
+
+describe('uniforme en la convocatoria', () => {
+  it('dice si es rayado o liso', () => {
+    const t = invitationMessage({ category: 'X', opponent: 'T', date: '2026-10-11', time: '10:00', venue: '', is_home: true, notes: '', uniform: 'liso' }, [])
+    expect(t).toContain('Uniforme liso completo')
+  })
+})
