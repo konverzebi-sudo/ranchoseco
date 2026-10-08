@@ -30,3 +30,18 @@ describe('listas del mes en reportes', () => {
     expect(ids(h.latePayment)).toEqual(['c', 'd']) // última semana desde el 25
   })
 })
+
+describe('red flags: beca con adeudo de meses anteriores', () => {
+  it('aparece aunque este mes vaya al corriente, con el mes que debe', () => {
+    const h = monthHighlights({
+      month: '2026-10', today: '2026-10-08', students: [{ id: 'x', category_id: 'k', status: 'activo' }],
+      attendance: [], matchPlayers: [], evaluations: [],
+      fees: [
+        { id: 'sep', student_id: 'x', concept: 'Mensualidad', period: '2026-09-01', amount: 550, discount: 100, discount_reason: 'Promo hermanos', balance: 250 } as FeeBalance,
+        { id: 'oct', student_id: 'x', concept: 'Mensualidad', period: '2026-10-01', amount: 550, discount: 100, discount_reason: 'Promo hermanos', balance: 0 } as FeeBalance,
+      ],
+      payments: [{ id: 'p', fee_id: 'oct', student_id: 'x', amount: 450, paid_at: '2026-10-03' } as Payment],
+    })
+    expect(h.scholarshipLate).toEqual([{ student_id: 'x', note: 'Promo hermanos · debe septiembre ($250)' }])
+  })
+})

@@ -14,7 +14,7 @@ export const SECTIONS: { key: keyof Highlights; title: string; short: string; te
   { key: 'allMatches', title: 'Sin faltas en partidos', short: 'Asistieron a todos los partidos', text: 'Llegaron a todos los partidos a los que fueron convocados. "No convocado" no cuenta como falta.', icon: Trophy, tone: 'ok' },
   { key: 'onTime', title: 'Top pago puntual', short: `Pagaron del 1 al ${ON_TIME_DAY} del mes o antes`, text: `Pagaron la mensualidad del día 1 al ${ON_TIME_DAY} del mes, o antes.`, icon: BadgeCheck, tone: 'ok' },
   { key: 'improved', title: 'Top mejora de habilidades', short: 'Mejoraron en habilidades', text: 'Su última evaluación salió mejor que la anterior. (Después afinamos la lista de habilidades.)', icon: TrendingUp, tone: 'brand' },
-  { key: 'scholarshipLate', title: 'Red flags', short: 'Tienen beca y no pagaron a tiempo', text: `Con beca, promo o descuento en el mes y que pagaron después del día ${ON_TIME_DAY} (o no han pagado).`, icon: GraduationCap, tone: 'bad' },
+  { key: 'scholarshipLate', title: 'Red flags', short: 'Tienen beca y no pagaron a tiempo o deben meses', text: `Con beca, promo o descuento que este mes pagaron después del día ${ON_TIME_DAY} (o no han pagado), o que siguen debiendo meses anteriores.`, icon: GraduationCap, tone: 'bad' },
   { key: 'latePayment', title: 'Top retardo de pagos', short: 'Pagan la última semana del mes o después', text: 'Pagaron la última semana del mes o después (o siguen sin pagar).', icon: Clock, tone: 'bad' },
 ]
 

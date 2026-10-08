@@ -22,7 +22,7 @@ const pad = (n: number) => String(n).padStart(2, '0')
  * - Todos los partidos: fue convocado al menos a uno y llegó a todos (los no convocados no cuentan).
  * - Pago puntual: su mensualidad está pagada y se pagó a más tardar el día 8.
  * - Mejoró: su última evaluación tiene mejor promedio que la anterior.
- * - Beca y no pagó a tiempo: tiene beca/descuento en el mes y pagó después del 8 (o no ha pagado).
+ * - Beca y no pagó a tiempo: tiene beca/descuento y pagó después del 8 este mes (o no ha pagado), o sigue debiendo meses anteriores.
  * - Retardo: pagó la última semana del mes o después (o sigue sin pagar ya en esa semana).
  */
 export function monthHighlights(opts: {
@@ -71,11 +71,20 @@ export function monthHighlights(opts: {
   const onTime = monthly.filter((f) => paid(f) && Number(f.amount) - Number(f.discount) > 0 && (lastPay(f) ?? '9999') <= onTimeLimit)
     .map((f) => ({ student_id: f.student_id, note: `Pagó el ${fmt(lastPay(f)!)}` }))
 
-  const scholarshipLate = monthly.filter((f) => Number(f.discount) > 0).flatMap((f) => {
+  // Con beca: siguen debiendo meses anteriores (no sólo el mes del reporte)…
+  const MES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+  const owedBefore = fees.filter((f) => f.period < period && f.concept === 'Mensualidad' && ids.has(f.student_id) && Number(f.discount) > 0 && Number(f.balance) > 0)
+    .sort((a, b) => a.period.localeCompare(b.period))
+    .map((f) => ({ student_id: f.student_id, note: `${f.discount_reason ?? 'Beca'} · debe ${MES[Number(f.period.slice(5, 7)) - 1]} ($${Number(f.balance).toLocaleString('es-MX')})` }))
+  // …o este mes pagaron tarde / no han pagado
+  const lateThisMonth = monthly.filter((f) => Number(f.discount) > 0).flatMap((f) => {
     const lp = lastPay(f)
     if (paid(f)) return lp && lp > onTimeLimit ? [{ student_id: f.student_id, note: `${f.discount_reason ?? 'Beca'} · pagó el ${fmt(lp)}` }] : []
     return today > onTimeLimit ? [{ student_id: f.student_id, note: `${f.discount_reason ?? 'Beca'} · aún no paga` }] : []
   })
+  const flags = new Map<string, string[]>()
+  for (const x of [...owedBefore, ...lateThisMonth]) flags.set(x.student_id, [...(flags.get(x.student_id) ?? []), x.note])
+  const scholarshipLate = [...flags.entries()].map(([student_id, notes]) => ({ student_id, note: notes.join(' · ') }))
 
   const latePayment = monthly.flatMap((f) => {
     const lp = lastPay(f)
