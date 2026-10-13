@@ -68,7 +68,15 @@ export function PaymentModal({ student: fixed, feeId, onClose, onAddFee, preset 
   const student = fixed ?? (students.data ?? []).find((s) => s.id === sid)
   const price = useMonthlyPrice((student ?? { id: '', category_id: null, sibling_group_id: null, sibling_order: null, monthly_fee: null }) as StudentRow)
   const fees = useMemo(() => (allFees.data ?? []).filter((f) => f.student_id === student?.id), [allFees.data, student?.id])
-  const open = useMemo(() => fees.filter((f) => Number(f.balance) > 0).sort(payOrder), [fees])
+  // Hermanos (promo): se puede pagar a todos en el mismo pago; cada pago queda a nombre de cada niño
+  const siblings = useMemo(() => (student?.sibling_group_id ? (students.data ?? []).filter((x) => x.sibling_group_id === student.sibling_group_id && x.id !== student.id && x.status !== 'baja') : []), [students.data, student?.id, student?.sibling_group_id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const [withSiblings, setWithSiblings] = useState(true)
+  const siblingOpen = useMemo(() => {
+    const ids = new Set(siblings.map((x) => x.id))
+    return (allFees.data ?? []).filter((f) => ids.has(f.student_id) && Number(f.balance) > 0)
+  }, [allFees.data, siblings])
+  const kidName = (id: string) => (students.data ?? []).find((x) => x.id === id)?.full_name.split(' ')[0] ?? ''
+  const open = useMemo(() => [...fees.filter((f) => Number(f.balance) > 0), ...(withSiblings ? siblingOpen : [])].sort(payOrder), [fees, siblingOpen, withSiblings])
   const credit = fees.filter((f) => Number(f.balance) < 0)
   const owed = open.reduce((a, f) => a + Number(f.balance), 0)
   const nextMonth = useMemo(() => {
@@ -152,7 +160,7 @@ export function PaymentModal({ student: fixed, feeId, onClose, onAddFee, preset 
         if (error) throw new Error('No se pudo subir el comprobante: ' + error.message)
       }
       const base = { student_id: student.id, paid_at: paidAt, method, notes: notes.trim() || null, receipt_path, received_by: receiver.trim() }
-      const rows: Record<string, unknown>[] = open.filter((f) => sel[f.id]?.on && amountOf(f) > 0).map((f) => ({ ...base, fee_id: f.id, amount: amountOf(f) }))
+      const rows: Record<string, unknown>[] = open.filter((f) => sel[f.id]?.on && amountOf(f) > 0).map((f) => ({ ...base, student_id: f.student_id, fee_id: f.id, amount: amountOf(f) }))
       for (const x of extras.filter((y) => y.on)) {
         const isAdv = x.key === 'adv'
         const created = unwrap(await supabase.from('fees').insert(isAdv
@@ -209,9 +217,16 @@ export function PaymentModal({ student: fixed, feeId, onClose, onAddFee, preset 
             {/* 2. Lo que debe */}
             <div>
               <div className="mb-1.5 flex flex-wrap items-end justify-between gap-2">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted">2. Lo que debe (del más antiguo al más nuevo)</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted">2. Lo que debe{withSiblings && siblingOpen.length ? ' la familia' : ''} (del más antiguo al más nuevo)</p>
                 <span className="text-sm">Debe <b className={owed > 0 ? 'text-bad' : 'text-ok'}>{money(owed)}</b></span>
               </div>
+              {siblings.length > 0 && (
+                <label className="mb-2 flex cursor-pointer items-center gap-2 rounded-xl border border-info/40 bg-info/10 px-3 py-2 text-sm">
+                  <input type="checkbox" checked={withSiblings} onChange={(e) => { setWithSiblings(e.target.checked); setSel({}); setPaid('') }} className="h-4 w-4 accent-[#F2E30A]" />
+                  <span>Pagar también a sus hermanos: <b>{siblings.map((x) => x.full_name.split(' ')[0]).join(', ')}</b>
+                    <span className="block text-xs text-muted">{siblingOpen.length ? `Deben ${money(siblingOpen.reduce((a, f) => a + Number(f.balance), 0))}. Cada pago queda a nombre de cada niño.` : 'Sus hermanos no deben nada.'}</span></span>
+                </label>
+              )}
               {credit.length > 0 && <p className="mb-2 rounded-xl border border-info/40 bg-info/10 p-2 text-xs text-info">Saldo a favor: {credit.map((f) => `${f.concept} ${monthName(f.period)} ${money(-Number(f.balance))}`).join(' · ')}</p>}
               {open.length === 0 ? <p className="rounded-xl border border-ok/40 bg-ok/10 px-3 py-2 text-sm"><b className="text-ok">No tiene adeudos.</b> ¿A qué quieres abonar? Márcalo abajo (adelanto del siguiente mes, uniforme, playera…).</p> : (
                 <>
@@ -225,7 +240,7 @@ export function PaymentModal({ student: fixed, feeId, onClose, onAddFee, preset 
                         <li key={f.id} className={cx('flex flex-wrap items-center gap-3 px-3 py-2 text-sm', r?.on && 'bg-brand-dim')}>
                           <input type="checkbox" checked={!!r?.on} onChange={(e) => checkDebt(f, e.target.checked)} className="h-5 w-5 accent-[#F2E30A]" aria-label={`${f.concept} ${monthName(f.period)}`} />
                           <span className="min-w-0 flex-1">
-                            <b>{f.concept} {monthName(f.period)}</b>
+                            <b>{f.concept} {monthName(f.period)}</b>{f.student_id !== student.id && <span className="ml-1.5 rounded-full bg-info/15 px-2 py-0.5 text-xs font-semibold text-info">{kidName(f.student_id)}</span>}
                             <span className="block text-xs text-muted">Debe {money(f.balance)}{Number(f.late_fee) > 0 ? ` (incluye ${money(f.late_fee)} de recargo)` : ''} · vence {shortDate(f.due_date)}</span>
                           </span>
                           {r?.on && (

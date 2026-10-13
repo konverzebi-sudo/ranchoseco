@@ -19,7 +19,7 @@ import { EvaluationModal, EvolutionChart, GroupSummary, SkillRadar } from '@/com
 import ReportPanel from '@/components/ReportPanel'
 import { ScholarshipReviewModal } from '@/components/ScholarshipReview'
 import { CouponModal } from '@/components/CouponModal'
-import { PauseModal, ReactivateModal } from '@/components/InactiveModals'
+import { PauseModal, ReactivateModal, BajaModal } from '@/components/InactiveModals'
 import { CloseTrialModal } from '@/components/TrialModals'
 import WaiveLateFeesModal from '@/components/WaiveLateFees'
 import { useToast } from '@/components/toast'
@@ -119,6 +119,7 @@ function GeneralTab({ s }: { s: StudentRow }) {
   const qc = useQueryClient()
   const toast = useToast()
   const [confirmBaja, setConfirmBaja] = useState(false)
+  const [baja, setBaja] = useState(false)
   const [pause, setPause] = useState<'pause' | 'back' | null>(null)
   const [closingTrial, setClosingTrial] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -187,7 +188,7 @@ function GeneralTab({ s }: { s: StudentRow }) {
         <div className="mt-4 flex flex-wrap gap-2">
           {s.status === 'activo' && <Button variant="secondary" size="sm" icon={PauseCircle} onClick={() => setPause('pause')}>Inactivo temporal</Button>}
           {s.status === 'suspendido' && <Button size="sm" icon={PlayCircle} onClick={() => setPause('back')}>Reactivar</Button>}
-          <Button variant={s.status === 'baja' ? 'secondary' : 'danger'} size="sm" icon={UserX} onClick={() => setConfirmBaja(true)}>
+          <Button variant={s.status === 'baja' ? 'secondary' : 'danger'} size="sm" icon={UserX} onClick={() => (s.status === 'baja' ? setConfirmBaja(true) : setBaja(true))}>
             {s.status === 'baja' ? 'Reactivar alumno' : 'Dar de baja'}
           </Button>
         </div>
@@ -229,6 +230,7 @@ function GeneralTab({ s }: { s: StudentRow }) {
         <MedicalCard studentId={s.id} />
       </div>
       <PaymentHistoryCard s={s} />
+      {baja && <BajaModal student={s} onClose={() => setBaja(false)} />}
 
       <ConfirmDialog open={confirmBaja} onClose={() => setConfirmBaja(false)} onConfirm={darDeBaja} loading={saving} danger={s.status !== 'baja'}
         title={s.status === 'baja' ? 'Reactivar alumno' : 'Dar de baja'}

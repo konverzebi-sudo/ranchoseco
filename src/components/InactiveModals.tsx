@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { PauseCircle, PlayCircle } from 'lucide-react'
+import { PauseCircle, PlayCircle, UserX } from 'lucide-react'
 import { Button, Field, Input, Modal, Select } from './ui'
 import { useToast } from './toast'
 import { useFees, useSettings, type StudentRow } from '@/lib/api'
@@ -136,6 +136,86 @@ export function ReactivateModal({ student, onClose }: { student: StudentRow; onC
           </div>
         )}
         <p className="text-xs text-muted">Desde el siguiente "Generar mensualidades" se le vuelve a cobrar su mensualidad.</p>
+      </div>
+    </Modal>
+  )
+}
+
+/** Semanas que vino en el mes hasta el día de la baja (máximo 4). */
+export const weeksUntil = (iso: string) => Math.min(4, Math.max(1, Math.ceil(Number(iso.slice(8, 10)) / 7)))
+/** Lo que se cobra de la mensualidad por las semanas que vino. */
+export const proportional = (charge: number, weeks: number) => Math.round((charge * weeks) / 4)
+
+/**
+ * Dar de baja: opción de cobrar sólo las semanas que vino ese mes (pago proporcional).
+ * Las mensualidades siguientes que no tengan pagos se cancelan.
+ */
+export function BajaModal({ student, onClose }: { student: StudentRow; onClose: () => void }) {
+  const qc = useQueryClient()
+  const toast = useToast()
+  const { data: fees } = useFees(student.id)
+  const [on, setOn] = useState(today())
+  const [prop, setProp] = useState(true)
+  const [weeks, setWeeks] = useState(() => weeksUntil(today()))
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+  const period = on.slice(0, 7) + '-01'
+  const fee = (fees ?? []).find((f) => f.concept === 'Mensualidad' && f.period === period)
+  const charge = fee ? Number(fee.amount) - Number(fee.discount) : 0
+  const paid = fee ? Number(fee.paid) : 0
+  const newCharge = Math.max(proportional(charge, weeks), paid)
+  const later = (fees ?? []).filter((f) => f.concept === 'Mensualidad' && f.period > period && Number(f.paid) === 0)
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      if (prop && fee && newCharge < charge) {
+        const note = `Baja el ${date(on)}: cobro proporcional de ${weeks} de 4 semanas (${money(newCharge)} de ${money(charge)})`
+        unwrap(await supabase.from('fees').update({
+          discount: Number(fee.amount) - newCharge,
+          discount_reason: `Baja: proporcional ${weeks} de 4 semanas`,
+          notes: [fee.notes, note].filter(Boolean).join(' | '),
+        }).eq('id', fee.id))
+      }
+      if (later.length) unwrap(await supabase.from('fees').delete().in('id', later.map((f) => f.id)))
+      unwrap(await supabase.from('students').update({ status: 'baja', notes: [student.notes, reason.trim() && `Baja el ${date(on)}: ${reason.trim()}`].filter(Boolean).join('\n') || student.notes }).eq('id', student.id))
+      await Promise.all(refreshKeys.map((k) => qc.invalidateQueries({ queryKey: [k] })))
+      toast.ok(`${student.full_name.split(' ')[0]} quedó dado de baja`)
+      onClose()
+    } catch (e) { toast.error(e) } finally { setSaving(false) }
+  }
+
+  return (
+    <Modal open onClose={onClose} title={`Dar de baja · ${student.full_name}`}
+      footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button variant="danger" icon={UserX} loading={saving} onClick={save}>Dar de baja</Button></>}>
+      <div className="space-y-4">
+        <p className="text-sm text-muted">Dejará de aparecer en listas de asistencia y cobranza, y su link para papás se desactiva. Su historial se conserva y se puede reactivar.</p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Fecha de la baja"><Input type="date" value={on} max={today()} onChange={(e) => { const v = e.target.value || today(); setOn(v); setWeeks(weeksUntil(v)) }} /></Field>
+          <Field label="Motivo (opcional)"><Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ej. cambio de ciudad" /></Field>
+        </div>
+        {fee ? (
+          <div className="space-y-2 rounded-xl border border-ink-600 p-3 text-sm">
+            <label className="flex cursor-pointer items-center gap-2 font-semibold">
+              <input type="checkbox" checked={prop} onChange={(e) => setProp(e.target.checked)} className="h-4 w-4 accent-[#F2E30A]" />
+              Cobrar sólo las semanas que vino en {monthName(period)} (pago proporcional)
+            </label>
+            {prop && (
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-muted">Semanas que vino:</span>
+                  {[1, 2, 3, 4].map((n) => (
+                    <button key={n} type="button" onClick={() => setWeeks(n)}
+                      className={'rounded-lg border px-3 py-1 ' + (weeks === n ? 'border-brand bg-brand font-semibold text-ink' : 'border-ink-600 text-muted')}>{n}</button>
+                  ))}
+                </div>
+                <p>Mensualidad {money(charge)} → se cobran <b className="text-brand">{money(newCharge)}</b> ({weeks} de 4 semanas).</p>
+                {paid > proportional(charge, weeks) && <p className="text-xs text-warn">Ya había pagado {money(paid)}, así que no se cobra menos de eso.</p>}
+              </>
+            )}
+          </div>
+        ) : <p className="text-sm text-muted">No tiene mensualidad de {monthName(period)}.</p>}
+        {later.length > 0 && <p className="text-xs text-muted">Se cancelan {later.length} mensualidad{later.length === 1 ? '' : 'es'} siguiente{later.length === 1 ? '' : 's'} sin pagos ({later.map((f) => monthName(f.period)).join(', ')}).</p>}
       </div>
     </Modal>
   )

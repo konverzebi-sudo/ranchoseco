@@ -82,6 +82,7 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase/migrations/0035_posicion.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0036_recargo_seguro_origen.sql', 'utf8'))
   await db.exec(readFileSync('supabase/migrations/0037_uniforme_partido.sql', 'utf8'))
+  await db.exec(readFileSync('supabase/migrations/0039_recargo_familia_baja.sql', 'utf8'))
   await db.exec('update academia.settings set open_mode = false') // las pruebas por rol corren con el sitio cerrado
 
   const users: [string, string, string][] = [
@@ -560,5 +561,16 @@ describe('nunca pagado de más', () => {
     await expect(db.exec(`update academia.fees set discount = 100 where id = '${f}'`)).rejects.toThrow(/pagado de más/)
     await db.exec(`update academia.fees set discount = 50 where id = '${f}'`)
     expect(Number((await db.query<any>(`select balance from academia.fee_balances where id = '${f}'`)).rows[0].balance)).toBe(0)
+  })
+})
+
+describe('recargo por familia (promo de hermanos)', () => {
+  it('dos hermanos atrasados el mismo mes: un solo recargo de $50', async () => {
+    const g = (await db.query<any>(`insert into academia.sibling_groups (name) values ('Fam Test') returning id`)).rows[0].id
+    const a = (await db.query<any>(`insert into academia.students (full_name, sibling_group_id, sibling_order) values ('Hermano A', '${g}', 1) returning id`)).rows[0].id
+    const b = (await db.query<any>(`insert into academia.students (full_name, sibling_group_id, sibling_order) values ('Hermano B', '${g}', 2) returning id`)).rows[0].id
+    await db.exec(`insert into academia.fees (student_id, period, amount, due_date, late_fee_amount) values ('${a}', '2026-08-01', 500, '2026-08-08', 50), ('${b}', '2026-08-01', 450, '2026-08-08', 50)`)
+    const r = (await db.query<any>(`select s.full_name, fb.late_fee from academia.fee_balances fb join academia.students s on s.id = fb.student_id where s.sibling_group_id = '${g}' order by s.sibling_order`)).rows
+    expect(r.map((x: any) => Number(x.late_fee))).toEqual([50, 0])
   })
 })
