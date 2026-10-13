@@ -6,6 +6,7 @@ import { Avatar, Badge, Button, Card, ConfirmDialog, Empty, Field, Input, Modal,
 import { useToast } from '@/components/toast'
 import { TeamSelect } from '@/components/Team'
 import { EvalResult } from '@/components/PlayerEvalProfile'
+import { EditableName } from '@/components/ProfileEdit'
 import { useCategories, useCoachCategories, useCoaches, useExtraClasses, useStudents, type StudentRow } from '@/lib/api'
 import { useEvalElements, useEvalExercises, useEvalTemplates, usePlayerEvalItems, usePlayerEvaluations } from '@/lib/evalApi'
 import { supabase, unwrap } from '@/lib/supabase'
@@ -109,7 +110,7 @@ function Evaluate({ initialStudent }: { initialStudent: string }) {
       <Card className="flex flex-wrap items-center gap-4 p-4">
         <Avatar name={student.full_name} path={student.photo_path} size={64} />
         <div className="min-w-0 flex-1">
-          <p className="font-display text-2xl font-bold uppercase leading-tight">{student.full_name}</p>
+          <div><EditableName student={student}><span className="font-display text-2xl font-bold uppercase leading-tight">{student.full_name}</span></EditableName></div>
           <p className="text-sm text-muted">
             {cat?.name ?? 'Sin categoría'} · Generación {tpl?.generation ?? '—'}{age(student.birth_date) != null ? ` · ${age(student.birth_date)} años` : ''} · Profe {coachOf(student) || '—'}
           </p>

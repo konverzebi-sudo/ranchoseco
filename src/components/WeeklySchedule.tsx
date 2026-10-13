@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { addDays, format } from 'date-fns'
 import { Save } from 'lucide-react'
-import { Button, Input, Modal, cx } from './ui'
+import { Button, Modal, cx } from './ui'
 import { useToast } from './toast'
+import { TimeSelect } from './TimeSelect'
 import { useCategories } from '@/lib/api'
 import { supabase, unwrap } from '@/lib/supabase'
 import { today } from '@/lib/format'
@@ -38,9 +39,9 @@ export function ScheduleEditor({ value, onChange }: { value: Slot[]; onChange: (
             </label>
             {s ? (
               <div className="flex items-center gap-2 text-sm">
-                <Input type="time" value={s.start} onChange={(e) => set(d, { start: e.target.value })} className="h-9 w-32" aria-label={`${name} inicio`} />
+                <TimeSelect value={s.start} onChange={(v) => set(d, { start: v })} className="h-9 w-32" aria-label={`${name} inicio`} />
                 <span className="text-muted">a</span>
-                <Input type="time" value={s.end} onChange={(e) => set(d, { end: e.target.value })} className="h-9 w-32" aria-label={`${name} fin`} />
+                <TimeSelect value={s.end} onChange={(v) => set(d, { end: v })} className="h-9 w-32" aria-label={`${name} fin`} />
               </div>
             ) : <span className="text-xs text-muted">No entrena</span>}
           </div>

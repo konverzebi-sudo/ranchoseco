@@ -28,8 +28,7 @@ const REPORT_TO = [
   { name: 'Junior DR', phone: '528444958824' },
 ]
 
-const SOURCE_PREFIX = 'Vino de: '
-const SOURCES = ['Préstamo de ', 'Dinero del dueño', 'Ahorro apartado', 'Banco', 'Caja chica de otro lado', 'Otro']
+import { CashDoubtsCard, SOURCE_PREFIX, SOURCES } from '@/components/CashDoubts'
 
 type Review = Record<string, { amount?: number; approved?: boolean; adjusted?: number | null; note?: string; excluded?: boolean; pending?: boolean }>
 
@@ -370,6 +369,7 @@ export default function WeeklyCut() {
           <Button variant="secondary" icon={Printer} onClick={() => window.print()} className="hidden sm:inline-flex">Imprimir</Button>
           <Button icon={Vault} onClick={() => setConfirming(true)} disabled={loading}>{editingCut ? 'Guardar corrección' : 'Hacer corte ahora'}</Button>
         </>} />
+      <div className="mb-4"><CashDoubtsCard /></div>
 
       {(() => {
         // Avisos: días sin corte (cobros que no se cuentan) y fechas que se enciman con otro corte

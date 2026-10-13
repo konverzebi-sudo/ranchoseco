@@ -9,6 +9,7 @@ import { useRole } from '@/lib/role'
 import { supabase, unwrap } from '@/lib/supabase'
 import { date, time, today } from '@/lib/format'
 import type { Match, MatchStatus } from '@/lib/types'
+import { TimeSelect } from '@/components/TimeSelect'
 
 export function resultBadge(m: Match) {
   if (m.status === 'cancelado') return <Badge>Cancelado</Badge>
@@ -188,7 +189,7 @@ export function MatchModal({ match, defaultCategory, defaultDate, onClose, onSav
           </Field>
           <Field label="Rival *"><Input value={f.opponent} onChange={(e) => setF({ ...f, opponent: e.target.value })} /></Field>
           <Field label="Fecha"><Input type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} /></Field>
-          <Field label="Hora del partido"><Input type="time" value={f.time} onChange={(e) => setF({ ...f, time: e.target.value })} /></Field>
+          <Field label="Hora del partido"><TimeSelect value={f.time} onChange={(v) => setF({ ...f, time: v })} className="w-full" /></Field>
           <Field label="Sede y dirección"><Input value={f.venue} onChange={(e) => setF({ ...f, venue: e.target.value })} placeholder="Cancha, calle y colonia" /></Field>
           <Field label="Condición">
             <Segmented value={f.is_home ? 'l' : 'v'} onChange={(v) => setF({ ...f, is_home: v === 'l' })} options={[{ id: 'l', label: 'Local' }, { id: 'v', label: 'Visitante' }]} />

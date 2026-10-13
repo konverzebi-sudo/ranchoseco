@@ -8,7 +8,10 @@ export const DOW_LONG = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', '
 
 export const sortSlots = (s: Slot[]) => [...s].sort((a, b) => a.dow - b.dow || a.start.localeCompare(b.start))
 
-const hm = (t: string) => {
+/** '17:30' → '5:30 pm' */
+export const timeLabel = (t: string) => hm(t)
+
+function hm(t: string) {
   const [h, m] = t.split(':').map(Number)
   const ap = h >= 12 ? 'pm' : 'am'
   const h12 = h % 12 || 12

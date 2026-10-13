@@ -13,6 +13,8 @@ import { useRole } from '@/lib/role'
 import CoachNotes from '@/components/CoachNotes'
 import { MatchReportsCard } from '@/components/MatchPhotos'
 import { CategoryRequestsCard } from '@/components/CategoryChange'
+import { ProfileRequestsCard } from '@/components/ProfileEdit'
+import { CashDoubtsCard } from '@/components/CashDoubts'
 import IncomeBreakdownModal from '@/components/IncomeBreakdown'
 import CardDetailModal, { type CardKind } from '@/components/CardDetails'
 import BirthdaysCard from '@/components/Birthdays'
@@ -264,8 +266,10 @@ function AdminDashboard() {
 
           {paying && <PayInstallmentModal expense={paying.expense} inst={paying.inst} onClose={() => setPaying(null)} />}
           {closing && <CloseTrialModal student={closing} onClose={() => setClosing(null)} />}
+          <CashDoubtsCard />
           <OverpaidAlert />
           <CategoryRequestsCard />
+          <ProfileRequestsCard />
           <UnpaidDeliveries />
           <MatchReportsCard />
           <BirthdaysCard />

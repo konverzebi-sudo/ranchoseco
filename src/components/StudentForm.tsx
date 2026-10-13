@@ -9,7 +9,7 @@ import { isValidPhone, normalizePhone, prettyPhone, today } from '@/lib/format'
 import type { StudentStatus } from '@/lib/types'
 
 /** Reduce la foto a 640px antes de subirla (rápido en datos móviles). */
-async function resizeImage(file: File, max = 640): Promise<Blob> {
+export async function resizeImage(file: File, max = 640): Promise<Blob> {
   const img = await createImageBitmap(file)
   const scale = Math.min(1, max / Math.max(img.width, img.height))
   const canvas = document.createElement('canvas')
