@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { startOfWeek } from 'date-fns'
-import { TrendingUp, TrendingDown, Scale, Banknote, Download, MessageCircle, Printer, Plus, Trash2, Vault, PiggyBank, Check, Pencil, CheckCheck, X, ChevronDown } from 'lucide-react'
+import { TrendingUp, TrendingDown, Scale, Banknote, Download, MessageCircle, Printer, Plus, Trash2, Vault, PiggyBank, Check, Pencil, CheckCheck, X, ChevronDown, FileText } from 'lucide-react'
 import { Badge, Button, Card, ConfirmDialog, ErrorState, Field, IconButton, Input, Modal, PageHeader, Spinner, StatCard, Textarea, cx } from '@/components/ui'
 import { useToast } from '@/components/toast'
 import RangePicker from '@/components/RangePicker'
@@ -14,7 +14,7 @@ import {
 import { METHOD_LABEL, date, money, toISODate, today } from '@/lib/format'
 import { supabase, unwrap } from '@/lib/supabase'
 import { exportCsv } from '@/lib/csv'
-import { waLink } from '@/lib/whatsapp'
+import { downloadBlob, waLink } from '@/lib/whatsapp'
 import { cutReportText } from '@/lib/cutReport'
 import { notify } from '@/lib/notify'
 import { UNIFORMS_FUND_KEY, isUniformConcept } from '@/lib/uniforms'
@@ -674,6 +674,7 @@ export default function WeeklyCut() {
               <div><p className="text-xs text-muted">En caja</p><p className="font-semibold text-brand">{cents(Number(sent.counted))}</p></div>
             </div>
             <ReportButtons cut={sent} />
+            <PdfButton cut={sent} className="w-full" />
           </div>
         )}
       </Modal>
@@ -718,6 +719,22 @@ function ReportButtons({ cut, small }: { cut: CashCut; small?: boolean }) {
   )
 }
 
+/** Descarga el corte en un PDF visual (resumen, gráficas y todo el detalle). */
+function PdfButton({ cut, small, className }: { cut: CashCut; small?: boolean; className?: string }) {
+  const cuts = useCashCuts()
+  const toast = useToast()
+  const [busy, setBusy] = useState(false)
+  const go = async () => {
+    setBusy(true)
+    try {
+      const prev = (cuts.data ?? []).find((x) => x.period_to < cut.period_from && x.id !== cut.id)
+      const { renderCutPdf } = await import('@/pdf/cutPdf')
+      downloadBlob(await renderCutPdf(cut, prev), `Corte de caja ${cut.cut_date}.pdf`)
+    } catch (e) { toast.error(e) } finally { setBusy(false) }
+  }
+  return <Button variant="secondary" size={small ? 'sm' : 'md'} icon={FileText} loading={busy} onClick={go} className={className}>{small ? 'PDF' : 'Descargar PDF del corte'}</Button>
+}
+
 function ReportModal({ cut, onClose }: { cut: CashCut; onClose: () => void }) {
   const cuts = useCashCuts()
   const toast = useToast()
@@ -730,6 +747,7 @@ function ReportModal({ cut, onClose }: { cut: CashCut; onClose: () => void }) {
   return (
     <Modal open onClose={onClose} title="Reporte del corte" wide
       footer={<>
+        <PdfButton cut={cut} />
         <Button variant="secondary" onClick={copy}>Copiar</Button>
         <a href={`https://wa.me/?text=${encodeURIComponent(value)}`} target="_blank" rel="noopener noreferrer" className="inline-flex h-11 items-center gap-2 rounded-xl border border-wa px-4 text-sm font-semibold text-wa hover:bg-wa/10"><MessageCircle className="h-4 w-4" /> Otro chat o grupo</a>
         {REPORT_TO.map((r) => (
@@ -797,6 +815,7 @@ function CutCard({ cut: c, onEdit, onDelete }: { cut: CashCut; onEdit: () => voi
         </div>
         <div className="flex flex-wrap items-center gap-1">
           <ReportButtons cut={c} small />
+          <PdfButton cut={c} small />
           <IconButton icon={Pencil} label="Corregir corte" onClick={onEdit} className="h-8 w-8" />
           <IconButton icon={Trash2} label="Eliminar corte" onClick={onDelete} className="h-8 w-8" />
         </div>
