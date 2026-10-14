@@ -15,6 +15,7 @@ import { METHOD_LABEL, date, money, toISODate, today } from '@/lib/format'
 import { supabase, unwrap } from '@/lib/supabase'
 import { exportCsv } from '@/lib/csv'
 import { waLink } from '@/lib/whatsapp'
+import { cutReportText } from '@/lib/cutReport'
 import { notify } from '@/lib/notify'
 import { UNIFORMS_FUND_KEY, isUniformConcept } from '@/lib/uniforms'
 import type { CashCut, PaymentMethod } from '@/lib/types'
@@ -672,7 +673,6 @@ export default function WeeklyCut() {
               <div><p className="text-xs text-muted">Salió</p><p className="font-semibold text-bad">{cents(Number(sent.outflow))}</p></div>
               <div><p className="text-xs text-muted">En caja</p><p className="font-semibold text-brand">{cents(Number(sent.counted))}</p></div>
             </div>
-            <p className="font-semibold">Enviar reporte del corte por WhatsApp a:</p>
             <ReportButtons cut={sent} />
           </div>
         )}
@@ -705,33 +705,44 @@ function Breakdown({ label, total, tone, lines, empty = 'Nada palomeado.' }: {
   )
 }
 
-/** Botones para mandar el reporte del corte por WhatsApp a Marco y Junior. */
+/** Enviar el reporte del corte: primero se ve, se puede corregir, copiar y mandar a quien sea. */
 function ReportButtons({ cut, small }: { cut: CashCut; small?: boolean }) {
+  const [open, setOpen] = useState(false)
   return (
-    <div className={cx('flex flex-wrap gap-2', !small && 'flex-col sm:flex-row')}>
-      {REPORT_TO.map((r) => (
-        <a key={r.phone} href={waLink(r.phone, shareText(cut))} target="_blank" rel="noopener noreferrer"
-          className={cx('inline-flex items-center justify-center gap-1.5 rounded-xl bg-wa font-semibold text-ink hover:brightness-110', small ? 'h-8 px-2.5 text-xs' : 'h-11 flex-1 px-4')}>
-          <MessageCircle className="h-4 w-4" /> {small ? r.name : `Enviar a ${r.name}`}
-        </a>
-      ))}
-    </div>
+    <>
+      <Button variant="whatsapp" size={small ? 'sm' : 'md'} icon={MessageCircle} onClick={() => setOpen(true)} className={small ? '' : 'w-full'}>
+        {small ? 'Reporte' : 'Ver y enviar el reporte por WhatsApp'}
+      </Button>
+      {open && <ReportModal cut={cut} onClose={() => setOpen(false)} />}
+    </>
   )
 }
 
-const shareText = (c: CashCut) => [
-  '*Corte de caja Rancho Seco*', `${date(c.cut_date, "EEEE d 'de' MMMM")} · del ${range(c.period_from, c.period_to)}`, '',
-  `Entró: ${cents(Number(c.income))}`, `Salió: ${cents(Number(c.outflow))}`,
-  ...OUT_GROUPS.flatMap((g) => {
-    const v = (c.items ?? []).filter((i) => i.type === 'salida' && counts(i) && outGroup(i) === g.id).reduce((a, i) => a + itemValue(i), 0)
-    return v > 0 ? [`  · ${g.label}: ${cents(v)}`] : []
-  }), `*Contado en caja: ${cents(Number(c.counted))}*`,
-  ...((c.items ?? []).filter((i) => i.adjusted != null).length ? ['', 'Correcciones:', ...(c.items ?? []).filter((i) => i.adjusted != null).map((i) => `  · ${i.concept}: ${cents(i.amount)} → ${cents(Number(i.adjusted))}${i.note ? ` (${i.note})` : ''}`)] : []),
-  ...((c.savings ?? []).some((s) => Number(s.saved) > 0) ? ['', 'Ahorro apartado:', ...(c.savings ?? []).filter((s) => Number(s.saved) > 0).map((s) => `  · ${s.name}: ${cents(Number(s.saved))}`)] : []),
-  ...(c.distribution.some((x) => Number(x.amount) < 0) ? ['', 'Faltó dinero y salió de:', ...c.distribution.filter((x) => Number(x.amount) < 0).map((x) => `  · ${x.to.replace(SOURCE_PREFIX, '')}: ${cents(-Number(x.amount))}`)] : []),
-  '', 'A dónde se fue:', ...c.distribution.filter((x) => Number(x.amount) > 0).map((x) => `  · ${x.to}: ${cents(Number(x.amount))}`),
-  ...(c.notes ? ['', c.notes] : []),
-].join('\n')
+function ReportModal({ cut, onClose }: { cut: CashCut; onClose: () => void }) {
+  const cuts = useCashCuts()
+  const toast = useToast()
+  const prev = (cuts.data ?? []).find((x) => x.period_to < cut.period_from && x.id !== cut.id)
+  const [text, setText] = useState<string | null>(null)
+  const value = text ?? cutReportText(cut, prev)
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(value); toast.ok('Reporte copiado. Pégalo en el chat o grupo que quieras.') } catch { toast.error('No se pudo copiar; selecciónalo y cópialo.') }
+  }
+  return (
+    <Modal open onClose={onClose} title="Reporte del corte" wide
+      footer={<>
+        <Button variant="secondary" onClick={copy}>Copiar</Button>
+        <a href={`https://wa.me/?text=${encodeURIComponent(value)}`} target="_blank" rel="noopener noreferrer" className="inline-flex h-11 items-center gap-2 rounded-xl border border-wa px-4 text-sm font-semibold text-wa hover:bg-wa/10"><MessageCircle className="h-4 w-4" /> Otro chat o grupo</a>
+        {REPORT_TO.map((r) => (
+          <a key={r.phone} href={waLink(r.phone, value)} target="_blank" rel="noopener noreferrer" className="inline-flex h-11 items-center gap-2 rounded-xl bg-wa px-4 text-sm font-semibold text-ink hover:brightness-110">
+            <MessageCircle className="h-4 w-4" /> {r.name}
+          </a>
+        ))}
+      </>}>
+      <p className="mb-2 text-sm text-muted">Así se va a ver en WhatsApp (las *palabras con asteriscos* salen en negritas). Puedes corregirlo antes de mandarlo.</p>
+      <Textarea rows={22} value={value} onChange={(e) => setText(e.target.value)} className="font-mono text-sm" />
+    </Modal>
+  )
+}
 
 /** Formulario corto para agregar un pago o un gasto que no estaba registrado. */
 function ManualLineForm({ type, defaultDate, onAdd, onCancel }: { type: CutItem['type']; defaultDate: string; onAdd: (i: CutItem) => void; onCancel: () => void }) {
