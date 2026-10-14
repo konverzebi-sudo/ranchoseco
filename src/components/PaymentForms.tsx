@@ -79,27 +79,30 @@ export function PaymentModal({ student: fixed, feeId, onClose, onAddFee, preset 
   const open = useMemo(() => [...fees.filter((f) => Number(f.balance) > 0), ...(withSiblings ? siblingOpen : [])].sort(payOrder), [fees, siblingOpen, withSiblings])
   const credit = fees.filter((f) => Number(f.balance) < 0)
   const owed = open.reduce((a, f) => a + Number(f.balance), 0)
-  const nextMonth = useMemo(() => {
+  // Meses que todavía no tienen mensualidad: se pueden pagar o abonar por adelantado (hasta 6)
+  const nextMonths = useMemo(() => {
     const taken = new Set(fees.filter((f) => f.concept === 'Mensualidad').map((f) => f.period.slice(0, 10)))
-    for (let i = 0; i < 12; i++) { const p = toISODate(startOfMonth(addMonths(new Date(), i))); if (!taken.has(p)) return p }
-    return null
+    const out: string[] = []
+    for (let i = 0; i < 13 && out.length < 6; i++) { const p = toISODate(startOfMonth(addMonths(new Date(), i))); if (!taken.has(p)) out.push(p) }
+    return out
   }, [fees])
   const thisPeriod = toISODate(startOfMonth(new Date()))
 
   // Lo que debe: casilla + cuánto se abona a cada cargo
   const [sel, setSel] = useState<Record<string, { on: boolean; amount: string }>>(feeId ? { [feeId]: { on: true, amount: '' } } : {})
   const [extras, setExtras] = useState<Extra[]>([])
+  const [moreAdv, setMoreAdv] = useState(false)
   useEffect(() => {
     // Al elegir al niño se preparan los conceptos extra con su precio
     setExtras([
       { key: 'insc', concept: 'Inscripción', amount: preset.includes('Inscripción') && presetAmount ? presetAmount : String(INSCRIPTION_FEE), on: preset.includes('Inscripción'), period: thisPeriod },
       { key: 'reinsc', concept: 'Reinscripción', amount: String(REINSCRIPTION_FEE), on: false, period: thisPeriod },
       ...UNIFORM_CONCEPTS.map((u) => ({ key: u.concept, concept: u.concept, amount: preset.includes(u.concept) && presetAmount ? presetAmount : u.price != null ? String(u.price) : '', on: preset.includes(u.concept), period: thisPeriod })),
-      ...(nextMonth ? [{ key: 'adv', concept: `Mensualidad ${monthName(nextMonth)} (adelanto)`, amount: String(price.toPay), on: false, period: nextMonth }] : []),
+      ...nextMonths.map((p) => ({ key: `adv:${p}`, concept: `Mensualidad ${monthName(p)} (adelanto)`, amount: String(price.toPay), on: false, period: p })),
       { key: 'otro', concept: '', amount: '', on: false, period: thisPeriod, editable: true },
     ])
     if (!feeId) setSel({})
-  }, [student?.id, nextMonth, price.toPay]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [student?.id, nextMonths.join(), price.toPay]) // eslint-disable-line react-hooks/exhaustive-deps
   const [paid, setPaid] = useState('')
   const [method, setMethod] = useState<PaymentMethod>('efectivo')
   const [paidAt, setPaidAt] = useState(today())
@@ -162,7 +165,7 @@ export function PaymentModal({ student: fixed, feeId, onClose, onAddFee, preset 
       const base = { student_id: student.id, paid_at: paidAt, method, notes: notes.trim() || null, receipt_path, received_by: receiver.trim() }
       const rows: Record<string, unknown>[] = open.filter((f) => sel[f.id]?.on && amountOf(f) > 0).map((f) => ({ ...base, student_id: f.student_id, fee_id: f.id, amount: amountOf(f) }))
       for (const x of extras.filter((y) => y.on)) {
-        const isAdv = x.key === 'adv'
+        const isAdv = x.key.startsWith('adv')
         const created = unwrap(await supabase.from('fees').insert(isAdv
           ? { student_id: student.id, concept: 'Mensualidad', period: x.period, amount: price.regular, discount: price.discount, discount_reason: price.reason, due_date: dueDateFor(x.period, price.dueDay), notes: 'Pagada por adelantado' }
           : { student_id: student.id, concept: x.concept.trim(), period: x.period, amount: Number(x.amount), due_date: paidAt }).select('id').single()) as { id: string }
@@ -260,7 +263,7 @@ export function PaymentModal({ student: fixed, feeId, onClose, onAddFee, preset 
             <div>
               <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted">3. ¿Paga algo más? (inscripción, uniforme, credencial, adelanto…)</p>
               <ul className="divide-y divide-ink-700 rounded-xl border border-ink-600">
-                {extras.map((x, k) => (
+                {extras.map((x, k) => !x.key.startsWith('adv') && (
                   <li key={x.key} className={cx('flex flex-wrap items-center gap-3 px-3 py-2 text-sm', x.on && 'bg-brand-dim')}>
                     <input type="checkbox" checked={x.on} onChange={(e) => checkExtra(k, e.target.checked)} className="h-5 w-5 accent-[#F2E30A]" aria-label={x.concept || 'Otro concepto'} />
                     {x.editable
@@ -271,6 +274,28 @@ export function PaymentModal({ student: fixed, feeId, onClose, onAddFee, preset 
                   </li>
                 ))}
               </ul>
+              {/* Adelantar mensualidades: completas o un abono (si paga menos, queda debiendo el resto de ese mes) */}
+              {extras.some((x) => x.key.startsWith('adv')) && (
+                <>
+                  <p className="mb-1.5 mt-3 text-xs font-semibold uppercase tracking-wider text-muted">Adelantar mensualidades (completas o abono)</p>
+                  <ul className="divide-y divide-ink-700 rounded-xl border border-ink-600">
+                    {extras.map((x, k) => {
+                      if (!x.key.startsWith('adv')) return null
+                      const pos = extras.filter((y) => y.key.startsWith('adv')).indexOf(x)
+                      if (!moreAdv && pos >= 2 && !x.on) return null
+                      return (
+                        <li key={x.key} className={cx('flex flex-wrap items-center gap-3 px-3 py-2 text-sm', x.on && 'bg-brand-dim')}>
+                          <input type="checkbox" checked={x.on} onChange={(e) => checkExtra(k, e.target.checked)} className="h-5 w-5 accent-[#F2E30A]" aria-label={x.concept} />
+                          <span className="min-w-0 flex-1 font-medium">{x.concept}{x.on && Number(x.amount) < price.toPay && <span className="block text-xs font-normal text-warn">Abono: quedará debiendo {money(price.toPay - (Number(x.amount) || 0))}</span>}</span>
+                          <Input type="number" min="0" inputMode="decimal" value={x.amount} placeholder="Monto" aria-label="Monto"
+                            onChange={(e) => setExtras(extras.map((y, j) => (j === k ? { ...y, amount: e.target.value, on: e.target.value !== '' || y.on } : y)))} className="h-9 w-28" />
+                        </li>
+                      )
+                    })}
+                  </ul>
+                  {!moreAdv && extras.filter((x) => x.key.startsWith('adv')).length > 2 && <button type="button" onClick={() => setMoreAdv(true)} className="mt-1 text-xs text-brand hover:underline">Adelantar más meses</button>}
+                </>
+              )}
               {onAddFee && <button type="button" onClick={onAddFee} className="mt-2 text-xs text-muted hover:text-brand hover:underline">¿Sólo quieres cargarle algo sin que pague todavía? Agregar cargo</button>}
             </div>
 

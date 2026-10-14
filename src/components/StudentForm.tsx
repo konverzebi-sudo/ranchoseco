@@ -1,9 +1,10 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Camera, Save } from 'lucide-react'
+import { Camera, Save, Users } from 'lucide-react'
 import { Button, Field, Input, Modal, Select, Textarea, Avatar } from './ui'
 import { useToast } from './toast'
-import { useCategories, useCoaches, useSettings, parentsOf, type StudentRow } from '@/lib/api'
+import { useCategories, useCoaches, useSettings, useStudents, parentsOf, type StudentRow } from '@/lib/api'
+import { PROMO_REASON, memberPrice, surnameKey } from '@/lib/siblings'
 import { supabase, unwrap, BUCKETS } from '@/lib/supabase'
 import { isValidPhone, normalizePhone, prettyPhone, today } from '@/lib/format'
 import type { StudentStatus } from '@/lib/types'
@@ -28,19 +29,25 @@ export async function uploadStudentPhoto(studentId: string, file: File) {
   return path
 }
 
-export default function StudentForm({ student, defaultCategory, defaultStatus, onClose, onSaved }: {
+export default function StudentForm({ student, defaultCategory, defaultStatus, siblingOf, onClose, onSaved }: {
   student?: StudentRow
   defaultCategory?: string
   defaultStatus?: StudentStatus
+  /** Alta de un hermano: usa los mismos papás y activa la promo de hermanos */
+  siblingOf?: StudentRow
   onClose: () => void
   onSaved?: (id: string) => void
 }) {
+  const allStudents = useStudents()
+  const [sib, setSib] = useState<StudentRow | null>(siblingOf ?? null)
+  const [sibQ, setSibQ] = useState('')
   const { data: categories } = useCategories()
   const { data: coaches } = useCoaches()
   const { data: settings } = useSettings()
   const qc = useQueryClient()
   const toast = useToast()
-  const par = student ? parentsOf(student) : { papa: null, mama: null, otros: [], all: [] }
+  // Al editar: sus papás. Al dar de alta a un hermano: los mismos papás (no se duplican)
+  const par = student ? parentsOf(student) : sib ? parentsOf(sib) : { papa: null, mama: null, otros: [], all: [] }
   const otro = par.otros[0] ?? null
   const currentPrimary = par.all.find((x) => x.is_primary)
 
@@ -81,6 +88,26 @@ export default function StudentForm({ student, defaultCategory, defaultStatus, o
     { key: 'otro' as const, label: 'Otro tutor', rel: f.otro_rel.trim() || 'Tutor', name: f.otro_name, phone: phoneOf(f.otro_phone), existing: otro },
   ]
   const [showOtro, setShowOtro] = useState(!!otro)
+  // Al escoger al hermano se llenan los datos de papá y mamá
+  useEffect(() => {
+    if (student || !sib) return
+    const p2 = parentsOf(sib)
+    const o2 = p2.otros[0] ?? null
+    const prim = p2.all.find((x) => x.is_primary)
+    setF((x) => ({
+      ...x,
+      papa_name: p2.papa?.full_name ?? '', papa_phone: p2.papa?.phone ?? '',
+      mama_name: p2.mama?.full_name ?? '', mama_phone: p2.mama?.phone ?? '',
+      otro_name: o2?.full_name ?? '', otro_phone: o2?.phone ?? '', otro_rel: o2?.relationship ?? '',
+      email: (prim ?? p2.all[0])?.email ?? '',
+      avisos: prim && prim === p2.papa ? 'papa' : prim && prim === o2 ? 'otro' : 'mama',
+      emergency_contact_name: x.emergency_contact_name || sib.emergency_contact_name || '',
+      emergency_contact_phone: x.emergency_contact_phone || sib.emergency_contact_phone || '',
+    }))
+    if (o2) setShowOtro(true)
+  }, [sib?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const norm = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  const sibResults = sibQ.trim().length >= 2 ? (allStudents.data ?? []).filter((x) => x.status !== 'baja' && norm(x.full_name).includes(norm(sibQ.trim()))).slice(0, 6) : []
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -123,13 +150,17 @@ export default function StudentForm({ student, defaultCategory, defaultStatus, o
       for (const sl of slots) {
         if (sl.name.trim() && sl.phone) {
           const gp = { full_name: sl.name.trim(), phone: sl.phone, relationship: sl.rel }
-          if (sl.existing) { unwrap(await supabase.from('guardians').update(gp).eq('id', sl.existing.id)); ids[sl.key] = sl.existing.id }
+          if (sl.existing) {
+            unwrap(await supabase.from('guardians').update(gp).eq('id', sl.existing.id)); ids[sl.key] = sl.existing.id
+            // Hermano nuevo: se le liga el mismo papá / mamá
+            if (!student && sib) unwrap(await supabase.from('student_guardians').insert({ student_id: id, guardian_id: sl.existing.id, is_primary: false }))
+          }
           else {
             const created = unwrap(await supabase.from('guardians').insert(gp).select('id').single()) as { id: string }
             unwrap(await supabase.from('student_guardians').insert({ student_id: id, guardian_id: created.id, is_primary: false }))
             ids[sl.key] = created.id
           }
-        } else if (sl.existing) {
+        } else if (sl.existing && student) {
           unwrap(await supabase.from('student_guardians').delete().eq('student_id', id!).eq('guardian_id', sl.existing.id))
         }
       }
@@ -140,6 +171,7 @@ export default function StudentForm({ student, defaultCategory, defaultStatus, o
         if (f.email.trim() !== ((currentPrimary ?? par.all[0])?.email ?? '')) unwrap(await supabase.from('guardians').update({ email: f.email.trim() || null }).eq('id', primaryId))
       }
       if (photo) await uploadStudentPhoto(id!, photo)
+      if (!student && sib) await joinSiblings(sib, id!, allStudents.data ?? [], settings?.sibling_prices?.map(Number))
       await Promise.all(['students', 'student', 'accounts'].map((k) => qc.invalidateQueries({ queryKey: [k] })))
       toast.ok(student ? 'Cambios guardados' : 'Alumno registrado')
       onSaved?.(id!)
@@ -175,6 +207,27 @@ export default function StudentForm({ student, defaultCategory, defaultStatus, o
                 <p className="font-semibold">{label}</p><p className="text-xs text-muted">{text}</p>
               </button>
             ))}
+          </div>
+        )}
+
+        {!student && (
+          <div className="rounded-xl border border-info/40 bg-info/5 p-3 text-sm">
+            <p className="mb-2 flex items-center gap-2 font-semibold"><Users className="h-4 w-4 text-info" /> ¿Es hermano(a) de alguien inscrito?</p>
+            {sib ? (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span>Hermano(a) de <b>{sib.full_name}</b>: usa los mismos papás y se activa la <b>promo de hermanos</b>.</span>
+                <button type="button" className="text-xs text-muted hover:text-brand hover:underline" onClick={() => setSib(null)}>Quitar</button>
+              </div>
+            ) : (
+              <>
+                <Input value={sibQ} onChange={(e) => setSibQ(e.target.value)} placeholder="Escribe el nombre del hermano(a) (opcional)" className="h-9" />
+                {sibResults.length > 0 && (
+                  <ul className="mt-1 divide-y divide-ink-700 rounded-xl border border-ink-600">
+                    {sibResults.map((x) => <li key={x.id}><button type="button" onClick={() => { setSib(x); setSibQ('') }} className="w-full px-3 py-2 text-left hover:bg-ink-700">{x.full_name}</button></li>)}
+                  </ul>
+                )}
+              </>
+            )}
           </div>
         )}
 
@@ -269,4 +322,31 @@ export default function StudentForm({ student, defaultCategory, defaultStatus, o
       </form>
     </Modal>
   )
+}
+
+/**
+ * Junta al hermano nuevo con su hermano en la promo: si ya tenían grupo se agrega al final;
+ * si no, se crea "Familia …". La mensualidad de este mes de los hermanos baja al precio de promo
+ * (si no han pagado más que ese precio). La del niño nuevo se crea sola con su precio de promo.
+ */
+async function joinSiblings(sib: StudentRow, newId: string, all: StudentRow[], prices?: number[]) {
+  let gid = sib.sibling_group_id
+  if (!gid) {
+    const fam = surnameKey(sib.full_name) ?? sib.full_name.split(' ').slice(-2).join(' ')
+    gid = (unwrap(await supabase.from('sibling_groups').insert({ name: `Familia ${fam.replace(/\b\w/g, (c) => c.toUpperCase())}` }).select('id').single()) as { id: string }).id
+    unwrap(await supabase.from('students').update({ sibling_group_id: gid, sibling_order: 1 }).eq('id', sib.id))
+  }
+  const members = all.filter((x) => x.sibling_group_id === gid && x.id !== newId)
+  const order = Math.max(1, ...members.map((x) => x.sibling_order ?? 1)) + 1
+  unwrap(await supabase.from('students').update({ sibling_group_id: gid, sibling_order: order }).eq('id', newId))
+  // Precio de promo en la mensualidad de este mes de los que ya estaban
+  const period = today().slice(0, 7) + '-01'
+  const group = sib.sibling_group_id ? members : [{ ...sib, sibling_order: 1 }]
+  for (const m of group) {
+    const fee = unwrap(await supabase.from('fee_balances').select('id, amount, paid, discount').eq('student_id', m.id).eq('concept', 'Mensualidad').eq('period', period).maybeSingle()) as { id: string; amount: number; paid: number; discount: number } | null
+    if (!fee) continue
+    const price = memberPrice(m, m.sibling_order ?? 1, prices)
+    const discount = Math.max(0, Number(fee.amount) - price)
+    if (Number(fee.paid) <= price && discount > Number(fee.discount)) unwrap(await supabase.from('fees').update({ discount, discount_reason: PROMO_REASON }).eq('id', fee.id))
+  }
 }

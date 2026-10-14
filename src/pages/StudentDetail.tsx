@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Pencil, User, ClipboardCheck, Wallet, TrendingUp, Trophy, FileText, Plus, HeartPulse, Link2, Copy,
-  MessageCircle, RefreshCw, UserX, Receipt, Phone, PauseCircle, PlayCircle,
+  MessageCircle, RefreshCw, UserX, Receipt, Phone, PauseCircle, PlayCircle, UserPlus,
 } from 'lucide-react'
 import {
   Avatar, Badge, Button, Card, ConfirmDialog, Empty, ErrorState, Field, Input, Modal, Spinner, Tabs, Textarea, feeTone, Select, cx } from '@/components/ui'
@@ -49,6 +49,8 @@ const TABS: { id: Tab; label: string; icon: typeof User }[] = [
 
 export default function StudentDetail() {
   const role = useRole()
+  const [addSibling, setAddSibling] = useState(false)
+  const nav = useNavigate()
   const { id } = useParams()
   const [params, setParams] = useSearchParams()
   const tab = (params.get('tab') as Tab) || 'general'
@@ -83,6 +85,7 @@ export default function StudentDetail() {
             {!role.isProfe && Number(acc?.balance ?? 0) > 0 && <CollectButton student={s} size="md" label="Cobrar por WhatsApp" />}
             <CategoryChangeButton student={s} />
             {!role.isProfe && <Button variant="secondary" icon={Pencil} onClick={() => setEditing(true)}>Editar</Button>}
+            {!role.isProfe && <Button variant="secondary" icon={UserPlus} onClick={() => setAddSibling(true)}>Registrar hermano(a)</Button>}
           </div>
         </div>
       </Card>
@@ -98,6 +101,7 @@ export default function StudentDetail() {
         {tab === 'reportes' && <ReportPanel student={s} />}
       </div>
       {editing && <StudentForm student={s} onClose={() => setEditing(false)} />}
+      {addSibling && <StudentForm siblingOf={s} onClose={() => setAddSibling(false)} onSaved={(id) => nav(`/alumnos/${id}`)} />}
     </>
   )
 }

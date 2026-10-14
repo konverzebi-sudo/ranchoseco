@@ -8,6 +8,8 @@ import { dueDateForStudent } from './PaymentForms'
 import { supabase, unwrap } from '@/lib/supabase'
 import { date, money, monthName, today } from '@/lib/format'
 import { REINSCRIPTION_FEE, cycleEnd, inactiveDays, needsReinscription } from '@/lib/inactive'
+import { ClassCutPicker, classCharge, useMonthClasses } from './ClassCut'
+import type { FeeBalance } from '@/lib/types'
 
 const REASONS = ['Incapacidad', 'Lesión', 'Enfermedad', 'Viaje', 'Motivos familiares', 'Otro']
 
@@ -25,11 +27,13 @@ export function PauseModal({ student, onClose }: { student: StudentRow; onClose:
   const [fromMonth, setFromMonth] = useState(today().slice(0, 7))
   const [cancelFees, setCancelFees] = useState(true)
   const [saving, setSaving] = useState(false)
+  // El mes en que empieza: se cobra hasta la última clase que vino (no se cancela)
+  const cut = useMonthCut(student, fees, since)
 
   // Mensualidades sin ningún pago desde el mes elegido: se pueden cancelar
   const cancellable = useMemo(
-    () => (fees ?? []).filter((f) => f.concept === 'Mensualidad' && f.period.slice(0, 7) >= fromMonth && Number(f.paid) === 0),
-    [fees, fromMonth],
+    () => (fees ?? []).filter((f) => f.concept === 'Mensualidad' && f.period.slice(0, 7) >= fromMonth && Number(f.paid) === 0 && !(cut.on && f.id === cut.fee?.id)),
+    [fees, fromMonth, cut.on, cut.fee?.id],
   )
 
   const save = async () => {
@@ -40,6 +44,7 @@ export function PauseModal({ student, onClose }: { student: StudentRow; onClose:
       unwrap(await supabase.from('students').update({
         status: 'suspendido', inactive_since: since, inactive_until: until || null, inactive_reason: motivo,
       }).eq('id', student.id))
+      await cut.apply('Baja temporal')
       if (cancelFees && cancellable.length) {
         unwrap(await supabase.from('fees').delete().in('id', cancellable.map((f) => f.id)))
       }
@@ -59,9 +64,10 @@ export function PauseModal({ student, onClose }: { student: StudentRow; onClose:
             <Select value={reason} onChange={(e) => setReason(e.target.value)}>{REASONS.map((r) => <option key={r}>{r}</option>)}</Select>
           </Field>
           {reason === 'Otro' && <Field label="¿Cuál?"><Input value={other} onChange={(e) => setOther(e.target.value)} /></Field>}
-          <Field label="Desde"><Input type="date" value={since} onChange={(e) => setSince(e.target.value)} /></Field>
+          <Field label="Desde"><Input type="date" value={since} onChange={(e) => { const v = e.target.value || today(); setSince(v); cut.resetWeeks(v) }} /></Field>
           <Field label="Regreso estimado" hint="Por defecto, fin del ciclo (31 de julio)"><Input type="date" value={until} onChange={(e) => setUntil(e.target.value)} /></Field>
         </div>
+        {cut.box}
         <div className="rounded-xl border border-ink-600 bg-ink-900 p-4">
           <label className="flex items-start gap-2">
             <input type="checkbox" checked={cancelFees} onChange={(e) => setCancelFees(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[#F2E30A]" />
@@ -150,33 +156,77 @@ export const proportional = (charge: number, weeks: number) => Math.round((charg
  * Dar de baja: opción de cobrar sólo las semanas que vino ese mes (pago proporcional).
  * Las mensualidades siguientes que no tengan pagos se cancelan.
  */
+/**
+ * El mes en que se va (baja o baja temporal): se cobra sólo hasta la última clase a la que vino.
+ * Si su categoría no tiene horario ni entrenamientos registrados, se cobra por semanas.
+ */
+function useMonthCut(student: StudentRow, fees: FeeBalance[] | undefined, day: string) {
+  const period = day.slice(0, 7) + '-01'
+  const fee = (fees ?? []).find((f) => f.concept === 'Mensualidad' && f.period === period)
+  const { dates, came } = useMonthClasses(student, period)
+  const [on, setOn] = useState(true)
+  const [last, setLast] = useState('')
+  const [weeks, setWeeks] = useState(() => weeksUntil(day))
+  // Por defecto: la última clase a la que vino (o la última antes del día de la baja)
+  const lastDefault = [...came].filter((d) => d <= day).sort().at(-1) ?? dates.filter((d) => d <= day).at(-1) ?? ''
+  const lastClass = last || lastDefault
+  const charge = fee ? Number(fee.amount) - Number(fee.discount) : 0
+  const paid = fee ? Number(fee.paid) : 0
+  const byClasses = dates.length > 0
+  const upTo = dates.filter((d) => d <= lastClass).length
+  const newCharge = byClasses ? classCharge(charge, upTo, dates.length, paid) : Math.max(proportional(charge, weeks), paid)
+  const label = byClasses ? `${upTo} de ${dates.length} clases (hasta el ${lastClass ? date(lastClass, 'd MMM') : '—'})` : `${weeks} de 4 semanas`
+  const apply = async (why: string) => {
+    if (!on || !fee || newCharge >= charge) return
+    unwrap(await supabase.from('fees').update({
+      discount: Number(fee.amount) - newCharge,
+      discount_reason: `${why}: cobro proporcional ${label}`,
+      notes: [fee.notes, `${why} el ${date(day)}: se cobran ${money(newCharge)} de ${money(charge)} (${label})`].filter(Boolean).join(' | '),
+    }).eq('id', fee.id))
+  }
+  const box = fee ? (
+    <div className="space-y-2 rounded-xl border border-ink-600 p-3 text-sm">
+      <label className="flex cursor-pointer items-center gap-2 font-semibold">
+        <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} className="h-4 w-4 accent-[#F2E30A]" />
+        Cobrar {monthName(period)} sólo hasta la última clase a la que vino
+      </label>
+      {on && (byClasses
+        ? <ClassCutPicker dates={dates} came={came} last={lastClass} onChange={setLast} charge={charge} paid={paid} />
+        : (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-muted">Su categoría no tiene horario registrado. Semanas que vino:</span>
+              {[1, 2, 3, 4].map((n) => (
+                <button key={n} type="button" onClick={() => setWeeks(n)}
+                  className={'rounded-lg border px-3 py-1 ' + (weeks === n ? 'border-brand bg-brand font-semibold text-ink' : 'border-ink-600 text-muted')}>{n}</button>
+              ))}
+            </div>
+            <p>Se cobran <b className="text-brand">{money(newCharge)}</b> de {money(charge)} ({weeks} de 4 semanas).</p>
+          </>
+        ))}
+    </div>
+  ) : <p className="text-sm text-muted">No tiene mensualidad de {monthName(period)}.</p>
+  return { fee, period, on, box, apply, resetWeeks: (d: string) => setWeeks(weeksUntil(d)) }
+}
+
+/**
+ * Dar de baja: se cobra sólo hasta la última clase que vino ese mes (pago proporcional).
+ * Las mensualidades siguientes que no tengan pagos se cancelan.
+ */
 export function BajaModal({ student, onClose }: { student: StudentRow; onClose: () => void }) {
   const qc = useQueryClient()
   const toast = useToast()
   const { data: fees } = useFees(student.id)
   const [on, setOn] = useState(today())
-  const [prop, setProp] = useState(true)
-  const [weeks, setWeeks] = useState(() => weeksUntil(today()))
   const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
-  const period = on.slice(0, 7) + '-01'
-  const fee = (fees ?? []).find((f) => f.concept === 'Mensualidad' && f.period === period)
-  const charge = fee ? Number(fee.amount) - Number(fee.discount) : 0
-  const paid = fee ? Number(fee.paid) : 0
-  const newCharge = Math.max(proportional(charge, weeks), paid)
-  const later = (fees ?? []).filter((f) => f.concept === 'Mensualidad' && f.period > period && Number(f.paid) === 0)
+  const cut = useMonthCut(student, fees, on)
+  const later = (fees ?? []).filter((f) => f.concept === 'Mensualidad' && f.period > cut.period && Number(f.paid) === 0)
 
   const save = async () => {
     setSaving(true)
     try {
-      if (prop && fee && newCharge < charge) {
-        const note = `Baja el ${date(on)}: cobro proporcional de ${weeks} de 4 semanas (${money(newCharge)} de ${money(charge)})`
-        unwrap(await supabase.from('fees').update({
-          discount: Number(fee.amount) - newCharge,
-          discount_reason: `Baja: proporcional ${weeks} de 4 semanas`,
-          notes: [fee.notes, note].filter(Boolean).join(' | '),
-        }).eq('id', fee.id))
-      }
+      await cut.apply('Baja')
       if (later.length) unwrap(await supabase.from('fees').delete().in('id', later.map((f) => f.id)))
       unwrap(await supabase.from('students').update({ status: 'baja', notes: [student.notes, reason.trim() && `Baja el ${date(on)}: ${reason.trim()}`].filter(Boolean).join('\n') || student.notes }).eq('id', student.id))
       await Promise.all(refreshKeys.map((k) => qc.invalidateQueries({ queryKey: [k] })))
@@ -191,30 +241,10 @@ export function BajaModal({ student, onClose }: { student: StudentRow; onClose: 
       <div className="space-y-4">
         <p className="text-sm text-muted">Dejará de aparecer en listas de asistencia y cobranza, y su link para papás se desactiva. Su historial se conserva y se puede reactivar.</p>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Fecha de la baja"><Input type="date" value={on} max={today()} onChange={(e) => { const v = e.target.value || today(); setOn(v); setWeeks(weeksUntil(v)) }} /></Field>
+          <Field label="Fecha de la baja"><Input type="date" value={on} onChange={(e) => { const v = e.target.value || today(); setOn(v); cut.resetWeeks(v) }} /></Field>
           <Field label="Motivo (opcional)"><Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ej. cambio de ciudad" /></Field>
         </div>
-        {fee ? (
-          <div className="space-y-2 rounded-xl border border-ink-600 p-3 text-sm">
-            <label className="flex cursor-pointer items-center gap-2 font-semibold">
-              <input type="checkbox" checked={prop} onChange={(e) => setProp(e.target.checked)} className="h-4 w-4 accent-[#F2E30A]" />
-              Cobrar sólo las semanas que vino en {monthName(period)} (pago proporcional)
-            </label>
-            {prop && (
-              <>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-muted">Semanas que vino:</span>
-                  {[1, 2, 3, 4].map((n) => (
-                    <button key={n} type="button" onClick={() => setWeeks(n)}
-                      className={'rounded-lg border px-3 py-1 ' + (weeks === n ? 'border-brand bg-brand font-semibold text-ink' : 'border-ink-600 text-muted')}>{n}</button>
-                  ))}
-                </div>
-                <p>Mensualidad {money(charge)} → se cobran <b className="text-brand">{money(newCharge)}</b> ({weeks} de 4 semanas).</p>
-                {paid > proportional(charge, weeks) && <p className="text-xs text-warn">Ya había pagado {money(paid)}, así que no se cobra menos de eso.</p>}
-              </>
-            )}
-          </div>
-        ) : <p className="text-sm text-muted">No tiene mensualidad de {monthName(period)}.</p>}
+        {cut.box}
         {later.length > 0 && <p className="text-xs text-muted">Se cancelan {later.length} mensualidad{later.length === 1 ? '' : 'es'} siguiente{later.length === 1 ? '' : 's'} sin pagos ({later.map((f) => monthName(f.period)).join(', ')}).</p>}
       </div>
     </Modal>
