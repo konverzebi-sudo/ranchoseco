@@ -2,10 +2,11 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { endOfWeek, startOfMonth } from 'date-fns'
 import { ClipboardCheck, AlertTriangle, Wallet, Plus, ChevronRight, Trophy, Dumbbell, Scale, CalendarClock, Bell } from 'lucide-react'
-import { Avatar, Button, Card, ErrorState, PageHeader, Spinner, Badge, cx } from '@/components/ui'
+import { Avatar, Button, Card, ErrorState, PageHeader, Spinner, Badge } from '@/components/ui'
 import { CollectButton } from '@/components/WhatsAppButtons'
 import { monthNameOf, useCashBoxCards } from '@/components/FinanceModules'
-import FundProgress from '@/components/FundProgress'
+import { FundGauges, ProfeGauges } from '@/components/FundProgress'
+import { Gauge, GaugeGrid } from '@/components/Gauges'
 import PeriodCards, { usePeriod } from '@/components/PeriodCards'
 import { PayInstallmentModal } from '@/components/Installments'
 import { CloseTrialModal } from '@/components/TrialModals'
@@ -84,7 +85,7 @@ function AdminDashboard() {
     const byCategory = (categories.data ?? []).map((c) => ({ ...c, count: c.is_extra ? active.filter((s) => extraMembers(c.id).has(s.id)).length : active.filter((s) => s.category_id === c.id).length }))
     const noCat = active.filter((s) => !s.category_id).length
     // Pagos de la mensualidad del mes por categoría: cuántos ya pagaron y cuánto falta
-    const monthFees = (fees.data ?? []).filter((f) => f.concept === 'Mensualidad' && f.period === monthStart && activeIds.has(f.student_id))
+    const monthFees = (fees.data ?? []).filter((f) => f.concept === 'Mensualidad' && f.period === period.to.slice(0, 7) + '-01' && activeIds.has(f.student_id))
     const catOfStudent = new Map(active.map((s) => [s.id, s.category_id]))
     const payByCategory = (categories.data ?? []).filter((c) => !c.is_extra).map((c) => {
       const fs = monthFees.filter((f) => catOfStudent.get(f.student_id) === c.id)
@@ -114,7 +115,7 @@ function AdminDashboard() {
       return { g, ...promoStatus(members, overdueSet) }
     }).filter((r) => !r.valid || r.overdue.length)
     return { promoAlerts, active, byCategory, payByCategory, owing, noCat, todayAtt, present, openFees, pendingTotal, lateFees, extras, reviewTotal, collected, overdueStudents, absent }
-  }, [students.data, categories.data, recentAtt.data, fees.data, payments.data, accounts.data, t, monthStart, siblingGroups.data, extraClasses.data])
+  }, [students.data, categories.data, recentAtt.data, fees.data, payments.data, accounts.data, t, monthStart, siblingGroups.data, extraClasses.data, period.to])
 
   const trials = (students.data ?? []).filter((s) => s.status === 'muestra')
   const loading = students.isLoading || accounts.isLoading || fees.isLoading
@@ -164,11 +165,19 @@ function AdminDashboard() {
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             {boxes.chica}{boxes.ahorro}{boxes.apartado}{boxes.chivas}{boxes.total}
           </div>
+          <GaugeGrid title={`Pagos por categoría · mensualidad de ${monthNameOf(period.to.slice(0, 7) + '-01')}`} subtitle="Qué tan lleno va el cobro de la mensualidad de cada categoría">
+            {data.payByCategory.map((c) => (
+              <Gauge key={c.id} pct={c.pct} label={c.name} onClick={() => nav('/cobranza?f=pendiente')}
+                title={`${c.paidCount} de ${c.students} alumnos ya pagaron · cobrado ${money(c.paid)} de ${money(c.due)} · faltan ${money(c.due - c.paid)}`}
+                sub={<>{c.paidCount} de {c.students} pagaron<span className="block">{money(Math.round(c.paid)).replace('.00', '')} de {money(Math.round(c.due)).replace('.00', '')}</span></>} />
+            ))}
+          </GaugeGrid>
+          <ProfeGauges month={period.to.slice(0, 7)} />
           <PeriodCards period={period} onDetail={setDetail} />
-          <FundProgress />
+          <FundGauges />
 
-          <div className="grid gap-6 lg:grid-cols-3">
-            <Card className="lg:col-span-2">
+          <div className="grid gap-6">
+            <Card>
               <div className="flex items-center justify-between border-b border-ink-600 px-5 py-4">
                 <h2 className="font-display text-lg font-bold uppercase tracking-wide">Requieren atención</h2>
                 <Link to="/cobranza?f=vencido" className="text-sm text-brand hover:underline">Ver cobranza</Link>
@@ -239,29 +248,6 @@ function AdminDashboard() {
               )}
             </Card>
 
-            <Card>
-              <div className="border-b border-ink-600 px-5 py-4">
-                <h2 className="font-display text-lg font-bold uppercase tracking-wide">Pagos por categoría</h2>
-                <p className="text-xs text-muted">Mensualidad de {mes}: cuántos ya pagaron · verde = completo · amarillo = más de la mitad · rojo = va atrás</p>
-              </div>
-              <ul className="space-y-4 px-5 py-4">
-                {data.payByCategory.map((c) => (
-                  <li key={c.id}>
-                    <Link to={`/cobranza?f=pendiente`} className="group block" title={`${c.paidCount} de ${c.students} alumnos ya pagaron · cobrado ${money(c.paid)} de ${money(c.due)} · faltan ${money(c.due - c.paid)}`}>
-                      <div className="mb-1 flex items-baseline justify-between gap-2 text-sm">
-                        <span className="font-medium group-hover:text-brand">{c.name}</span>
-                        <span><b className={cx('font-display text-lg', c.pct >= 99.5 ? 'text-ok' : c.pct >= 50 ? 'text-brand' : 'text-bad')}>{Math.round(c.pct)}%</b></span>
-                      </div>
-                      <div className="h-2.5 overflow-hidden rounded-full bg-ink-700">
-                        <div className={cx('h-full rounded-full', c.pct >= 99.5 ? 'bg-ok' : c.pct >= 50 ? 'bg-brand' : 'bg-bad')} style={{ width: `${Math.min(100, c.pct)}%` }} />
-                      </div>
-                      <p className="mt-1 text-xs text-muted">{c.paidCount} de {c.students} pagaron · {money(c.paid)} de {money(c.due)}</p>
-                    </Link>
-                  </li>
-                ))}
-                {data.payByCategory.length === 0 && <li className="text-sm text-muted">Todavía no hay mensualidades de {mes}.</li>}
-              </ul>
-            </Card>
           </div>
 
           {paying && <PayInstallmentModal expense={paying.expense} inst={paying.inst} onClose={() => setPaying(null)} />}

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Card, Input, cx } from './ui'
+import { Input } from './ui'
+import { Gauge, GaugeGrid } from './Gauges'
 import { useCategoryResults } from './CategoryResults'
 import { useCashCuts, useExpenses } from '@/lib/api'
 import { savingFunds } from '@/lib/cashcut'
@@ -8,45 +9,42 @@ import { date, money, monthName, today } from '@/lib/format'
 export interface FundBar { name: string; saved: number; target: number; hint?: string }
 
 const cents = (n: number) => money(Math.round(n)).replace('.00', '')
+const mesDe = (month: string) => monthName(`${month}-01`).split(' ')[0].toLowerCase()
 
-/** Una barra con el % juntado: verde al completar, amarilla a la mitad, roja si va muy atrás. */
-function Bar({ f }: { f: FundBar }) {
-  const pct = f.target > 0 ? (f.saved / f.target) * 100 : null
-  const tone = pct == null ? 'bg-info' : pct >= 100 ? 'bg-ok' : pct >= 50 ? 'bg-brand' : 'bg-bad'
+/** Barras de los fondos: regalías, renta, seguro y uniformes. */
+export function fundBars(funds: ReturnType<typeof savingFunds>, now: (key: string) => number = () => 0): FundBar[] {
+  const fondo = (re: RegExp) => funds.filter((f) => re.test(f.name) && f.target > 0)
+    .map((f) => ({ name: f.name, saved: f.saved + now(f.key), target: f.target, hint: `Para el ${date(f.due, "d 'de' MMM")}` }))
+  const unif = funds.filter((f) => f.kind === 'uniformes').reduce((a, f) => a + f.saved + now(f.key), 0)
+  return [...fondo(/regal/i), ...fondo(/renta/i), ...fondo(/seguro/i), { name: 'Uniformes', saved: unif, target: 0, hint: 'Lo guardado (sin meta)' }]
+}
+
+/** Fondos (regalías, renta, seguro, uniformes) en medidores tipo gasolina. */
+export function FundGauges({ funds: given }: { funds?: FundBar[] }) {
+  const cuts = useCashCuts()
+  const expenses = useExpenses()
+  const funds = useMemo(() => given ?? fundBars(savingFunds({ cutDate: today(), expenses: expenses.data ?? [], cuts: cuts.data ?? [] })), [given, cuts.data, expenses.data])
   return (
-    <li className="space-y-1">
-      <div className="flex items-baseline justify-between gap-2 text-sm">
-        <span className="min-w-0 truncate font-medium">{f.name}</span>
-        <span className="shrink-0">
-          {pct != null && <b className={cx('mr-2 font-display text-lg', pct >= 100 ? 'text-ok' : pct >= 50 ? 'text-brand' : 'text-bad')}>{Math.round(pct)}%</b>}
-          <span className="text-xs text-muted">{cents(f.saved)}{f.target > 0 ? ` de ${cents(f.target)}` : ''}</span>
-        </span>
-      </div>
-      <div className="h-3 overflow-hidden rounded-full bg-ink-700">
-        <div className={cx('h-full rounded-full transition-all', tone)} style={{ width: `${pct == null ? (f.saved > 0 ? 100 : 0) : Math.min(100, Math.max(0, pct))}%` }} />
-      </div>
-      {f.hint && <p className="text-xs text-muted">{f.hint}</p>}
-    </li>
+    <GaugeGrid title="¿Cuánto llevamos juntado en los fondos?" subtitle="Verde = completo · amarillo = más de la mitad · rojo = va atrás">
+      {funds.map((f) => (
+        <Gauge key={f.name} pct={f.target > 0 ? (f.saved / f.target) * 100 : null} label={f.name}
+          sub={<>{cents(f.saved)}{f.target > 0 ? ` de ${cents(f.target)}` : ''}{f.hint ? <span className="block">{f.hint}</span> : null}</>} />
+      ))}
+    </GaugeGrid>
   )
 }
 
 /**
- * ¿Cuánto llevamos juntado? Fondos (regalías, renta, seguro, uniformes) y el sueldo de cada profe
- * cubierto con lo que han pagado los niños de sus categorías en el mes.
+ * Sueldo de cada profe cubierto con TODO lo que pagaron en el mes los niños de sus categorías
+ * (mensualidades de cualquier mes, inscripciones, etc.), repartido si comparte categoría.
  */
-export default function FundProgress({ funds: given, month: initial }: { funds?: FundBar[]; month?: string }) {
-  const [month, setMonth] = useState(initial ?? today().slice(0, 7))
+export function ProfeGauges({ month, picker }: { month: string; picker?: React.ReactNode }) {
   const { data } = useCategoryResults(month)
-  const cuts = useCashCuts()
-  const expenses = useExpenses()
-  // Fondos según lo juntado en los cortes hasta hoy (en el corte se pasan ya con lo de esta semana)
-  const funds = useMemo(() => given ?? fundBars(savingFunds({ cutDate: today(), expenses: expenses.data ?? [], cuts: cuts.data ?? [] })), [given, cuts.data, expenses.data])
   const profes = useMemo(() => {
     const m = new Map<string, FundBar>()
     for (const r of data?.list ?? []) {
       for (const c of r.coaches) {
         const part = c.monthly / c.share
-        // Si la categoría tiene varios profes, lo cobrado se reparte según su parte del sueldo
         const covered = r.salaries > 0 ? (r.income * part) / r.salaries : 0
         const x = m.get(c.name) ?? { name: c.name, saved: 0, target: c.monthly, hint: '' }
         x.saved += covered
@@ -57,32 +55,24 @@ export default function FundProgress({ funds: given, month: initial }: { funds?:
     return [...m.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'))
   }, [data])
   return (
-    <Card className="p-5">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="font-display text-lg font-bold uppercase tracking-wide">¿Cuánto llevamos juntado?</h3>
-          <p className="text-xs text-muted">Verde = completo · amarillo = más de la mitad · rojo = va atrás.</p>
-        </div>
-        <Input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className="h-10 w-44" aria-label="Mes" />
-      </div>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted">Fondos</p>
-          <ul className="space-y-4">{funds.map((f) => <Bar key={f.name} f={f} />)}</ul>
-        </div>
-        <div>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted">Sueldo de cada profe · con lo que pagaron sus niños en {monthName(`${month}-01`).split(' ')[0].toLowerCase()}</p>
-          {profes.length ? <ul className="space-y-4">{profes.map((f) => <Bar key={f.name} f={f} />)}</ul> : <p className="text-sm text-muted">Cargando…</p>}
-        </div>
-      </div>
-    </Card>
+    <GaugeGrid title={`Sueldo de cada profe · ${mesDe(month)}`} actions={picker}
+      subtitle="¿Ya alcanza lo que pagaron sus niños (todos los pagos del mes) para su sueldo del mes?">
+      {profes.length ? profes.map((f) => (
+        <Gauge key={f.name} pct={(f.saved / f.target) * 100} label={f.name}
+          title={`Pagos del mes de ${f.hint}: ${cents(f.saved)} · sueldo del mes ${cents(f.target)}`}
+          sub={<>{cents(f.saved)} de {cents(f.target)}<span className="block">{f.hint}</span></>} />
+      )) : <p className="col-span-full text-sm text-muted">Cargando…</p>}
+    </GaugeGrid>
   )
 }
 
-/** Barras de los fondos: regalías, renta, seguro y uniformes. */
-export function fundBars(funds: ReturnType<typeof savingFunds>, now: (key: string) => number = () => 0): FundBar[] {
-  const fondo = (re: RegExp) => funds.filter((f) => re.test(f.name) && f.target > 0)
-    .map((f) => ({ name: `Fondo ${f.name}`, saved: f.saved + now(f.key), target: f.target, hint: `Para el ${date(f.due, "d 'de' MMM")}` }))
-  const unif = funds.filter((f) => f.kind === 'uniformes').reduce((a, f) => a + f.saved + now(f.key), 0)
-  return [...fondo(/regal/i), ...fondo(/renta/i), ...fondo(/seguro/i), { name: 'Fondo de uniformes', saved: unif, target: 0, hint: 'Lo que hay guardado (no tiene meta)' }]
+/** Fondos y sueldos de profes (se usa en el corte de caja, con su propio mes). */
+export default function FundProgress({ funds, month: initial }: { funds?: FundBar[]; month?: string }) {
+  const [month, setMonth] = useState(initial ?? today().slice(0, 7))
+  return (
+    <div className="space-y-3">
+      <FundGauges funds={funds} />
+      <ProfeGauges month={month} picker={<Input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className="h-10 w-44" aria-label="Mes" />} />
+    </div>
+  )
 }
