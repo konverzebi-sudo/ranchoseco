@@ -99,12 +99,17 @@ export default function Expenses() {
 
   return (
     <>
-      <PageHeader title="Gastos" subtitle="Captura los gastos a mano. El sistema calcula cuánto le corresponde a cada alumno."
-        actions={<>
-          <Button variant="secondary" icon={CalendarDays} onClick={() => nav(`/gastos/desglose?mes=${month}`)}>Día a día</Button>
-          <Button variant="secondary" icon={Plus} onClick={() => setModal({ mode: 'mes' })}>Gasto del mes</Button>
-          <Button icon={Plus} onClick={() => setModal({ mode: 'fijo' })}>Gasto fijo</Button>
-        </>} />
+      <PageHeader title="Gastos" subtitle="Captura los gastos a mano. El sistema calcula cuánto le corresponde a cada alumno." />
+      {/* Barra fija: el mes que se analiza mueve toda la página y no se esconde al bajar */}
+      <div className="sticky top-0 z-30 -mx-4 mb-4 flex flex-wrap items-center gap-2 border-b border-ink-600 bg-page/95 px-4 py-2.5 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <label className="flex items-center gap-2 rounded-xl border border-ink-600 bg-ink-800 px-3 py-1.5">
+          <CalendarDays className="h-5 w-5 text-brand" />
+          <span className="text-sm text-muted">Analizar</span>
+          <Input type="month" value={viewMonth} onChange={(e) => setViewMonth(e.target.value || today().slice(0, 7))} className="h-9 w-44 border-0 bg-transparent px-1 text-base font-semibold" aria-label="Mes que se analiza" />
+        </label>
+        <Button variant="secondary" icon={CalendarDays} onClick={() => nav(`/gastos/desglose?mes=${viewMonth}`)}>Ver día a día</Button>
+        <Button icon={Plus} onClick={() => setModal({ mode: 'mes' })} className="ml-auto">Agregar gasto</Button>
+      </div>
 
       <div className="mb-3"><FinanceModules /></div>
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -115,14 +120,11 @@ export default function Expenses() {
         <StatCard label="Sueldos de profesores al mes" value={money(Math.round(salariesMonthly))} icon={UserCog} hint={`${coachRows.length} profesores con sueldo`} />
       </div>
 
-      <div className="mb-6"><CategoryResults /></div>
+      <div className="mb-4"><CategoryResults month={viewMonth} /></div>
 
       {/* ---------- Gastos del mes ---------- */}
-      <FoldCard className="mb-6" title="Gastos del mes" subtitle="Gastos de una sola vez y pagos en partes que caen en el mes. Toca uno para editarlo."
-        actions={<>
-          <Input type="month" value={viewMonth} onChange={(e) => setViewMonth(e.target.value || today().slice(0, 7))} className="h-9 w-40" aria-label="Mes" />
-          <Button size="sm" icon={Plus} onClick={() => setModal({ mode: 'mes' })}>Agregar</Button>
-        </>}>
+      <FoldCard className="mb-4" title="Gastos del mes" subtitle="Gastos de una sola vez y pagos en partes que caen en el mes. Toca uno para editarlo."
+        actions={<Button size="sm" icon={Plus} onClick={() => setModal({ mode: 'mes' })}>Agregar</Button>}>
       {expenses.isLoading ? <Spinner /> : (
         <div className="overflow-x-auto">
           <table className="table-base min-w-[640px]">
@@ -166,8 +168,8 @@ export default function Expenses() {
       <LoansSection />
 
       {/* ---------- Gastos administrativos ---------- */}
-      <FoldCard className="mb-6" title="Gastos administrativos" subtitle="Se repiten cada semana, quincena, mes o año. Toca uno para editarlo."
-        actions={<Button size="sm" icon={Plus} onClick={() => setModal({ mode: 'fijo' })}>Agregar gasto fijo</Button>}>
+      <FoldCard className="mb-4" title="Gastos administrativos" subtitle="Se repiten cada semana, quincena, mes o año. Toca uno para editarlo."
+        actions={<Button size="sm" icon={Plus} onClick={() => setModal({ mode: 'fijo' })}>Agregar nuevo</Button>}>
       {expenses.isLoading || students.isLoading ? <Spinner /> : !fixedList.length ? (
         <div><Empty icon={Receipt} title="Aún no hay gastos fijos" text="Agrega regalías, renta, seguro, sueldos generales…" action={<Button icon={Plus} onClick={() => setModal({ mode: 'fijo' })}>Agregar gasto fijo</Button>} /></div>
       ) : (
@@ -203,7 +205,7 @@ export default function Expenses() {
       )}
       </FoldCard>
 
-      <FoldCard className="mb-6" title="Sueldos de profesores" subtitle="Toca el nombre o el sueldo para abrir la ficha del profesor y su historial de sueldo.">
+      <FoldCard className="mb-4" title="Sueldos de profesores" subtitle="Toca el nombre o el sueldo para abrir la ficha del profesor y su historial de sueldo.">
       {coachRows.length === 0 ? (
         <div className="p-5 text-sm text-muted">Registra el sueldo de cada profesor en <Link to="/profesores" className="text-brand hover:underline">Profesores</Link>.</div>
       ) : (
@@ -388,7 +390,7 @@ function ExpenseModal({ mode, expense, defaultMonth, onClose, nextOrder, onPayIn
       onClose()
     } catch (err) { toast.error(err) } finally { setSaving(false) }
   }
-  const allowed: Expense['frequency'][] = mode === 'mes' ? ['unico', 'partes'] : FIXED
+  const allowed: Expense['frequency'][] = mode === 'mes' ? ['unico', 'partes', 'mensual'] : FIXED
   return (
     <Modal open onClose={onClose} title={expense ? `Editar ${expense.name}` : mode === 'mes' ? 'Agregar gasto del mes' : 'Agregar gasto fijo'}
       footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button type="submit" form="expense-form" icon={Wallet} loading={saving}>{expense ? 'Guardar' : 'Agregar'}</Button></>}>
@@ -415,7 +417,7 @@ function ExpenseModal({ mode, expense, defaultMonth, onClose, nextOrder, onPayIn
         {!hasRows && (
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label={isPlan ? 'Total del gasto' : 'Monto'}><Input type="number" min="0" inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>
-            <Field label="¿Cada cuándo se paga?">
+            <Field label="¿Cada cuándo se paga?" hint={mode === 'mes' && f.frequency === 'mensual' ? 'Recurrente: se repite cada mes y se guarda en Gastos administrativos' : undefined}>
               <Select value={f.frequency} onChange={(e) => setF({ ...f, frequency: e.target.value as Expense['frequency'] })}>
                 {[...new Set([...allowed, ...(expense ? [expense.frequency] : [])])].map((k) => <option key={k} value={k}>{EXPENSE_FREQUENCY[k].label}</option>)}
               </Select>

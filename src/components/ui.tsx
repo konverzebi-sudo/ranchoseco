@@ -69,15 +69,15 @@ export function FoldCard({ title, subtitle, actions, children, defaultOpen = tru
   const [open, setOpen] = useState(defaultOpen)
   return (
     <div className={cx('overflow-hidden rounded-2xl border border-ink-600 bg-ink-800', className)}>
-      <div className={cx('flex flex-wrap items-center justify-between gap-3 px-5 py-4', open && 'border-b border-ink-600')}>
+      <div className={cx('flex flex-wrap items-center justify-between gap-3 px-5 py-3', open && 'border-b border-ink-600')}>
         <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="group flex min-w-0 flex-1 items-start gap-2 text-left">
           <ChevronDown className={cx('mt-0.5 h-5 w-5 shrink-0 text-brand transition-transform duration-300', !open && '-rotate-90')} />
           <span className="min-w-0">
             <span className="block font-display text-lg font-bold uppercase tracking-wide group-hover:text-brand">{title}</span>
-            {subtitle && <span className="block text-xs text-muted">{subtitle}</span>}
+            {subtitle && open && <span className="block text-sm text-muted">{subtitle}</span>}
           </span>
         </button>
-        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+        {actions && open && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
       <div className={cx('grid transition-[grid-template-rows] duration-300 ease-out', open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]')}>
         <div className="min-h-0 overflow-hidden">{children}</div>

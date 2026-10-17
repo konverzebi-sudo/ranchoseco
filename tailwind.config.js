@@ -22,8 +22,13 @@ export default {
         wa: '#25D366',
       },
       fontFamily: {
-        display: ['"Barlow Condensed"', 'Inter', 'system-ui', 'sans-serif'],
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        display: ['"Bricolage Grotesque"', 'Inter', 'system-ui', 'sans-serif'],
+        sans: ['"Bricolage Grotesque"', 'Inter', 'system-ui', 'sans-serif'],
+      },
+      // Letras chicas un poco más grandes para que se lean fácil
+      fontSize: {
+        xs: ['0.82rem', { lineHeight: '1.2rem' }],
+        sm: ['0.9rem', { lineHeight: '1.35rem' }],
       },
     },
   },

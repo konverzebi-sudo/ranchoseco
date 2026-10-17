@@ -55,7 +55,7 @@
 body {
   background: rgb(var(--page));
   color: rgb(var(--fg));
-  font-family: Inter, system-ui, sans-serif;
+  font-family: 'Bricolage Grotesque', Inter, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 

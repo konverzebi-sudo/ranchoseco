@@ -34,8 +34,9 @@ export function useCategoryResults(month: string) {
   return { data, categories }
 }
 
-export default function CategoryResults({ initialMonth }: { initialMonth?: string } = {}) {
-  const [month, setMonth] = useState(initialMonth ?? today().slice(0, 7))
+export default function CategoryResults({ initialMonth, month: fixedMonth }: { initialMonth?: string; month?: string } = {}) {
+  const [ownMonth, setMonth] = useState(initialMonth ?? today().slice(0, 7))
+  const month = fixedMonth ?? ownMonth
   const { data, categories } = useCategoryResults(month)
 
   const r0 = (n: number) => Math.round(n)
@@ -53,7 +54,7 @@ export default function CategoryResults({ initialMonth }: { initialMonth?: strin
   return (
     <FoldCard title={`Ganancia real por categoría · ${monthName(month + '-01')}`} subtitle="Ingreso real − gastos generales (según sus alumnos) − sueldo del profe"
       actions={<>
-        <Input type="month" value={month} onChange={(e) => setMonth(e.target.value || today().slice(0, 7))} className="h-9 w-40" aria-label="Mes" />
+        {!fixedMonth && <Input type="month" value={month} onChange={(e) => setMonth(e.target.value || today().slice(0, 7))} className="h-9 w-40" aria-label="Mes" />}
         <Button size="sm" variant="secondary" icon={Download} onClick={doExport} disabled={!data}>Exportar</Button>
       </>}>
       {!data ? <Spinner /> : (

@@ -38,7 +38,7 @@ export default function LoansSection() {
 
   return (
     <>
-      <FoldCard className="mb-6" title="Préstamos a Rancho Seco" subtitle="Quién nos prestó, cuándo le pagamos y cuánto falta. Los pagos salen en el calendario y en el Dashboard."
+      <FoldCard className="mb-4" title="Préstamos a Rancho Seco" subtitle="Quién nos prestó, cuándo le pagamos y cuánto falta. Los pagos salen en el calendario y en el Dashboard."
         actions={<Button size="sm" icon={Plus} onClick={() => setModal({})}>Agregar préstamo</Button>}>
       <div className="overflow-x-auto">
         <table className="table-base min-w-[720px]">
