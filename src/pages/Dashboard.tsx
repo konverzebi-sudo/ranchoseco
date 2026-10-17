@@ -5,6 +5,7 @@ import { Users, UserCog, ClipboardCheck, AlertTriangle, Wallet, TrendingUp, Plus
 import { Avatar, Button, Card, ErrorState, PageHeader, Spinner, StatCard, Badge } from '@/components/ui'
 import { CollectButton } from '@/components/WhatsAppButtons'
 import { monthNameOf, useCashBoxCards, useFinanceCards } from '@/components/FinanceModules'
+import FundProgress from '@/components/FundProgress'
 import { PayInstallmentModal } from '@/components/Installments'
 import { CloseTrialModal } from '@/components/TrialModals'
 import ActivityFeed from '@/components/ActivityFeed'
@@ -148,8 +149,11 @@ function AdminDashboard() {
               </ul>
             </Card>
           )}
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            {boxes.total}{boxes.chica}{boxes.apartado}{boxes.ahorro}{boxes.chivas}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+            {boxes.chica}{boxes.ahorro}{boxes.apartado}{boxes.chivas}{boxes.total}
+          </div>
+          <FundProgress />
+          <div className="!mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatCard label={`Entradas de ${mes}`} value={money(data.collected)} icon={TrendingUp} tone="ok" hint="Cobrado en el mes · toca para ver el desglose" onClick={() => setIncomeOpen(true)} />
             {fin.gastos}
             <StatCard label={`Pendiente de cobro a ${mes}`} value={money(data.pendingTotal)} icon={Wallet} hint={`${data.openFees.length} cargos abiertos · ${data.overdueStudents.length} alumnos atrasados`} onClick={() => setDetail('pendiente')} />

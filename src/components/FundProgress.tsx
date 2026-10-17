@@ -1,7 +1,9 @@
-import { useMemo } from 'react'
-import { Card, cx } from './ui'
+import { useMemo, useState } from 'react'
+import { Card, Input, cx } from './ui'
 import { useCategoryResults } from './CategoryResults'
-import { money, monthName } from '@/lib/format'
+import { useCashCuts, useExpenses } from '@/lib/api'
+import { savingFunds } from '@/lib/cashcut'
+import { date, money, monthName, today } from '@/lib/format'
 
 export interface FundBar { name: string; saved: number; target: number; hint?: string }
 
@@ -32,8 +34,13 @@ function Bar({ f }: { f: FundBar }) {
  * ¿Cuánto llevamos juntado? Fondos (regalías, renta, seguro, uniformes) y el sueldo de cada profe
  * cubierto con lo que han pagado los niños de sus categorías en el mes.
  */
-export default function FundProgress({ funds, month }: { funds: FundBar[]; month: string }) {
+export default function FundProgress({ funds: given, month: initial }: { funds?: FundBar[]; month?: string }) {
+  const [month, setMonth] = useState(initial ?? today().slice(0, 7))
   const { data } = useCategoryResults(month)
+  const cuts = useCashCuts()
+  const expenses = useExpenses()
+  // Fondos según lo juntado en los cortes hasta hoy (en el corte se pasan ya con lo de esta semana)
+  const funds = useMemo(() => given ?? fundBars(savingFunds({ cutDate: today(), expenses: expenses.data ?? [], cuts: cuts.data ?? [] })), [given, cuts.data, expenses.data])
   const profes = useMemo(() => {
     const m = new Map<string, FundBar>()
     for (const r of data?.list ?? []) {
@@ -51,8 +58,13 @@ export default function FundProgress({ funds, month }: { funds: FundBar[]; month
   }, [data])
   return (
     <Card className="p-5">
-      <h3 className="font-display text-lg font-bold uppercase tracking-wide">¿Cuánto llevamos juntado?</h3>
-      <p className="mb-4 text-xs text-muted">Verde = completo · amarillo = más de la mitad · rojo = va atrás.</p>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="font-display text-lg font-bold uppercase tracking-wide">¿Cuánto llevamos juntado?</h3>
+          <p className="text-xs text-muted">Verde = completo · amarillo = más de la mitad · rojo = va atrás.</p>
+        </div>
+        <Input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className="h-10 w-44" aria-label="Mes" />
+      </div>
       <div className="grid gap-6 lg:grid-cols-2">
         <div>
           <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted">Fondos</p>
@@ -65,4 +77,12 @@ export default function FundProgress({ funds, month }: { funds: FundBar[]; month
       </div>
     </Card>
   )
+}
+
+/** Barras de los fondos: regalías, renta, seguro y uniformes. */
+export function fundBars(funds: ReturnType<typeof savingFunds>, now: (key: string) => number = () => 0): FundBar[] {
+  const fondo = (re: RegExp) => funds.filter((f) => re.test(f.name) && f.target > 0)
+    .map((f) => ({ name: `Fondo ${f.name}`, saved: f.saved + now(f.key), target: f.target, hint: `Para el ${date(f.due, "d 'de' MMM")}` }))
+  const unif = funds.filter((f) => f.kind === 'uniformes').reduce((a, f) => a + f.saved + now(f.key), 0)
+  return [...fondo(/regal/i), ...fondo(/renta/i), ...fondo(/seguro/i), { name: 'Fondo de uniformes', saved: unif, target: 0, hint: 'Lo que hay guardado (no tiene meta)' }]
 }

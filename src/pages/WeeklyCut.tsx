@@ -30,7 +30,7 @@ const REPORT_TO = [
 ]
 
 import { CashDoubtsCard, SOURCE_PREFIX, SOURCES } from '@/components/CashDoubts'
-import FundProgress from '@/components/FundProgress'
+import FundProgress, { fundBars } from '@/components/FundProgress'
 
 type Review = Record<string, { amount?: number; approved?: boolean; adjusted?: number | null; note?: string; excluded?: boolean; pending?: boolean }>
 
@@ -112,7 +112,6 @@ export default function WeeklyCut() {
   // Las cajas después de este corte
   const box = funds.find((f) => f.kind === 'ahorro')
   const chivasTotal = funds.filter((f) => f.kind === 'chivas').reduce((a, f) => a + f.saved + savedNow(f), 0)
-  const uniformsFund = funds.filter((f) => f.kind === 'uniformes').reduce((a, f) => a + f.saved + savedNow(f), 0)
   const uniformsIn = items.filter((i) => i.type === 'entrada' && counts(i) && isUniformConcept(i.detail.split(' · ')[0])).reduce((a, i) => a + itemValue(i), 0)
   // Reparto de las inscripciones: playera, credencial, parte del seguro y lo demás libre en la Caja Chivas
   const seguroFund = funds.find((f) => f.kind === 'seguro')
@@ -482,11 +481,7 @@ export default function WeeklyCut() {
             const apartadoAntes = funds.filter((f) => f.kind !== 'ahorro' && f.kind !== 'uniformes' && f.kind !== 'chivas').reduce((a, f) => a + f.saved, 0)
             const chivasAntes = funds.filter((f) => f.kind === 'chivas').reduce((a, f) => a + f.saved, 0)
             const unifAntes = funds.filter((f) => f.kind === 'uniformes').reduce((a, f) => a + f.saved, 0)
-            const fondo = (re: RegExp) => funds.filter((f) => re.test(f.name) && f.target > 0).map((f) => ({ name: `Fondo ${f.name}`, saved: f.saved + savedNow(f), target: f.target, hint: `Para el ${date(f.due, "d 'de' MMM")}` }))
-            const bars = [
-              ...fondo(/regal/i), ...fondo(/renta/i), ...fondo(/seguro/i),
-              { name: 'Fondo de uniformes', saved: uniformsFund, target: 0, hint: 'Lo que hay guardado (no tiene meta)' },
-            ]
+            const bars = fundBars(funds, (k) => { const f = funds.find((x) => x.key === k); return f ? savedNow(f) : 0 })
             return (
               <>
                 <div className="!mt-3 grid grid-cols-2 gap-3 lg:grid-cols-5">
