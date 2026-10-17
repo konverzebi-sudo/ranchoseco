@@ -111,7 +111,7 @@ export default function WeeklyCut() {
   const suggestedTotal = funds.reduce((a, f) => a + f.suggested, 0)
   // Las cajas después de este corte
   const box = funds.find((f) => f.kind === 'ahorro')
-  const chivasTotal = funds.filter((f) => f.kind === 'chivas').reduce((a, f) => a + f.saved + savedNow(f), 0)
+  const chivasTotal = funds.filter((f) => f.kind === 'chivas' || f.kind === 'seguro').reduce((a, f) => a + f.saved + savedNow(f), 0)
   const uniformsIn = items.filter((i) => i.type === 'entrada' && counts(i) && isUniformConcept(i.detail.split(' · ')[0])).reduce((a, i) => a + itemValue(i), 0)
   // Reparto de las inscripciones: playera, credencial, parte del seguro y lo demás libre en la Caja Chivas
   const seguroFund = funds.find((f) => f.kind === 'seguro')
@@ -484,8 +484,8 @@ export default function WeeklyCut() {
             const week = items.filter((i) => !i.excluded && !i.pending && i.date <= t)
             const chica = carry + week.filter((i) => i.type === 'entrada').reduce((a, i) => a + itemValue(i), 0) - week.filter((i) => i.type === 'salida').reduce((a, i) => a + itemValue(i), 0)
             const ahorroAntes = box?.saved ?? 0
-            const apartadoAntes = funds.filter((f) => f.kind !== 'ahorro' && f.kind !== 'uniformes' && f.kind !== 'chivas').reduce((a, f) => a + f.saved, 0)
-            const chivasAntes = funds.filter((f) => f.kind === 'chivas').reduce((a, f) => a + f.saved, 0)
+            const apartadoAntes = funds.filter((f) => f.kind !== 'ahorro' && f.kind !== 'uniformes' && f.kind !== 'chivas' && f.kind !== 'seguro').reduce((a, f) => a + f.saved, 0)
+            const chivasAntes = funds.filter((f) => f.kind === 'chivas' || f.kind === 'seguro').reduce((a, f) => a + f.saved, 0)
             const unifAntes = funds.filter((f) => f.kind === 'uniformes').reduce((a, f) => a + f.saved, 0)
             const bars = fundBars(funds, (k) => { const f = funds.find((x) => x.key === k); return f ? savedNow(f) : 0 })
             return (
@@ -494,8 +494,8 @@ export default function WeeklyCut() {
                   <StatCard label="Caja chica" value={cents(chica)} icon={Banknote} tone={chica < -0.5 ? 'bad' : undefined}
                     hint={`Lo de esta semana que no ha entrado en ningún corte (empezó con ${cents(carry)})`} />
                   <StatCard label="Caja de ahorro" value={cents(ahorroAntes)} icon={PiggyBank} tone="ok" hint="Lo ahorrado en semanas anteriores" />
-                  <StatCard label="Apartado de próximos gastos" value={cents(apartadoAntes)} icon={Vault} tone="brand" hint="Regalías, renta, seguro, partes y préstamos" />
-                  <StatCard label="Caja Chivas" value={cents(chivasAntes)} icon={Vault} tone="brand" hint="Inscripciones: playeras, credenciales y libre" />
+                  <StatCard label="Apartado de próximos gastos" value={cents(apartadoAntes)} icon={Vault} tone="brand" hint="Regalías, renta, partes y préstamos" />
+                  <StatCard label="Caja Chivas" value={cents(chivasAntes)} icon={Vault} tone="brand" hint="Inscripciones: playeras, credenciales, seguro y libre" />
                   <StatCard label="Caja total" value={cents(chica + ahorroAntes + apartadoAntes + chivasAntes + unifAntes)} icon={Banknote}
                     hint="Todas las cajas (con el fondo de uniformes)" />
                 </div>
@@ -567,7 +567,7 @@ export default function WeeklyCut() {
                           ))}
                           {seguroFund && (
                             <div className="rounded-xl border border-ink-600 p-3">
-                              <p className="text-xs text-muted">Seguro (se guarda en el apartado)</p>
+                              <p className="text-xs text-muted">Seguro (mini caja de la Caja Chivas)</p>
                               <p className="mt-1 font-display text-2xl font-bold">{cents(savedNow(seguroFund))}</p>
                               <p className="mt-1 text-xs">Lleva <b>{cents(seguroFund.saved + savedNow(seguroFund))}</b> de {cents(seguroFund.target)}</p>
                             </div>

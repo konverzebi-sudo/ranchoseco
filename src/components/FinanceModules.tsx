@@ -85,19 +85,19 @@ export function useCashBoxCards(onDetail?: (k: 'total' | 'chica' | 'apartado' | 
     const salio = months.flatMap((month) => expenseEntries({ month, expenses: expenses.data ?? [], coaches: coaches.data ?? [], coachPay: coachPay.data ?? [] }))
       .filter((e) => e.date > since && e.date <= t && !e.pending && (e.from ?? 'caja') === 'caja').reduce((a, e) => a + e.amount, 0)
     const ahorro = funds.find((f) => f.kind === 'ahorro')?.saved ?? 0
-    const apartado = funds.filter((f) => f.kind !== 'ahorro' && f.kind !== 'uniformes' && f.kind !== 'chivas').reduce((a, f) => a + f.saved, 0)
+    const apartado = funds.filter((f) => f.kind !== 'ahorro' && f.kind !== 'uniformes' && f.kind !== 'chivas' && f.kind !== 'seguro').reduce((a, f) => a + f.saved, 0)
     const uniformes = funds.find((f) => f.kind === 'uniformes')?.saved ?? 0
-    const chivas = funds.filter((f) => f.kind === 'chivas').reduce((a, f) => a + f.saved, 0)
+    const chivas = funds.filter((f) => f.kind === 'chivas' || f.kind === 'seguro').reduce((a, f) => a + f.saved, 0)
     return { last, chica: openingCash(last, list[1]) + cobrado - salio, ahorro, apartado, uniformes, chivas }
   }, [cuts.data, expenses.data, payments.data, coaches.data, coachPay.data])
   const since = b.last ? `Al corte del ${b.last.cut_date.slice(8, 10)}/${b.last.cut_date.slice(5, 7)}` : 'Aún no hay cortes'
   const go = (k: 'total' | 'chica' | 'apartado' | 'ahorro' | 'chivas') => () => (onDetail ? onDetail(k) : nav('/corte'))
   return {
     total: <StatCard key="total" label="Caja total" value={money(Math.round(b.chica + b.ahorro + b.apartado + b.chivas + b.uniformes))} icon={Wallet} tone="brand" hint="Todas las cajas (con el fondo de uniformes)" onClick={go('total')} />,
-    chivas: <StatCard key="chivas" label="Caja Chivas" value={money(Math.round(b.chivas))} icon={Vault} hint="Inscripciones: playeras, credenciales y libre" onClick={go('chivas')} />,
+    chivas: <StatCard key="chivas" label="Caja Chivas" value={money(Math.round(b.chivas))} icon={Vault} hint="Inscripciones: playeras, credenciales, seguro y libre" onClick={go('chivas')} />,
     chica: <StatCard key="chica" label="Caja chica" value={money(Math.round(b.chica))} icon={Banknote} tone={b.chica < 0 ? 'bad' : undefined}
       hint={b.chica < 0 ? 'En negativo: salió más de lo que había' : `Lo de esta semana que no ha entrado en ningún corte · desde el ${since.replace('Al corte del ', '')}`} onClick={go('chica')} />,
-    apartado: <StatCard key="apartado" label="Apartado de próximos gastos" value={money(Math.round(b.apartado))} icon={Vault} hint="Regalías, renta, seguro, partes y préstamos" onClick={go('apartado')} />,
+    apartado: <StatCard key="apartado" label="Apartado de próximos gastos" value={money(Math.round(b.apartado))} icon={Vault} hint="Regalías, renta, partes y préstamos" onClick={go('apartado')} />,
     uniformes: <StatCard key="uniformes" label="Fondo de uniformes" value={money(Math.round(b.uniformes))} icon={Shirt} hint="Playeras, altas en Chivas, uniformes y credenciales" onClick={() => (onDetail ? onDetail('uniformes') : nav('/uniformes'))} />,
     ahorro: <StatCard key="ahorro" label="Caja de ahorro" value={money(Math.round(b.ahorro))} icon={PiggyBank} tone="ok" hint="Lo ahorrado en semanas anteriores" onClick={go('ahorro')} />,
   }

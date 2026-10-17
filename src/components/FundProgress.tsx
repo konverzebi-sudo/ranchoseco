@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Input } from './ui'
 import { Gauge, GaugeGrid } from './Gauges'
 import { useCategoryResults } from './CategoryResults'
-import { useCashCuts, useExpenses } from '@/lib/api'
+import { useCashCuts, useExpenses, useExtraClasses, useFees, useStudents } from '@/lib/api'
 import { savingFunds } from '@/lib/cashcut'
 import { date, money, monthName, today } from '@/lib/format'
 
@@ -35,17 +35,34 @@ export function FundGauges({ funds: given }: { funds?: FundBar[] }) {
 }
 
 /**
- * Sueldo de cada profe cubierto con TODO lo que pagaron en el mes los niños de sus categorías
- * (mensualidades de cualquier mes, inscripciones, etc.), repartido si comparte categoría.
+ * Sueldo de cada profe cubierto con lo que ya se cobró de la MENSUALIDAD del mes de los niños
+ * de sus categorías (igual que "Pagos por categoría"). Un niño en clase extra (Porteros) reparte
+ * su mensualidad entre su categoría y la clase extra; si la categoría tiene varios profes, se reparte.
  */
 export function ProfeGauges({ month, picker }: { month: string; picker?: React.ReactNode }) {
   const { data } = useCategoryResults(month)
+  const fees = useFees()
+  const students = useStudents()
+  const extras = useExtraClasses()
+  const income = useMemo(() => {
+    const base = new Map((students.data ?? []).map((s) => [s.id, s.category_id]))
+    const ext = new Map<string, string[]>()
+    for (const x of extras.data ?? []) ext.set(x.student_id, [...(ext.get(x.student_id) ?? []), x.category_id])
+    const m = new Map<string, number>()
+    for (const f of fees.data ?? []) {
+      if (f.concept !== 'Mensualidad' || f.period !== `${month}-01`) continue
+      const cats = [base.get(f.student_id), ...(ext.get(f.student_id) ?? [])].filter(Boolean) as string[]
+      const paid = Math.min(Number(f.paid), Number(f.total_due))
+      for (const c of cats) m.set(c, (m.get(c) ?? 0) + paid / cats.length)
+    }
+    return m
+  }, [fees.data, students.data, extras.data, month])
   const profes = useMemo(() => {
     const m = new Map<string, FundBar>()
     for (const r of data?.list ?? []) {
       for (const c of r.coaches) {
         const part = c.monthly / c.share
-        const covered = r.salaries > 0 ? (r.income * part) / r.salaries : 0
+        const covered = r.salaries > 0 ? ((income.get(r.id) ?? 0) * part) / r.salaries : 0
         const x = m.get(c.name) ?? { name: c.name, saved: 0, target: c.monthly, hint: '' }
         x.saved += covered
         x.hint = [x.hint, r.name].filter(Boolean).join(' · ')
@@ -53,13 +70,13 @@ export function ProfeGauges({ month, picker }: { month: string; picker?: React.R
       }
     }
     return [...m.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'))
-  }, [data])
+  }, [data, income])
   return (
     <GaugeGrid title={`Sueldo de cada profe · ${mesDe(month)}`} actions={picker}
-      subtitle="¿Ya alcanza lo que pagaron sus niños (todos los pagos del mes) para su sueldo del mes?">
+      subtitle="¿Ya alcanza la mensualidad que pagaron sus niños para su sueldo del mes?">
       {profes.length ? profes.map((f) => (
         <Gauge key={f.name} pct={(f.saved / f.target) * 100} label={f.name}
-          title={`Pagos del mes de ${f.hint}: ${cents(f.saved)} · sueldo del mes ${cents(f.target)}`}
+          title={`Mensualidad cobrada de ${f.hint}: ${cents(f.saved)} · sueldo del mes ${cents(f.target)}`}
           sub={<>{cents(f.saved)} de {cents(f.target)}<span className="block">{f.hint}</span></>} />
       )) : <p className="col-span-full text-sm text-muted">Cargando…</p>}
     </GaugeGrid>
