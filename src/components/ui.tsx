@@ -99,14 +99,21 @@ export function Card({ className, children, ...rest }: { className?: string; chi
   )
 }
 
-export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: ReactNode; actions?: ReactNode }) {
+/**
+ * Encabezado de la página: se queda fijo arriba al bajar, con el título, los botones
+ * importantes y, si la página lo usa, el selector de fechas (`bar`).
+ */
+export function PageHeader({ title, subtitle, actions, bar }: { title: string; subtitle?: ReactNode; actions?: ReactNode; bar?: ReactNode }) {
   return (
-    <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-      <div className="min-w-0">
-        <h1 className="font-display text-3xl font-bold uppercase tracking-wide leading-none">{title}</h1>
-        {subtitle && <p className="mt-1.5 text-sm text-muted">{subtitle}</p>}
+    <div className="sticky top-[3.6rem] z-30 -mx-4 mb-5 border-b border-ink-600 bg-page/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:top-0 lg:-mx-8 lg:px-8">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="font-display text-2xl font-bold uppercase leading-none tracking-wide sm:text-3xl">{title}</h1>
+          {subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}
+        </div>
+        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
-      {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
+      {bar && <div className="mt-2.5 flex flex-wrap items-center gap-2">{bar}</div>}
     </div>
   )
 }

@@ -130,15 +130,13 @@ function AdminDashboard() {
 
   return (
     <>
-      <PageHeader title="Dashboard" subtitle={date(t, "EEEE d 'de' MMMM")}
+      <PageHeader title="Dashboard" subtitle={date(t, "EEEE d 'de' MMMM")} bar={periodBar}
         actions={<>
           <Button icon={ClipboardCheck} onClick={() => nav('/asistencias')}>Pasar lista</Button>
           <Button variant="secondary" icon={Wallet} onClick={() => nav('/cobranza')}>Registrar pago</Button>
           <Button variant="secondary" icon={Scale} onClick={() => nav('/corte')}>Corte de caja</Button>
           <Button variant="secondary" icon={Plus} onClick={() => nav('/alumnos?nuevo=1')} className="hidden sm:inline-flex">Nuevo alumno</Button>
         </>} />
-      {/* Periodo: desde el último corte (o un corte / fechas exactas); se queda fijo al bajar */}
-      <div className="mb-4">{periodBar}</div>
 
       {loading ? <Spinner /> : (
         <div className="space-y-6">

@@ -41,11 +41,7 @@ export function usePeriod() {
   const cur = live && sel.id !== 'personalizado' ? { id: live.id, from: live.from, to: live.to } : sel
   const label = sel.id === 'personalizado' ? `Del ${short(cur.from)} al ${short(cur.to)}` : `${live?.label ?? ''} (${short(cur.from)}${cur.from === cur.to ? '' : ` al ${short(cur.to)}`})`
   const period: Period = { from: cur.from, to: cur.to, label }
-  const bar = (
-    <div className="sticky top-0 z-30 -mx-4 flex flex-wrap items-center gap-2 border-b border-ink-600 bg-page/95 px-4 py-2.5 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-      <DateRangeSelect value={cur} presets={presets} onChange={(v) => setSel({ id: v.id, from: v.from, to: v.to })} />
-    </div>
-  )
+  const bar = <DateRangeSelect value={cur} presets={presets} onChange={(v) => setSel({ id: v.id, from: v.from, to: v.to })} />
   return { period, bar }
 }
 

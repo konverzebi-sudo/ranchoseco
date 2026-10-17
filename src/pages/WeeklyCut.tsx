@@ -411,7 +411,7 @@ export default function WeeklyCut() {
             <FoldCard title="Cortes anteriores" subtitle="Pica un corte para ver su desglose · pasa el mouse sobre un número para ver de dónde sale">
             {!cuts.data?.length ? <p className="p-6 text-center text-sm text-muted">Aún no hay cortes. Cuando pagues a los profes, revisa todo abajo en "Hacer el corte".</p> : (
               <div className="overflow-x-auto">
-                <table className="table-base min-w-[1100px]">
+                <table className="table-base min-w-[960px]">
                   <thead><tr><th>Corte</th><th>Había</th><th>Entró</th><th>Salió</th><th>Se apartó</th><th>Debería haber</th><th>Contado</th><th>¿Cuadra?</th><th /></tr></thead>
                   <tbody>{cuts.data.map((c, i) => <CutRow key={c.id} cut={c} prev={cuts.data![i + 1]} onEdit={() => startEdit(c)} onDelete={() => setDeleting(c)} />)}</tbody>
                 </table>
@@ -908,8 +908,8 @@ function CutRow({ cut: c, prev, onEdit, onDelete }: { cut: CashCut; prev?: CashC
     <>
       <tr className={cx('cursor-pointer', expanded && 'bg-ink-900')} onClick={() => setExpanded(!expanded)}>
         <td>
-          <p className="flex items-center gap-1.5 font-display text-base font-bold uppercase"><ChevronDown className={cx('h-4 w-4 shrink-0 text-brand transition-transform', !expanded && '-rotate-90')} />{date(c.cut_date, "EEE d 'de' MMM")}</p>
-          <p className="pl-5 text-xs text-muted">Del {range(c.period_from, c.period_to)}{items.length ? ` · ${items.filter((i) => i.approved).length}/${items.length} revisadas` : ''}</p>
+          <p className="flex items-center gap-1.5 whitespace-nowrap font-bold"><ChevronDown className={cx('h-4 w-4 shrink-0 text-brand transition-transform', !expanded && '-rotate-90')} />{date(c.period_to, "d 'de' MMM")}</p>
+          <p className="whitespace-nowrap pl-5 text-xs text-muted">desde {date(c.period_from, "d 'de' MMM")}</p>
         </td>
         <td><Explain why="Lo que quedó en caja chica en el corte anterior">{cents(had)}</Explain></td>
         <td><button onClick={(e) => { e.stopPropagation(); show('entrada') }} className="font-semibold text-ok hover:underline">{cents(Number(c.income))}</button></td>

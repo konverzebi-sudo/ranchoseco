@@ -99,17 +99,18 @@ export default function Expenses() {
 
   return (
     <>
-      <PageHeader title="Gastos" subtitle="Captura los gastos a mano. El sistema calcula cuánto le corresponde a cada alumno." />
-      {/* Barra fija: el mes que se analiza mueve toda la página y no se esconde al bajar */}
-      <div className="sticky top-0 z-30 -mx-4 mb-4 flex flex-wrap items-center gap-2 border-b border-ink-600 bg-page/95 px-4 py-2.5 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-        <label className="flex items-center gap-2 rounded-xl border border-ink-600 bg-ink-800 px-3 py-1.5">
-          <CalendarDays className="h-5 w-5 text-brand" />
-          <span className="text-sm text-muted">Analizar</span>
-          <Input type="month" value={viewMonth} onChange={(e) => setViewMonth(e.target.value || today().slice(0, 7))} className="h-9 w-44 border-0 bg-transparent px-1 text-base font-semibold" aria-label="Mes que se analiza" />
-        </label>
-        <Button variant="secondary" icon={CalendarDays} onClick={() => nav(`/gastos/desglose?mes=${viewMonth}`)}>Ver día a día</Button>
-        <Button icon={Plus} onClick={() => setModal({ mode: 'mes' })} className="ml-auto">Agregar gasto</Button>
-      </div>
+      <PageHeader title="Gastos" subtitle="Captura los gastos a mano. El sistema calcula cuánto le corresponde a cada alumno."
+        actions={<>
+          <Button variant="secondary" icon={CalendarDays} onClick={() => nav(`/gastos/desglose?mes=${viewMonth}`)}>Ver día a día</Button>
+          <Button icon={Plus} onClick={() => setModal({ mode: 'mes' })}>Agregar gasto</Button>
+        </>}
+        bar={
+          <label className="flex items-center gap-2 rounded-xl border border-ink-600 bg-ink-800 px-3 py-1">
+            <CalendarDays className="h-5 w-5 text-brand" />
+            <span className="text-sm text-muted">Analizar</span>
+            <Input type="month" value={viewMonth} onChange={(e) => setViewMonth(e.target.value || today().slice(0, 7))} className="h-9 w-44 border-0 bg-transparent px-1 text-base font-semibold" aria-label="Mes que se analiza" />
+          </label>
+        } />
 
       <div className="mb-3"><FinanceModules /></div>
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
