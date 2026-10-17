@@ -13,6 +13,8 @@ import { CloseTrialModal } from '@/components/TrialModals'
 import ActivityFeed from '@/components/ActivityFeed'
 import ProfeDashboard from '@/components/ProfeDashboard'
 import { useRole } from '@/lib/role'
+import { QuestionsStatus, QuestionsToAnswer } from '@/components/Questions'
+import { isJany } from '@/components/Team'
 import CoachNotes from '@/components/CoachNotes'
 import { MatchReportsCard } from '@/components/MatchPhotos'
 import { CategoryRequestsCard } from '@/components/CategoryChange'
@@ -46,6 +48,7 @@ export default function Dashboard() {
 }
 
 function AdminDashboard() {
+  const role = useRole()
   const [incomeOpen, setIncomeOpen] = useState(false)
   const [detail, setDetail] = useState<CardKind | null>(null)
   const nav = useNavigate()
@@ -140,6 +143,9 @@ function AdminDashboard() {
 
       {loading ? <Spinner /> : (
         <div className="space-y-6">
+          {/* Preguntas de sistemas: Aby las contesta; Jany ve cómo van y las respuestas */}
+          {/^aby/i.test(role.meName) && <QuestionsToAnswer person="Aby" />}
+          {isJany(role.realName) && !role.viewingAs && <QuestionsStatus person="Aby" />}
           {!!notes.data?.length && (
             <Card className="border-warn/50">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-600 px-5 py-3">

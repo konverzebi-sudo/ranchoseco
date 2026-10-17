@@ -35,6 +35,6 @@ export function useRole() {
     const categoryIds = coach && !isCoordinator
       ? (cc.data ?? []).filter((x) => x.coach_id === coach.id).map((x) => x.category_id)
       : (cats.data ?? []).map((c) => c.id) // sin nombre escogido: ve todas las categorías, pero sin números
-    return { isCoordinator, canMoveCategory: isAdmin || isCoordinator, myCategoryIds: coach ? (cc.data ?? []).filter((x) => x.coach_id === coach.id).map((x) => x.category_id) : [], loggedIn: !!real, viewingAs: me !== real ? me?.full_name ?? '' : '', isProfe: !isAdmin, isAdmin, isCoach, name: isCoach ? me!.full_name : '', coachId: coach?.id ?? null, categoryIds, ready: !!team.data }
+    return { meName: me?.full_name ?? '', realName: real?.full_name ?? '', isCoordinator, canMoveCategory: isAdmin || isCoordinator, myCategoryIds: coach ? (cc.data ?? []).filter((x) => x.coach_id === coach.id).map((x) => x.category_id) : [], loggedIn: !!real, viewingAs: me !== real ? me?.full_name ?? '' : '', isProfe: !isAdmin, isAdmin, isCoach, name: isCoach ? me!.full_name : '', coachId: coach?.id ?? null, categoryIds, ready: !!team.data }
   }, [actor, team.data, coaches.data, cc.data, cats.data, viewAs])
 }
