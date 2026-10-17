@@ -177,25 +177,24 @@ export default function WeeklyCut() {
   // Lo contado que no se mandó a ningún lado se queda en caja chica (para que el siguiente corte empiece con eso)
   const distributionNow = () => {
     const sent = rows.filter((r) => r.to.trim() && Number(r.amount) > 0).map((r) => ({ to: r.to.trim(), amount: Number(r.amount) }))
-    const rest = Math.round((countedN - sent.reduce((x, r) => x + r.amount, 0)) * 100) / 100
-    if (rest > 0.5) {
-      const chica = sent.find((r) => r.to.toLowerCase() === CARRY_DESTINATION.toLowerCase())
-      if (chica) chica.amount = Math.round((chica.amount + rest) * 100) / 100
-      else sent.push({ to: CARRY_DESTINATION, amount: rest })
-    }
     return [
       ...sources.filter((r) => r.from.trim() && Number(r.amount) > 0).map((r) => ({ to: `${SOURCE_PREFIX}${r.from.trim()}`, amount: -Number(r.amount) })),
       ...(savingsTotal > 0 ? [{ to: 'Ahorros apartados', amount: Math.round(savingsTotal * 100) / 100 }] : []),
       ...sent,
     ]
   }
+  // Lo que queda sin destino se va a la Caja de ahorro (la caja chica termina en cero)
+  const restToSavings = Math.max(0, Math.round(left * 100) / 100)
   const save = async () => {
     const distribution = distributionNow()
     setSaving(true)
     try {
+      const extra = restToSavings > 0.5 ? restToSavings : 0
       const row = {
-        cut_date: to, period_from: from, period_to: to, income: tot.income, outflow: tot.outflow, counted: countedN, distribution,
-        items, savings: funds.map((f) => ({ key: f.key, name: f.name, target: f.target, due: f.due, suggested: f.suggested, saved: savedNow(f), note: saveNote[f.key] || undefined })),
+        cut_date: to, period_from: from, period_to: to, income: tot.income, outflow: tot.outflow, counted: Math.round((countedN - extra) * 100) / 100, distribution,
+        items, savings: funds.map((f) => ({ key: f.key, name: f.name, target: f.target, due: f.due, suggested: f.suggested,
+          saved: Math.round((savedNow(f) + (f.key === SAVINGS_BOX_KEY ? extra : 0)) * 100) / 100,
+          note: [saveNote[f.key], f.key === SAVINGS_BOX_KEY && extra ? `Incluye ${cents(extra)} que quedaron sin destino` : ''].filter(Boolean).join(' · ') || undefined })),
         notes: notes.trim() || null,
       }
       const savedCut = editingCut
@@ -422,8 +421,8 @@ export default function WeeklyCut() {
               <>
               <div className="space-y-3 p-3 md:hidden">{cuts.data.map((c, i) => <CutRow key={c.id} mobile cut={c} prev={cuts.data![i + 1]} focus={params.get('ver') === c.id} onEdit={() => startEdit(c)} onDelete={() => setDeleting(c)} />)}</div>
               <div className="hidden overflow-x-auto md:block">
-                <table className="table-base min-w-[960px]">
-                  <thead><tr><th>Corte</th><th>Había</th><th>Entró</th><th>Salió</th><th>Se apartó</th><th>Debería haber</th><th>Contado</th><th>¿Cuadra?</th><th /></tr></thead>
+                <table className="table-base min-w-[1200px]">
+                  <thead><tr><th>Corte</th><th>Caja chica al empezar</th><th>Entradas</th><th>Gastos</th><th>Saldo</th><th>Caja de ahorro</th><th>Apartado próx. gastos</th><th>Caja Chivas</th><th>Otro destino / caja chica</th><th>¿Cuadra?</th><th /></tr></thead>
                   <tbody>{cuts.data.map((c, i) => <CutRow key={c.id} cut={c} prev={cuts.data![i + 1]} focus={params.get('ver') === c.id} onEdit={() => startEdit(c)} onDelete={() => setDeleting(c)} />)}</tbody>
                 </table>
               </div>
@@ -486,8 +485,8 @@ export default function WeeklyCut() {
       {loading ? <Spinner /> : (
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-            <StatCard label="Entró" value={cents(tot.income)} icon={TrendingUp} tone="ok" hint={byMethod.map(([m, v]) => `${METHOD_LABEL[m]} ${cents(v)}`).join(' · ') || 'Palomea las entradas para contarlas'} />
-            <StatCard label="Salió" value={cents(tot.outflow)} icon={TrendingDown} tone="bad" hint="Sueldos, gastos y pagos de préstamos" />
+            <StatCard label="Entradas" value={cents(tot.income)} icon={TrendingUp} tone="ok" hint={byMethod.map(([m, v]) => `${METHOD_LABEL[m]} ${cents(v)}`).join(' · ') || 'Palomea las entradas para contarlas'} />
+            <StatCard label="Gastos" value={cents(tot.outflow)} icon={TrendingDown} tone="bad" hint="Sueldos, gastos y pagos de préstamos" />
             <StatCard label="Resultado de estas fechas" value={cents(tot.income - tot.outflow)} icon={Scale} tone={tot.income >= tot.outflow ? 'ok' : 'bad'} hint={tot.income >= tot.outflow ? 'Entró más de lo que salió (sin contar la caja chica)' : 'Salió más de lo que entró (sin contar la caja chica)'} />
           </div>
           {(() => {
@@ -751,9 +750,9 @@ export default function WeeklyCut() {
           <Field label="Día del corte"><Input type="date" value={to} min={from} max={t} onChange={(e) => e.target.value && setRange('hasta', e.target.value)} /></Field>
           <p className="text-muted">Del {range(from, to)}</p>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-xl bg-ink-900 p-3">
-            <span>Entró</span><b className="text-right text-ok">{cents(tot.income)}</b>
-            <span>Salió</span><b className="text-right text-bad">{cents(tot.outflow)}</b>
-            <span>Debería haber</span><b className="text-right">{cents(expected)}</b>
+            <span>Entradas</span><b className="text-right text-ok">{cents(tot.income)}</b>
+            <span>Gastos</span><b className="text-right text-bad">{cents(tot.outflow)}</b>
+            <span>Saldo después de apartar</span><b className="text-right">{cents(expected)}</b>
             <span className="font-semibold">Dinero contado</span><b className="text-right text-brand">{cents(countedN)}</b>
           </div>
           <div>
@@ -762,7 +761,7 @@ export default function WeeklyCut() {
               <ul className="space-y-1">{distributionNow().map((x) => <li key={x.to} className={cx('flex justify-between', x.amount < 0 && 'text-bad')}><span>{x.to}</span><b>{cents(Math.abs(x.amount))}</b></li>)}</ul>
             )}
             {toJustify > 0.5 && <p className="mt-1 text-bad">Faltaron {cents(deficit)} y falta explicar de dónde salieron {cents(toJustify)}.</p>}
-            {left > 0.5 && <p className="mt-1 text-muted">Los {cents(left)} sin asignar se quedan en {CARRY_DESTINATION}.</p>}
+            {left > 0.5 && <p className="mt-1 text-muted">Los {cents(left)} sin destino se van a la <b>Caja de ahorro</b> (la caja chica queda en cero).</p>}
             {left < -0.5 && <p className="mt-1 text-warn">Te pasaste por {cents(-left)}</p>}
           </div>
           {tot.pending > 0
@@ -920,6 +919,18 @@ function CutRow({ cut: c, prev, focus, mobile, onEdit, onDelete }: { cut: CashCu
   const should = had + Number(c.income) - Number(c.outflow) - savedTotal + covered
   const diff = Number(c.counted) - should
   const show = (t: CutItem['type']) => { setExpanded(true); setOpen(open === t ? null : t); setAdding(false) }
+  // A qué caja se fue el saldo (mismos nombres que el Dashboard)
+  const isChivas = (k: string, name: string) => k.startsWith('x:chivas') || /seguro/i.test(name)
+  const box = {
+    ahorro: savings.filter((x) => x.key === SAVINGS_BOX_KEY),
+    chivas: savings.filter((x) => isChivas(x.key, x.name)),
+    apartado: savings.filter((x) => x.key !== SAVINGS_BOX_KEY && !isChivas(x.key, x.name)),
+  }
+  const sumOf = (xs: { saved: number | string }[]) => xs.reduce((a, x) => a + Number(x.saved), 0)
+  const listOf = (xs: { name: string; saved: number | string }[]) => xs.map((x) => `${x.name} ${cents(Number(x.saved))}`).join(' · ')
+  const others = c.distribution.filter((x) => Number(x.amount) > 0 && x.to !== 'Ahorros apartados')
+  const othersTotal = others.reduce((a, x) => a + Number(x.amount), 0)
+  const cell = (xs: { name: string; saved: number | string }[]) => sumOf(xs) > 0 ? <Explain why={listOf(xs)}>{cents(sumOf(xs))}</Explain> : <span className="text-muted">—</span>
   const status = should < -0.5 ? <Badge tone="bad">Faltó {cents(-should)}</Badge> : diff < -0.5 ? <Badge tone="bad">Faltan {cents(-diff)}</Badge> : diff > 0.5 ? <Badge tone="info">Sobran {cents(diff)}</Badge> : <Badge tone="ok">Cuadra</Badge>
   const actions = (
     <div className="flex flex-wrap items-center justify-end gap-1">
@@ -981,10 +992,12 @@ function CutRow({ cut: c, prev, focus, mobile, onEdit, onDelete }: { cut: CashCu
         {status}
       </button>
       <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-        <button type="button" onClick={() => show('entrada')} className="rounded-xl bg-ink-900 p-2 text-left"><span className="block text-xs text-muted">Entró</span><b className="text-ok">{cents(Number(c.income))}</b></button>
-        <button type="button" onClick={() => show('salida')} className="rounded-xl bg-ink-900 p-2 text-left"><span className="block text-xs text-muted">Salió</span><b className="text-bad">{cents(Number(c.outflow))}</b></button>
-        <div className="rounded-xl bg-ink-900 p-2"><span className="block text-xs text-muted">Debería haber</span><b>{cents(should)}</b></div>
-        <div className="rounded-xl bg-ink-900 p-2"><span className="block text-xs text-muted">Contado</span><b className="text-brand">{cents(Number(c.counted))}</b></div>
+        <button type="button" onClick={() => show('entrada')} className="rounded-xl bg-ink-900 p-2 text-left"><span className="block text-xs text-muted">Entradas</span><b className="text-ok">{cents(Number(c.income))}</b></button>
+        <button type="button" onClick={() => show('salida')} className="rounded-xl bg-ink-900 p-2 text-left"><span className="block text-xs text-muted">Gastos</span><b className="text-bad">{cents(Number(c.outflow))}</b></button>
+        <div className="rounded-xl bg-ink-900 p-2"><span className="block text-xs text-muted">Saldo</span><b>{cents(should + savedTotal)}</b></div>
+        <div className="rounded-xl bg-ink-900 p-2"><span className="block text-xs text-muted">Caja de ahorro</span><b className="text-ok">{cents(sumOf(box.ahorro))}</b></div>
+        <div className="rounded-xl bg-ink-900 p-2"><span className="block text-xs text-muted">Apartado próx. gastos</span><b>{cents(sumOf(box.apartado))}</b></div>
+        <div className="rounded-xl bg-ink-900 p-2"><span className="block text-xs text-muted">Caja Chivas</span><b className="text-brand">{cents(sumOf(box.chivas))}</b></div>
       </div>
       <div className="mt-3">{actions}</div>
       {expanded && <div className="mt-3 border-t border-ink-600 pt-3">{detail}</div>}
@@ -1000,15 +1013,17 @@ function CutRow({ cut: c, prev, focus, mobile, onEdit, onDelete }: { cut: CashCu
         <td><Explain why="Lo que quedó en caja chica en el corte anterior">{cents(had)}</Explain></td>
         <td><button onClick={(e) => { e.stopPropagation(); show('entrada') }} className="font-semibold text-ok hover:underline">{cents(Number(c.income))}</button></td>
         <td><button onClick={(e) => { e.stopPropagation(); show('salida') }} className="font-semibold text-bad hover:underline">{cents(Number(c.outflow))}</button></td>
-        <td>{savedTotal > 0 ? <Explain why={savings.map((s) => `${s.name} ${cents(Number(s.saved))}`).join(' · ')}>{cents(savedTotal)}</Explain> : <span className="text-muted">—</span>}</td>
-        <td><Explain why={`Había ${cents(had)} + entró ${cents(Number(c.income))} − salió ${cents(Number(c.outflow))}${savedTotal ? ` − se apartó ${cents(savedTotal)}` : ''}${covered ? ` + vino de otro lado ${cents(covered)}` : ''}`}>{cents(should)}</Explain></td>
-        <td className="font-semibold text-brand">{cents(Number(c.counted))}</td>
+        <td><Explain why={`Caja chica al empezar ${cents(had)} + entradas ${cents(Number(c.income))} − gastos ${cents(Number(c.outflow))}${covered ? ` + vino de otro lado ${cents(covered)}` : ''}`}>{cents(should + savedTotal)}</Explain></td>
+        <td>{cell(box.ahorro)}</td>
+        <td>{cell(box.apartado)}</td>
+        <td>{cell(box.chivas)}</td>
+        <td>{othersTotal > 0 || Number(c.counted) > 0.5 ? <Explain why={[...others.map((x) => `${x.to} ${cents(Number(x.amount))}`), Math.abs(Number(c.counted) - othersTotal) > 0.5 ? `Sin destino (caja chica) ${cents(Number(c.counted) - othersTotal)}` : ''].filter(Boolean).join(' · ')}>{cents(Number(c.counted))}</Explain> : <span className="text-muted">—</span>}</td>
         <td>{status}</td>
         <td onClick={(e) => e.stopPropagation()}>{actions}</td>
       </tr>
       {expanded && (
         <tr className="bg-ink-900">
-          <td colSpan={9} className="!pt-0">
+          <td colSpan={11} className="!pt-0">
             {detail}
           </td>
         </tr>
