@@ -70,6 +70,13 @@ export default function Expenses() {
     return { c, p, cats, catStudents, monthly: monthlyCost(p) }
   }).filter((r) => r.p)
   const salariesMonthly = coachRows.reduce((a, r) => a + r.monthly, 0)
+  // Todo lo que cuesta la academia al mes: administrativos, gastos del mes y sueldos de profes
+  const allCosts = [
+    ...list.map((e) => ({ name: e.name, kind: FIXED.includes(e.frequency) ? 'Administrativo' : 'Gasto del mes', monthly: expenseForMonth(e, month) })),
+    ...coachRows.map((r) => ({ name: r.c.full_name, kind: 'Sueldo de profesor', monthly: r.monthly })),
+  ].filter((x) => x.monthly > 0).sort((a, b) => b.monthly - a.monthly)
+  const allMonthly = allCosts.reduce((a, x) => a + x.monthly, 0)
+  const [perStudentOpen, setPerStudentOpen] = useState(false)
 
   const remove = async () => {
     if (!deleting) return
@@ -103,7 +110,8 @@ export default function Expenses() {
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Alumnos activos" value={activeCount} icon={Users} hint="Base para repartir los gastos" />
         <StatCard label="Gastos generales al mes" value={money(Math.round(generalMonthly))} icon={Receipt} hint="Promedio: semanal × 4.33 · anual ÷ 12" />
-        <StatCard label="Gasto por alumno al mes" value={activeCount ? cents(generalMonthly / activeCount) : '—'} icon={Calculator} tone="brand" />
+        <StatCard label="Gasto por alumno al mes" value={activeCount ? cents(allMonthly / activeCount) : '—'} icon={Calculator} tone="brand"
+          hint={`Todos los gastos (${money(Math.round(allMonthly))}) ÷ ${activeCount} alumnos · toca para ver el cálculo`} onClick={() => setPerStudentOpen(true)} />
         <StatCard label="Sueldos de profesores al mes" value={money(Math.round(salariesMonthly))} icon={UserCog} hint={`${coachRows.length} profesores con sueldo`} />
       </div>
 
@@ -244,6 +252,48 @@ export default function Expenses() {
       )}
       </FoldCard>
 
+      {perStudentOpen && (
+        <Modal open onClose={() => setPerStudentOpen(false)} title="¿Cuánto le cuesta cada niño a la academia?" wide>
+          <div className="space-y-4 text-base">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl bg-ink-900 p-4"><p className="text-xs uppercase tracking-wider text-muted">Todos los gastos al mes</p><p className="font-display text-3xl font-bold text-bad">{money(Math.round(allMonthly))}</p></div>
+              <div className="rounded-2xl bg-ink-900 p-4"><p className="text-xs uppercase tracking-wider text-muted">Alumnos activos hoy</p><p className="font-display text-3xl font-bold">÷ {activeCount}</p></div>
+              <div className="rounded-2xl bg-ink-900 p-4"><p className="text-xs uppercase tracking-wider text-muted">Cada niño cuesta al mes</p><p className="font-display text-3xl font-bold text-brand">= {activeCount ? cents(allMonthly / activeCount) : '—'}</p></div>
+            </div>
+            <p className="text-sm text-muted">Con lo registrado al día de hoy en {MONTHS[Number(month.slice(5, 7)) - 1].toLowerCase()}. Semanales × 4.33 · anuales ÷ 12. Cada barra es el % de ese gasto en el total.</p>
+            {(['Sueldo de profesor', 'Administrativo', 'Gasto del mes'] as const).map((k) => {
+              const xs = allCosts.filter((x) => x.kind === k)
+              if (!xs.length) return null
+              const sub = xs.reduce((a, x) => a + x.monthly, 0)
+              return (
+                <div key={k} className="overflow-hidden rounded-2xl border border-ink-600">
+                  <div className="flex items-center justify-between bg-ink-900 px-4 py-3">
+                    <span className="font-display text-lg font-bold uppercase">{k === 'Sueldo de profesor' ? 'Sueldos de profesores' : k === 'Administrativo' ? 'Gastos administrativos' : 'Gastos del mes'}</span>
+                    <span className="text-right"><b className="font-display text-xl">{money(Math.round(sub))}</b> <span className="text-sm text-muted">· {allMonthly ? Math.round((sub / allMonthly) * 100) : 0}% · {activeCount ? cents(sub / activeCount) : '—'} por niño</span></span>
+                  </div>
+                  <ul className="divide-y divide-ink-700">
+                    {xs.map((x) => {
+                      const pct = allMonthly ? (x.monthly / allMonthly) * 100 : 0
+                      return (
+                        <li key={x.kind + x.name} className="px-4 py-3">
+                          <div className="flex items-baseline justify-between gap-3">
+                            <span className="font-medium">{x.name}</span>
+                            <span className="text-right"><b>{money(Math.round(x.monthly))}</b> <span className="text-sm text-muted">· {activeCount ? cents(x.monthly / activeCount) : '—'} por niño</span></span>
+                          </div>
+                          <div className="mt-1.5 flex items-center gap-2">
+                            <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-ink-700"><div className="h-full rounded-full bg-brand" style={{ width: `${pct}%` }} /></div>
+                            <span className="w-12 text-right text-sm font-semibold">{pct.toFixed(1)}%</span>
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )
+            })}
+          </div>
+        </Modal>
+      )}
       {picking && <CoachCategoryPicker coachId={picking.id} coachName={picking.name} onClose={() => setPicking(null)} />}
       {editingCoach && <CoachModal coach={editingCoach} onClose={() => setEditingCoach(null)} />}
       {modal && <ExpenseModal mode={modal.mode} expense={modal.expense} defaultMonth={viewMonth} onClose={() => setModal(null)} nextOrder={list.length + 1}

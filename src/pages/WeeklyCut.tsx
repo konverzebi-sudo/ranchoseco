@@ -3,12 +3,12 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { startOfWeek } from 'date-fns'
 import { TrendingUp, TrendingDown, Scale, Banknote, Download, MessageCircle, Printer, Plus, Trash2, Vault, PiggyBank, Check, Pencil, CheckCheck, X, ChevronDown, FileText } from 'lucide-react'
-import { Badge, Button, Card, ConfirmDialog, ErrorState, Field, IconButton, Input, Modal, PageHeader, Spinner, StatCard, Textarea, cx } from '@/components/ui'
+import { Explain, FoldCard, Badge, Button, Card, ConfirmDialog, ErrorState, Field, IconButton, Input, Modal, PageHeader, Spinner, StatCard, Textarea, cx } from '@/components/ui'
 import { useToast } from '@/components/toast'
 import RangePicker from '@/components/RangePicker'
 import { useCashCuts, useCoachPay, useCoaches, useExpenses, useFees, usePayments, useStudents } from '@/lib/api'
 import {
-  CARRY_DESTINATION, DESTINATIONS, OUT_GROUPS, SAVINGS_BOX_KEY, CHIVAS_KEY, CHIVAS_PLAYERAS_KEY, CHIVAS_CREDENCIALES_KEY, CHIVAS_PLAYERA, CHIVAS_CREDENCIAL, INSURANCE_STUDENTS, cutGaps, isManual, isSalary, manualItem, nextDay, pendingSalaries, prepaidUntil, vacationItems, buildItems, counts, openingCash, itemTotals, itemValue, nextPeriodStart, outGroup, periodSummary, savingFunds,
+  CARRY_DESTINATION, DESTINATIONS, carryOver as carryOverOf, OUT_GROUPS, SAVINGS_BOX_KEY, CHIVAS_KEY, CHIVAS_PLAYERAS_KEY, CHIVAS_CREDENCIALES_KEY, CHIVAS_PLAYERA, CHIVAS_CREDENCIAL, INSURANCE_STUDENTS, cutGaps, isManual, isSalary, manualItem, nextDay, pendingSalaries, prepaidUntil, vacationItems, buildItems, counts, openingCash, itemTotals, itemValue, nextPeriodStart, outGroup, periodSummary, savingFunds,
   type CutItem, type SavingFund,
 } from '@/lib/cashcut'
 import { METHOD_LABEL, date, money, toISODate, today } from '@/lib/format'
@@ -408,10 +408,16 @@ export default function WeeklyCut() {
       <div className="mb-6"><CashDoubtsCard /></div>
       <div className="mb-6 space-y-6">
           <div>
-            <h2 className="mb-3 font-display text-xl font-bold uppercase tracking-wide">Cortes anteriores</h2>
-            {!cuts.data?.length ? <Card className="p-6 text-center text-sm text-muted">Aún no hay cortes. Cuando pagues a los profes, revisa todo abajo en "Hacer el corte".</Card> : (
-              <div className="space-y-3">{cuts.data.map((c) => <CutCard key={c.id} cut={c} onEdit={() => startEdit(c)} onDelete={() => setDeleting(c)} />)}</div>
+            <FoldCard title="Cortes anteriores" subtitle="Pica un corte para ver su desglose · pasa el mouse sobre un número para ver de dónde sale">
+            {!cuts.data?.length ? <p className="p-6 text-center text-sm text-muted">Aún no hay cortes. Cuando pagues a los profes, revisa todo abajo en "Hacer el corte".</p> : (
+              <div className="overflow-x-auto">
+                <table className="table-base min-w-[1100px]">
+                  <thead><tr><th>Corte</th><th>Había</th><th>Entró</th><th>Salió</th><th>Se apartó</th><th>Debería haber</th><th>Contado</th><th>¿Cuadra?</th><th /></tr></thead>
+                  <tbody>{cuts.data.map((c, i) => <CutRow key={c.id} cut={c} prev={cuts.data![i + 1]} onEdit={() => startEdit(c)} onDelete={() => setDeleting(c)} />)}</tbody>
+                </table>
+              </div>
             )}
+            </FoldCard>
           </div>
           {totals.length > 0 && (
             <Card className="p-5">
@@ -870,10 +876,11 @@ function ManualLineForm({ type, defaultDate, onAdd, onCancel }: { type: CutItem[
   )
 }
 
-function CutCard({ cut: c, onEdit, onDelete }: { cut: CashCut; onEdit: () => void; onDelete: () => void }) {
+function CutRow({ cut: c, prev, onEdit, onDelete }: { cut: CashCut; prev?: CashCut; onEdit: () => void; onDelete: () => void }) {
   const qc = useQueryClient()
   const toast = useToast()
   const [open, setOpen] = useState<CutItem['type'] | null>(null)
+  const [expanded, setExpanded] = useState(false)
   const [adding, setAdding] = useState(false)
   const addLine = async (it: CutItem) => {
     try {
@@ -891,57 +898,80 @@ function CutCard({ cut: c, onEdit, onDelete }: { cut: CashCut; onEdit: () => voi
   const items = c.items ?? []
   const adjusted = items.filter((i) => i.adjusted != null)
   const savings = (c.savings ?? []).filter((s) => Number(s.saved) > 0)
+  const had = carryOverOf(prev)
+  const savedTotal = savings.reduce((a, s) => a + Number(s.saved), 0)
+  const covered = c.distribution.filter((x) => Number(x.amount) < 0).reduce((a, x) => a - Number(x.amount), 0)
+  const should = had + Number(c.income) - Number(c.outflow) - savedTotal + covered
+  const diff = Number(c.counted) - should
+  const show = (t: CutItem['type']) => { setExpanded(true); setOpen(open === t ? null : t); setAdding(false) }
   return (
-    <Card className="p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="font-display text-lg font-bold uppercase">{date(c.cut_date, "EEEE d 'de' MMMM")}</p>
-          <p className="text-xs text-muted">Del {range(c.period_from, c.period_to)}{items.length ? ` · ${items.filter((i) => i.approved).length} de ${items.length} revisadas` : ''}</p>
-        </div>
-        <div className="flex gap-5 text-sm">
-          <button onClick={() => { setOpen(open === 'entrada' ? null : 'entrada'); setAdding(false) }} className="hover:underline">Entró <b className="text-ok">{cents(Number(c.income))}</b> <span className="text-xs text-muted">{open === 'entrada' ? '▾' : '▸'}</span></button>
-          <button onClick={() => { setOpen(open === 'salida' ? null : 'salida'); setAdding(false) }} className="hover:underline">Salió <b className="text-bad">{cents(Number(c.outflow))}</b> <span className="text-xs text-muted">{open === 'salida' ? '▾' : '▸'}</span></button>
-          <span>Contado <b className="text-brand">{cents(Number(c.counted))}</b></span>
-        </div>
-        <div className="flex flex-wrap items-center gap-1">
-          <ReportButtons cut={c} small />
-          <PdfButton cut={c} small />
-          <IconButton icon={Pencil} label="Corregir corte" onClick={onEdit} className="h-8 w-8" />
-          <IconButton icon={Trash2} label="Eliminar corte" onClick={onDelete} className="h-8 w-8" />
-        </div>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {c.distribution.map((x, i) => <Badge key={i} tone={Number(x.amount) < 0 ? 'bad' : x.to.toLowerCase() === CARRY_DESTINATION.toLowerCase() ? 'brand' : 'neutral'}>{x.to} · {cents(Math.abs(Number(x.amount)))}</Badge>)}
-        {Math.abs(Number(c.counted) - assigned) > 0.5 && <Badge tone="warn">Sin asignar {cents(Number(c.counted) - assigned)}</Badge>}
-      </div>
-      {savings.length > 0 && <p className="mt-2 text-xs text-muted">Ahorro: {savings.map((s) => `${s.name} ${cents(Number(s.saved))}`).join(' · ')}</p>}
-      {adjusted.length > 0 && <p className="mt-1 text-xs text-warn">Correcciones: {adjusted.map((i) => `${i.concept} ${cents(i.amount)} → ${cents(Number(i.adjusted))}${i.note ? ` (${i.note})` : ''}`).join(' · ')}</p>}
-      {c.notes && <p className="mt-2 text-sm text-muted">{c.notes}</p>}
-      {open && (() => {
-        const l = items.filter((i) => i.type === open && counts(i))
-        const groupOf = (i: CutItem) => (open === 'salida' ? OUT_GROUPS.find((g) => g.id === outGroup(i))!.label : (i.detail.split(' · ')[0] || 'Otro'))
-        const groups = [...new Set(l.map(groupOf))]
-        return (
-          <div className="mt-3 rounded-xl bg-ink-900 p-3">
-            <div className="space-y-0.5 font-mono text-xs text-muted">
-              {l.length === 0 && <p>Nada.</p>}
-              {groups.map((g) => {
-                const gl = l.filter((i) => groupOf(i) === g)
+    <>
+      <tr className={cx('cursor-pointer', expanded && 'bg-ink-900')} onClick={() => setExpanded(!expanded)}>
+        <td>
+          <p className="flex items-center gap-1.5 font-display text-base font-bold uppercase"><ChevronDown className={cx('h-4 w-4 shrink-0 text-brand transition-transform', !expanded && '-rotate-90')} />{date(c.cut_date, "EEE d 'de' MMM")}</p>
+          <p className="pl-5 text-xs text-muted">Del {range(c.period_from, c.period_to)}{items.length ? ` · ${items.filter((i) => i.approved).length}/${items.length} revisadas` : ''}</p>
+        </td>
+        <td><Explain why="Lo que quedó en caja chica en el corte anterior">{cents(had)}</Explain></td>
+        <td><button onClick={(e) => { e.stopPropagation(); show('entrada') }} className="font-semibold text-ok hover:underline">{cents(Number(c.income))}</button></td>
+        <td><button onClick={(e) => { e.stopPropagation(); show('salida') }} className="font-semibold text-bad hover:underline">{cents(Number(c.outflow))}</button></td>
+        <td>{savedTotal > 0 ? <Explain why={savings.map((s) => `${s.name} ${cents(Number(s.saved))}`).join(' · ')}>{cents(savedTotal)}</Explain> : <span className="text-muted">—</span>}</td>
+        <td><Explain why={`Había ${cents(had)} + entró ${cents(Number(c.income))} − salió ${cents(Number(c.outflow))}${savedTotal ? ` − se apartó ${cents(savedTotal)}` : ''}${covered ? ` + vino de otro lado ${cents(covered)}` : ''}`}>{cents(should)}</Explain></td>
+        <td className="font-semibold text-brand">{cents(Number(c.counted))}</td>
+        <td>{should < -0.5 ? <Badge tone="bad">Faltó {cents(-should)}</Badge> : diff < -0.5 ? <Badge tone="bad">Faltan {cents(-diff)}</Badge> : diff > 0.5 ? <Badge tone="info">Sobran {cents(diff)}</Badge> : <Badge tone="ok">Cuadra</Badge>}</td>
+        <td onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center justify-end gap-1">
+            <ReportButtons cut={c} small />
+            <PdfButton cut={c} small />
+            <IconButton icon={Pencil} label="Corregir corte" onClick={onEdit} className="h-8 w-8" />
+            <IconButton icon={Trash2} label="Eliminar corte" onClick={onDelete} className="h-8 w-8" />
+          </div>
+        </td>
+      </tr>
+      {expanded && (
+        <tr className="bg-ink-900">
+          <td colSpan={9} className="!pt-0">
+            <div className="space-y-2 pl-5 text-sm">
+              <div className="flex flex-wrap gap-2">
+                <span className="text-xs uppercase tracking-wider text-muted">A dónde se fue:</span>
+                {c.distribution.map((x, i) => <Badge key={i} tone={Number(x.amount) < 0 ? 'bad' : x.to.toLowerCase() === CARRY_DESTINATION.toLowerCase() ? 'brand' : 'neutral'}>{x.to} · {cents(Math.abs(Number(x.amount)))}</Badge>)}
+                {Math.abs(Number(c.counted) - assigned) > 0.5 && <Badge tone="warn">Sin asignar {cents(Number(c.counted) - assigned)}</Badge>}
+              </div>
+              {savings.length > 0 && <p className="text-xs text-muted">Ahorro: {savings.map((s) => `${s.name} ${cents(Number(s.saved))}`).join(' · ')}</p>}
+              {adjusted.length > 0 && <p className="text-xs text-warn">Correcciones: {adjusted.map((i) => `${i.concept} ${cents(i.amount)} → ${cents(Number(i.adjusted))}${i.note ? ` (${i.note})` : ''}`).join(' · ')}</p>}
+              {c.notes && <p className="text-muted">📝 {c.notes}</p>}
+              <div className="flex gap-2">
+                <Button size="sm" variant={open === 'entrada' ? 'primary' : 'secondary'} onClick={() => show('entrada')}>Ver lo que entró</Button>
+                <Button size="sm" variant={open === 'salida' ? 'primary' : 'secondary'} onClick={() => show('salida')}>Ver lo que salió</Button>
+              </div>
+              {open && (() => {
+                const l = items.filter((i) => i.type === open && counts(i))
+                const groupOf = (i: CutItem) => (open === 'salida' ? OUT_GROUPS.find((g) => g.id === outGroup(i))!.label : (i.detail.split(' · ')[0] || 'Otro'))
+                const groups = [...new Set(l.map(groupOf))]
                 return (
-                  <div key={g}>
-                    <p className="flex justify-between pt-1.5 font-semibold text-white"><span>{g.toUpperCase()} ({gl.length})</span><span>{cents(gl.reduce((a, i) => a + itemValue(i), 0))}</span></p>
-                    {gl.map((i) => <p key={i.key} className="flex justify-between gap-3"><span className="truncate">· {i.concept}{isManual(i) ? ' (agregado a mano)' : ''}{i.note ? ` — ${i.note}` : ''}</span><span>{cents(itemValue(i))}</span></p>)}
+                  <div className="mt-3 rounded-xl bg-ink-900 p-3">
+                    <div className="space-y-0.5 font-mono text-xs text-muted">
+                      {l.length === 0 && <p>Nada.</p>}
+                      {groups.map((g) => {
+                        const gl = l.filter((i) => groupOf(i) === g)
+                        return (
+                          <div key={g}>
+                            <p className="flex justify-between pt-1.5 font-semibold text-white"><span>{g.toUpperCase()} ({gl.length})</span><span>{cents(gl.reduce((a, i) => a + itemValue(i), 0))}</span></p>
+                            {gl.map((i) => <p key={i.key} className="flex justify-between gap-3"><span className="truncate">· {i.concept}{isManual(i) ? ' (agregado a mano)' : ''}{i.note ? ` — ${i.note}` : ''}</span><span>{cents(itemValue(i))}</span></p>)}
+                          </div>
+                        )
+                      })}
+                      <p className="flex justify-between border-t border-ink-600 pt-1.5 font-semibold text-white"><span>TOTAL</span><span>{cents(open === 'entrada' ? Number(c.income) : Number(c.outflow))}</span></p>
+                    </div>
+                    {adding
+                      ? <div className="mt-3 overflow-hidden rounded-xl border border-ink-600"><ManualLineForm type={open} defaultDate={c.cut_date} onCancel={() => setAdding(false)} onAdd={addLine} /></div>
+                      : <Button size="sm" variant="ghost" icon={Plus} className="mt-2" onClick={() => setAdding(true)}>{open === 'entrada' ? 'Agregar un pago para cuadrar' : 'Agregar un gasto para cuadrar'}</Button>}
                   </div>
                 )
-              })}
-              <p className="flex justify-between border-t border-ink-600 pt-1.5 font-semibold text-white"><span>TOTAL</span><span>{cents(open === 'entrada' ? Number(c.income) : Number(c.outflow))}</span></p>
+              })()}
             </div>
-            {adding
-              ? <div className="mt-3 overflow-hidden rounded-xl border border-ink-600"><ManualLineForm type={open} defaultDate={c.cut_date} onCancel={() => setAdding(false)} onAdd={addLine} /></div>
-              : <Button size="sm" variant="ghost" icon={Plus} className="mt-2" onClick={() => setAdding(true)}>{open === 'entrada' ? 'Agregar un pago para cuadrar' : 'Agregar un gasto para cuadrar'}</Button>}
-          </div>
-        )
-      })()}
-    </Card>
+          </td>
+        </tr>
+      )}
+    </>
   )
 }
