@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { endOfWeek, startOfMonth } from 'date-fns'
 import { Users, UserCog, ClipboardCheck, AlertTriangle, Wallet, TrendingUp, Plus, ChevronRight, Trophy, Dumbbell, HelpCircle, Scale, CalendarClock, UserPlus, Bell } from 'lucide-react'
-import { Avatar, Button, Card, ErrorState, PageHeader, Spinner, StatCard, Badge } from '@/components/ui'
+import { Avatar, Button, Card, ErrorState, PageHeader, Spinner, StatCard, Badge, cx } from '@/components/ui'
 import { CollectButton } from '@/components/WhatsAppButtons'
 import { monthNameOf, useCashBoxCards, useFinanceCards } from '@/components/FinanceModules'
 import FundProgress from '@/components/FundProgress'
@@ -83,6 +83,17 @@ function AdminDashboard() {
     const extraMembers = (id: string) => new Set((extraClasses.data ?? []).filter((x) => x.category_id === id).map((x) => x.student_id))
     const byCategory = (categories.data ?? []).map((c) => ({ ...c, count: c.is_extra ? active.filter((s) => extraMembers(c.id).has(s.id)).length : active.filter((s) => s.category_id === c.id).length }))
     const noCat = active.filter((s) => !s.category_id).length
+    // Pagos de la mensualidad del mes por categoría: cuántos ya pagaron y cuánto falta
+    const monthFees = (fees.data ?? []).filter((f) => f.concept === 'Mensualidad' && f.period === monthStart && activeIds.has(f.student_id))
+    const catOfStudent = new Map(active.map((s) => [s.id, s.category_id]))
+    const payByCategory = (categories.data ?? []).filter((c) => !c.is_extra).map((c) => {
+      const fs = monthFees.filter((f) => catOfStudent.get(f.student_id) === c.id)
+      const due = fs.reduce((a, f) => a + Number(f.total_due), 0)
+      const paid = fs.reduce((a, f) => a + Math.min(Number(f.paid), Number(f.total_due)), 0)
+      return { id: c.id, name: c.name, students: fs.length, paidCount: fs.filter((f) => Number(f.balance) <= 0).length, due, paid, pct: due > 0 ? (paid / due) * 100 : 0 }
+    }).filter((x) => x.students > 0)
+    // Alumnos con adeudo: activos que deben algo (cualquier mes)
+    const owing = new Set((fees.data ?? []).filter((f) => Number(f.balance) > 0 && f.status !== 'por_confirmar' && activeIds.has(f.student_id)).map((f) => f.student_id))
     const todayAtt = (recentAtt.data ?? []).filter((a) => a.date === t)
     const present = todayAtt.filter((a) => a.status === 'presente' || a.status === 'retardo').length
     const openFees = (fees.data ?? []).filter((f) => Number(f.balance) > 0 && activeIds.has(f.student_id))
@@ -102,7 +113,7 @@ function AdminDashboard() {
       const members = (students.data ?? []).filter((s) => s.sibling_group_id === g.id)
       return { g, ...promoStatus(members, overdueSet) }
     }).filter((r) => !r.valid || r.overdue.length)
-    return { promoAlerts, active, byCategory, noCat, todayAtt, present, openFees, pendingTotal, lateFees, extras, reviewTotal, collected, overdueStudents, absent }
+    return { promoAlerts, active, byCategory, payByCategory, owing, noCat, todayAtt, present, openFees, pendingTotal, lateFees, extras, reviewTotal, collected, overdueStudents, absent }
   }, [students.data, categories.data, recentAtt.data, fees.data, payments.data, accounts.data, t, monthStart, siblingGroups.data, extraClasses.data])
 
   const trials = (students.data ?? []).filter((s) => s.status === 'muestra')
@@ -110,7 +121,6 @@ function AdminDashboard() {
   const error = students.error || accounts.error || fees.error || categories.error
   if (error) return <><PageHeader title="Dashboard" /><ErrorState error={error} onRetry={() => { students.refetch(); accounts.refetch(); fees.refetch(); categories.refetch() }} /></>
 
-  const maxCat = Math.max(1, ...data.byCategory.map((c) => c.count))
   const agenda = [
     ...(upcomingTr.data ?? []).map((x) => ({ kind: 'tr' as const, date: x.date, time: x.start_time, cat: x.category_id, title: x.objectives || 'Entrenamiento', id: x.id })),
     ...(upcomingMa.data ?? []).filter((m) => m.status === 'programado').map((x) => ({ kind: 'ma' as const, date: x.date, time: x.time, cat: x.category_id, title: `vs ${x.opponent}`, id: x.id })),
@@ -167,6 +177,8 @@ function AdminDashboard() {
           </div>
           <div className="!mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatCard label="Alumnos activos" value={data.active.length} icon={Users} onClick={() => setDetail('activos')} />
+            <StatCard label="Alumnos con adeudo" value={data.owing.size} icon={AlertTriangle} tone={data.owing.size ? 'bad' : 'ok'}
+              hint={data.active.length ? `${Math.round((data.owing.size / data.active.length) * 100)}% de los activos · toca para ver quiénes` : undefined} onClick={() => setDetail('adeudo')} />
             <StatCard label="Profesores" value={(coaches.data ?? []).filter((c) => c.active).length} icon={UserCog} onClick={() => setDetail('profes')} />
             {fin.seguro}
             {boxes.uniformes}
@@ -247,23 +259,25 @@ function AdminDashboard() {
 
             <Card>
               <div className="border-b border-ink-600 px-5 py-4">
-                <h2 className="font-display text-lg font-bold uppercase tracking-wide">Alumnos por categoría</h2>
+                <h2 className="font-display text-lg font-bold uppercase tracking-wide">Pagos por categoría</h2>
+                <p className="text-xs text-muted">Mensualidad de {mes}: cuántos ya pagaron · verde = completo · amarillo = más de la mitad · rojo = va atrás</p>
               </div>
-              <ul className="space-y-3 px-5 py-4">
-                {data.byCategory.map((c) => (
+              <ul className="space-y-4 px-5 py-4">
+                {data.payByCategory.map((c) => (
                   <li key={c.id}>
-                    <Link to={`/alumnos?cat=${c.id}&st=activo`} className="group block">
-                      <div className="mb-1 flex justify-between text-sm">
-                        <span className="group-hover:text-brand">{c.name}</span>
-                        <span className="font-semibold">{c.count}</span>
+                    <Link to={`/cobranza?f=pendiente`} className="group block" title={`${c.paidCount} de ${c.students} alumnos ya pagaron · cobrado ${money(c.paid)} de ${money(c.due)} · faltan ${money(c.due - c.paid)}`}>
+                      <div className="mb-1 flex items-baseline justify-between gap-2 text-sm">
+                        <span className="font-medium group-hover:text-brand">{c.name}</span>
+                        <span><b className={cx('font-display text-lg', c.pct >= 99.5 ? 'text-ok' : c.pct >= 50 ? 'text-brand' : 'text-bad')}>{Math.round(c.pct)}%</b></span>
                       </div>
-                      <div className="h-2 overflow-hidden rounded-full bg-ink-700">
-                        <div className="h-full rounded-full bg-brand" style={{ width: `${(c.count / maxCat) * 100}%` }} />
+                      <div className="h-2.5 overflow-hidden rounded-full bg-ink-700">
+                        <div className={cx('h-full rounded-full', c.pct >= 99.5 ? 'bg-ok' : c.pct >= 50 ? 'bg-brand' : 'bg-bad')} style={{ width: `${Math.min(100, c.pct)}%` }} />
                       </div>
+                      <p className="mt-1 text-xs text-muted">{c.paidCount} de {c.students} pagaron · {money(c.paid)} de {money(c.due)}</p>
                     </Link>
                   </li>
                 ))}
-                {data.noCat > 0 && <li className="text-sm text-muted">Sin categoría: {data.noCat}</li>}
+                {data.payByCategory.length === 0 && <li className="text-sm text-muted">Todavía no hay mensualidades de {mes}.</li>}
               </ul>
             </Card>
           </div>

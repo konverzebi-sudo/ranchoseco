@@ -12,7 +12,7 @@ import { isUniformConcept } from '@/lib/uniforms'
 import { ATTENDANCE_LABEL, date, money, monthName, toISODate, today } from '@/lib/format'
 
 export type CardKind =
-  | 'total' | 'chica' | 'apartado' | 'ahorro' | 'chivas' | 'pendiente' | 'recargos' | 'becas' | 'nuevas'
+  | 'total' | 'chica' | 'apartado' | 'ahorro' | 'chivas' | 'adeudo' | 'pendiente' | 'recargos' | 'becas' | 'nuevas'
   | 'muestra' | 'asistencia' | 'activos' | 'profes' | 'seguro' | 'uniformes' | 'porconfirmar'
 
 interface Row { label: string; sub?: string; value?: number | string; link?: string; tone?: 'bad' | 'ok' }
@@ -177,6 +177,23 @@ export default function CardDetailModal({ kind, onClose }: { kind: CardKind; onC
           go: { label: 'Ir a asistencias', to: '/asistencias' },
         }
       }
+      case 'adeudo': {
+        const open = allFees.filter((f) => Number(f.balance) > 0 && f.status !== 'por_confirmar' && activeIds.has(f.student_id))
+        const owing = byKey(open, (f) => f.student_id).map(([id, fs]) => ({ id, fs, total: fs.reduce((a, f) => a + Number(f.balance), 0), s: active.find((x) => x.id === id)! }))
+        return {
+          title: 'Alumnos con adeudo', total: `${owing.length} alumnos · ${money(owing.reduce((a, x) => a + x.total, 0))}`,
+          note: 'Agrupados por categoría, del que más debe al que menos. Toca un nombre para ver su cuenta.',
+          groups: byKey(owing, (x) => catOf(x.s.category_id)).sort((a, b) => a[0].localeCompare(b[0], 'es')).map(([k, xs]) => ({
+            label: k, total: xs.reduce((a, x) => a + x.total, 0),
+            rows: xs.sort((a, b) => b.total - a.total).map((x) => ({
+              label: x.s.full_name,
+              sub: x.fs.map((f) => `${f.concept} ${monthName(f.period)}${f.status === 'vencido' ? ' (vencido)' : ''}`).join(' · '),
+              value: x.total, link: `/alumnos/${x.id}?tab=pagos`, tone: x.fs.some((f) => f.status === 'vencido') ? 'bad' as const : undefined,
+            })),
+          })),
+          go: { label: 'Ir a cobranza', to: '/cobranza?f=pendiente' },
+        }
+      }
       case 'activos':
         return {
           title: 'Alumnos activos', total: `${active.length}`,
@@ -230,39 +247,43 @@ export default function CardDetailModal({ kind, onClose }: { kind: CardKind; onC
   return (
     <Modal open onClose={onClose} title={d.title} wide
       footer={<>{d.go && <Button variant="secondary" onClick={() => { onClose(); nav(d.go!.to) }}>{d.go.label}</Button>}<Button onClick={onClose}>Cerrar</Button></>}>
-      <div className="space-y-3 text-sm">
+      <div className="space-y-4 text-base">
         {d.total !== undefined && (
-          <div className="flex items-center justify-between rounded-xl bg-ink-900 px-4 py-3">
-            <span className="font-display text-lg font-bold uppercase">Total</span>
-            <span className={cx('font-display text-2xl font-bold', typeof d.total === 'number' && d.total < 0 && 'text-bad')}>{fmt(d.total)}</span>
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-ink-900 px-5 py-4">
+            <span className="font-display text-xl font-bold uppercase">Total</span>
+            <span className={cx('font-display text-3xl font-bold', typeof d.total === 'number' && d.total < 0 && 'text-bad')}>{fmt(d.total)}</span>
           </div>
         )}
-        {d.note && <p className="text-xs text-muted">{d.note}</p>}
-        {d.groups.length === 0 && <p className="py-4 text-center text-muted">No hay nada que mostrar.</p>}
-        <div>
+        {d.note && <p className="text-sm text-muted">{d.note}</p>}
+        {d.groups.length === 0 && <p className="py-6 text-center text-muted">No hay nada que mostrar.</p>}
+        <div className="space-y-3">
           {d.groups.map((g, i) => (
-            <div key={i} className="border-t border-ink-700 first:border-t-0">
-              <button type="button" onClick={() => setOpen((o) => ({ ...o, [i]: !o[i] }))} className="flex w-full items-center justify-between gap-2 py-2 text-left">
-                <span className="flex items-center gap-1.5 font-semibold uppercase tracking-wide">
-                  <ChevronDown className={cx('h-4 w-4 text-brand transition-transform', !open[i] && '-rotate-90')} />{g.label}{g.rows.length ? ` · ${g.rows.length}` : ''}
+            <div key={i} className="overflow-hidden rounded-2xl border border-ink-600">
+              <button type="button" onClick={() => setOpen((o) => ({ ...o, [i]: !o[i] }))} className="flex w-full items-center justify-between gap-3 bg-ink-900 px-4 py-3 text-left hover:bg-ink-700">
+                <span className="flex items-center gap-2 font-display text-lg font-bold uppercase tracking-wide">
+                  <ChevronDown className={cx('h-5 w-5 shrink-0 text-brand transition-transform', !open[i] && '-rotate-90')} />
+                  {g.label}{g.rows.length ? <span className="font-sans text-sm font-normal normal-case text-muted">{g.rows.length} {g.rows.length === 1 ? 'renglón' : 'renglones'}</span> : null}
                 </span>
-                {g.total !== undefined && <b className={cx(typeof g.total === 'number' && g.total < 0 && 'text-bad')}>{fmt(g.total)}</b>}
+                {g.total !== undefined && <b className={cx('font-display text-xl', typeof g.total === 'number' && g.total < 0 && 'text-bad')}>{fmt(g.total)}</b>}
               </button>
               {open[i] && (
-                <ul className="space-y-1 pb-2 pl-6">
-                  {g.rows.length === 0 && <li className="text-muted">Nada.</li>}
+                <ul className="divide-y divide-ink-700">
+                  {g.rows.length === 0 && <li className="px-4 py-3 text-muted">Nada.</li>}
                   {g.rows.map((r, k) => {
                     const body = (
                       <>
-                        <span className="min-w-0 truncate">· {r.label}{r.sub && <span className="text-xs text-muted"> {r.sub}</span>}</span>
-                        {r.value !== undefined && <span className={cx('shrink-0 tabular-nums', r.tone === 'bad' ? 'text-bad' : r.tone === 'ok' ? 'text-ok' : 'text-muted')}>{fmt(r.value)}</span>}
+                        <span className="min-w-0">
+                          <span className="block font-medium">{r.label}</span>
+                          {r.sub && <span className="block text-sm text-muted">{r.sub}</span>}
+                        </span>
+                        {r.value !== undefined && <span className={cx('shrink-0 text-lg font-semibold tabular-nums', r.tone === 'bad' ? 'text-bad' : r.tone === 'ok' ? 'text-ok' : '')}>{fmt(r.value)}</span>}
                       </>
                     )
                     return (
                       <li key={k}>
                         {r.link
-                          ? <Link to={r.link} onClick={onClose} className="flex items-baseline justify-between gap-3 hover:text-brand">{body}</Link>
-                          : <div className="flex items-baseline justify-between gap-3">{body}</div>}
+                          ? <Link to={r.link} onClick={onClose} className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-ink-700 hover:text-brand">{body}</Link>
+                          : <div className="flex items-center justify-between gap-4 px-4 py-3">{body}</div>}
                       </li>
                     )
                   })}
