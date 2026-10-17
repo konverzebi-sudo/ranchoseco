@@ -30,6 +30,7 @@ const REPORT_TO = [
 ]
 
 import { CashDoubtsCard, SOURCE_PREFIX, SOURCES } from '@/components/CashDoubts'
+import FundProgress from '@/components/FundProgress'
 
 type Review = Record<string, { amount?: number; approved?: boolean; adjusted?: number | null; note?: string; excluded?: boolean; pending?: boolean }>
 
@@ -110,8 +111,6 @@ export default function WeeklyCut() {
   const suggestedTotal = funds.reduce((a, f) => a + f.suggested, 0)
   // Las cajas después de este corte
   const box = funds.find((f) => f.kind === 'ahorro')
-  const cajaAhorro = box ? box.saved + savedNow(box) : 0
-  const apartado = funds.filter((f) => f.kind !== 'ahorro' && f.kind !== 'uniformes' && f.kind !== 'chivas').reduce((a, f) => a + f.saved + savedNow(f), 0)
   const chivasTotal = funds.filter((f) => f.kind === 'chivas').reduce((a, f) => a + f.saved + savedNow(f), 0)
   const uniformsFund = funds.filter((f) => f.kind === 'uniformes').reduce((a, f) => a + f.saved + savedNow(f), 0)
   const uniformsIn = items.filter((i) => i.type === 'entrada' && counts(i) && isUniformConcept(i.detail.split(' · ')[0])).reduce((a, i) => a + itemValue(i), 0)
@@ -474,18 +473,35 @@ export default function WeeklyCut() {
             <StatCard label="Salió" value={cents(tot.outflow)} icon={TrendingDown} tone="bad" hint="Sueldos, gastos y pagos de préstamos" />
             <StatCard label="Resultado de estas fechas" value={cents(tot.income - tot.outflow)} icon={Scale} tone={tot.income >= tot.outflow ? 'ok' : 'bad'} hint={tot.income >= tot.outflow ? 'Entró más de lo que salió (sin contar la caja chica)' : 'Salió más de lo que entró (sin contar la caja chica)'} />
           </div>
-          <div className="!mt-3 grid grid-cols-2 gap-3 lg:grid-cols-5">
-            <StatCard label="Caja de ahorro" value={cents(cajaAhorro)} icon={PiggyBank} tone="ok"
-              hint={`Ahorro libre${box && savedNow(box) > 0 ? ` · hoy + ${cents(savedNow(box))}` : ''}`} />
-            <StatCard label="Apartado de próximos gastos" value={cents(apartado)} icon={Vault} tone="brand"
-              hint="Regalías, renta, seguro, partes y préstamos" />
-            <StatCard label="Caja Chivas" value={cents(chivasTotal)} icon={Vault} tone="brand"
-              hint="Inscripciones: playeras, credenciales y libre" />
-            <StatCard label="Todo el dinero" value={cents(cajaAhorro + apartado + chivasTotal + uniformsFund + (available < -0.5 ? available : countedN))} icon={Banknote}
-              hint="Caja chica + ahorro + apartado + Caja Chivas + uniformes" />
-            <StatCard label="Caja chica" value={cents(available < -0.5 ? available : countedN)} icon={Banknote} tone={available < -0.5 ? 'bad' : undefined}
-              hint={`Efectivo que queda después del corte (antes ${cents(carry)})`} />
-          </div>
+          {(() => {
+            // Las cajas hoy: caja chica = lo de esta semana que todavía no entra a un corte;
+            // ahorro, apartado y Caja Chivas = lo juntado en semanas anteriores
+            const week = items.filter((i) => !i.excluded && !i.pending && i.date <= t)
+            const chica = carry + week.filter((i) => i.type === 'entrada').reduce((a, i) => a + itemValue(i), 0) - week.filter((i) => i.type === 'salida').reduce((a, i) => a + itemValue(i), 0)
+            const ahorroAntes = box?.saved ?? 0
+            const apartadoAntes = funds.filter((f) => f.kind !== 'ahorro' && f.kind !== 'uniformes' && f.kind !== 'chivas').reduce((a, f) => a + f.saved, 0)
+            const chivasAntes = funds.filter((f) => f.kind === 'chivas').reduce((a, f) => a + f.saved, 0)
+            const unifAntes = funds.filter((f) => f.kind === 'uniformes').reduce((a, f) => a + f.saved, 0)
+            const fondo = (re: RegExp) => funds.filter((f) => re.test(f.name) && f.target > 0).map((f) => ({ name: `Fondo ${f.name}`, saved: f.saved + savedNow(f), target: f.target, hint: `Para el ${date(f.due, "d 'de' MMM")}` }))
+            const bars = [
+              ...fondo(/regal/i), ...fondo(/renta/i), ...fondo(/seguro/i),
+              { name: 'Fondo de uniformes', saved: uniformsFund, target: 0, hint: 'Lo que hay guardado (no tiene meta)' },
+            ]
+            return (
+              <>
+                <div className="!mt-3 grid grid-cols-2 gap-3 lg:grid-cols-5">
+                  <StatCard label="Caja chica" value={cents(chica)} icon={Banknote} tone={chica < -0.5 ? 'bad' : undefined}
+                    hint={`Lo de esta semana que no ha entrado en ningún corte (empezó con ${cents(carry)})`} />
+                  <StatCard label="Caja de ahorro" value={cents(ahorroAntes)} icon={PiggyBank} tone="ok" hint="Lo ahorrado en semanas anteriores" />
+                  <StatCard label="Apartado de próximos gastos" value={cents(apartadoAntes)} icon={Vault} tone="brand" hint="Regalías, renta, seguro, partes y préstamos" />
+                  <StatCard label="Caja Chivas" value={cents(chivasAntes)} icon={Vault} tone="brand" hint="Inscripciones: playeras, credenciales y libre" />
+                  <StatCard label="Caja total" value={cents(chica + ahorroAntes + apartadoAntes + chivasAntes + unifAntes)} icon={Banknote}
+                    hint="Todas las cajas (con el fondo de uniformes)" />
+                </div>
+                <FundProgress funds={bars} month={to.slice(0, 7)} />
+              </>
+            )
+          })()}
 
           <div className="grid gap-6 xl:grid-cols-2">
             <ReviewList type="entrada" title="Entradas" />
