@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { endOfWeek, startOfMonth } from 'date-fns'
-import { Users, UserCog, ClipboardCheck, AlertTriangle, Wallet, TrendingUp, Plus, ChevronRight, Trophy, Dumbbell, HelpCircle, Scale, CalendarClock, UserPlus, Bell } from 'lucide-react'
-import { Avatar, Button, Card, ErrorState, PageHeader, Spinner, StatCard, Badge, cx } from '@/components/ui'
+import { ClipboardCheck, AlertTriangle, Wallet, Plus, ChevronRight, Trophy, Dumbbell, Scale, CalendarClock, Bell } from 'lucide-react'
+import { Avatar, Button, Card, ErrorState, PageHeader, Spinner, Badge, cx } from '@/components/ui'
 import { CollectButton } from '@/components/WhatsAppButtons'
-import { monthNameOf, useCashBoxCards, useFinanceCards } from '@/components/FinanceModules'
+import { monthNameOf, useCashBoxCards } from '@/components/FinanceModules'
 import FundProgress from '@/components/FundProgress'
+import PeriodCards, { usePeriod } from '@/components/PeriodCards'
 import { PayInstallmentModal } from '@/components/Installments'
 import { CloseTrialModal } from '@/components/TrialModals'
 import ActivityFeed from '@/components/ActivityFeed'
@@ -23,7 +24,7 @@ import { UnpaidDeliveries } from '@/components/Deliveries'
 import OverpaidAlert from '@/components/OverpaidAlert'
 import { pendingInstallments } from '@/lib/finance'
 import type { Expense, ExpenseInstallment } from '@/lib/types'
-import { useAccounts, useCategories, useCoaches, useFees, useMatches, usePayments, useSiblingGroups, useExtraClasses, useStudents, useTrainings, useAttendanceDetail, useExpenses, useNotifications, type StudentRow } from '@/lib/api'
+import { useAccounts, useCategories, useFees, useMatches, usePayments, useSiblingGroups, useExtraClasses, useStudents, useTrainings, useAttendanceDetail, useExpenses, useNotifications, type StudentRow } from '@/lib/api'
 import { supabase, unwrap } from '@/lib/supabase'
 import { useQueryClient } from '@tanstack/react-query'
 import { promoStatus } from '@/lib/siblings'
@@ -50,7 +51,6 @@ function AdminDashboard() {
   const monthStart = toISODate(startOfMonth(new Date()))
   const t = today()
   const students = useStudents()
-  const coaches = useCoaches()
   const categories = useCategories()
   const accounts = useAccounts()
   const fees = useFees()
@@ -62,7 +62,6 @@ function AdminDashboard() {
   const expenses = useExpenses()
   const [paying, setPaying] = useState<{ expense: Expense; inst: ExpenseInstallment } | null>(null)
   const [closing, setClosing] = useState<StudentRow | null>(null)
-  const fin = useFinanceCards(setDetail)
   const notes = useNotifications()
   const qc = useQueryClient()
   const markSeen = async (ids: string[]) => {
@@ -72,6 +71,7 @@ function AdminDashboard() {
     } catch { /* se reintenta la próxima vez */ }
   }
   const boxes = useCashBoxCards(setDetail)
+  const { period, bar: periodBar } = usePeriod()
   const mes = monthNameOf(monthStart)
   const weekEnd = toISODate(endOfWeek(new Date(), { weekStartsOn: 1 }))
   const dueTasks = pendingInstallments(expenses.data ?? [], weekEnd)
@@ -136,6 +136,8 @@ function AdminDashboard() {
           <Button variant="secondary" icon={Scale} onClick={() => nav('/corte')}>Corte de caja</Button>
           <Button variant="secondary" icon={Plus} onClick={() => nav('/alumnos?nuevo=1')} className="hidden sm:inline-flex">Nuevo alumno</Button>
         </>} />
+      {/* Periodo: desde el último corte (o un corte / fechas exactas); se queda fijo al bajar */}
+      <div className="mb-4">{periodBar}</div>
 
       {loading ? <Spinner /> : (
         <div className="space-y-6">
@@ -162,28 +164,8 @@ function AdminDashboard() {
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             {boxes.chica}{boxes.ahorro}{boxes.apartado}{boxes.chivas}{boxes.total}
           </div>
+          <PeriodCards period={period} onDetail={setDetail} />
           <FundProgress />
-          <div className="!mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatCard label={`Entradas de ${mes}`} value={money(data.collected)} icon={TrendingUp} tone="ok" hint="Cobrado en el mes · toca para ver el desglose" onClick={() => setIncomeOpen(true)} />
-            {fin.gastos}
-            <StatCard label={`Pendiente de cobro a ${mes}`} value={money(data.pendingTotal)} icon={Wallet} hint={`${data.openFees.length} cargos abiertos · ${data.overdueStudents.length} alumnos atrasados`} onClick={() => setDetail('pendiente')} />
-            <StatCard label="Recargos y extras pendientes" value={money(data.lateFees + data.extras)} icon={AlertTriangle} tone={data.lateFees + data.extras > 0 ? 'bad' : undefined}
-              hint={`Recargos ${money(data.lateFees)} · Extras ${money(data.extras)}`} onClick={() => setDetail('recargos')} />
-            {fin.becas}
-            {fin.nuevas}
-            <StatCard label="Clases muestra" value={trials.length} icon={UserPlus} tone={trials.length ? 'brand' : undefined}
-              hint={trials.length ? 'Pendientes de cerrar registro' : 'Nadie a prueba ahorita'} onClick={() => setDetail('muestra')} />
-            <StatCard label="Asistencia de hoy" value={data.todayAtt.length ? `${data.present}/${data.todayAtt.length}` : '—'} icon={ClipboardCheck} hint={data.todayAtt.length ? 'presentes' : 'Aún no se pasa lista'} onClick={() => setDetail('asistencia')} />
-          </div>
-          <div className="!mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatCard label="Alumnos activos" value={data.active.length} icon={Users} onClick={() => setDetail('activos')} />
-            <StatCard label="Alumnos con adeudo" value={data.owing.size} icon={AlertTriangle} tone={data.owing.size ? 'bad' : 'ok'}
-              hint={data.active.length ? `${Math.round((data.owing.size / data.active.length) * 100)}% de los activos · toca para ver quiénes` : undefined} onClick={() => setDetail('adeudo')} />
-            <StatCard label="Profesores" value={(coaches.data ?? []).filter((c) => c.active).length} icon={UserCog} onClick={() => setDetail('profes')} />
-            {fin.seguro}
-            {boxes.uniformes}
-            <StatCard label="¿Beca? Por confirmar" value={money(data.reviewTotal)} icon={HelpCircle} hint={`${data.openFees.filter((f) => f.status === 'por_confirmar').length} pagos menores a la cuota`} onClick={() => setDetail('porconfirmar')} />
-          </div>
 
           <div className="grid gap-6 lg:grid-cols-3">
             <Card className="lg:col-span-2">

@@ -15,16 +15,15 @@ export type CardKind =
   | 'total' | 'chica' | 'apartado' | 'ahorro' | 'chivas' | 'adeudo' | 'pendiente' | 'recargos' | 'becas' | 'nuevas'
   | 'muestra' | 'asistencia' | 'activos' | 'profes' | 'seguro' | 'uniformes' | 'porconfirmar'
 
-interface Row { label: string; sub?: string; value?: number | string; link?: string; tone?: 'bad' | 'ok' }
-interface Group { label: string; total?: number | string; rows: Row[] }
-interface Detail { title: string; total?: number | string; note?: string; groups: Group[]; go?: { label: string; to: string } }
+export interface Row { label: string; sub?: string; value?: number | string; link?: string; tone?: 'bad' | 'ok' }
+export interface Group { label: string; total?: number | string; rows: Row[] }
+export interface Detail { title: string; total?: number | string; note?: string; groups: Group[]; go?: { label: string; to: string } }
 
 const fmt = (v: number | string | undefined) => (typeof v === 'number' ? money(v) : v ?? '')
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
 
 /** Desglose de cada tarjeta del Dashboard: al picarle se ve de qué se compone. */
 export default function CardDetailModal({ kind, onClose }: { kind: CardKind; onClose: () => void }) {
-  const nav = useNavigate()
   const t = today()
   const month = t.slice(0, 7)
   const mes = MONTHS[Number(month.slice(5, 7)) - 1]
@@ -38,7 +37,6 @@ export default function CardDetailModal({ kind, onClose }: { kind: CardKind; onC
   const cc = useCoachCategories()
   const allPayments = usePayments()
   const todayAtt = useAttendanceDetail({ from: t, to: t })
-  const [open, setOpen] = useState<Record<number, boolean>>({ 0: true })
 
   const d: Detail | null = useMemo(() => {
     const st = students.data ?? []
@@ -244,6 +242,13 @@ export default function CardDetailModal({ kind, onClose }: { kind: CardKind; onC
   }, [kind, students.data, categories.data, fees.data, cuts.data, expenses.data, coaches.data, coachPay.data, cc.data, allPayments.data, todayAtt.data, t, month, mes])
 
   if (!d) return null
+  return <DetailModal d={d} onClose={onClose} />
+}
+
+/** Ventana de desglose: total grande, grupos en recuadros y cada renglón fácil de leer. */
+export function DetailModal({ d, onClose }: { d: Detail; onClose: () => void }) {
+  const nav = useNavigate()
+  const [open, setOpen] = useState<Record<number, boolean>>({ 0: true })
   return (
     <Modal open onClose={onClose} title={d.title} wide
       footer={<>{d.go && <Button variant="secondary" onClick={() => { onClose(); nav(d.go!.to) }}>{d.go.label}</Button>}<Button onClick={onClose}>Cerrar</Button></>}>
