@@ -12,7 +12,7 @@ import { isUniformConcept } from '@/lib/uniforms'
 import { ATTENDANCE_LABEL, date, money, monthName, toISODate, today } from '@/lib/format'
 
 export type CardKind =
-  | 'total' | 'chica' | 'apartado' | 'ahorro' | 'pendiente' | 'recargos' | 'becas' | 'nuevas'
+  | 'total' | 'chica' | 'apartado' | 'ahorro' | 'chivas' | 'pendiente' | 'recargos' | 'becas' | 'nuevas'
   | 'muestra' | 'asistencia' | 'activos' | 'profes' | 'seguro' | 'uniformes' | 'porconfirmar'
 
 interface Row { label: string; sub?: string; value?: number | string; link?: string; tone?: 'bad' | 'ok' }
@@ -84,14 +84,22 @@ export default function CardDetailModal({ kind, onClose }: { kind: CardKind; onC
       }
       case 'total':
       case 'apartado':
+      case 'chivas':
       case 'ahorro': {
         const box = funds.filter((f) => f.kind === 'ahorro')
-        const apart = funds.filter((f) => f.kind !== 'ahorro' && f.kind !== 'uniformes')
+        const apart = funds.filter((f) => f.kind !== 'ahorro' && f.kind !== 'uniformes' && f.kind !== 'chivas')
+        const chivas = funds.filter((f) => f.kind === 'chivas')
+        const gC: Group = { label: 'Caja Chivas (inscripciones)', total: chivas.reduce((a, f) => a + f.saved, 0), rows: chivas.map((f) => ({ label: f.name, value: f.saved })) }
+        if (kind === 'chivas') return { title: 'Caja Chivas', total: gC.total, note: `${since} · de cada inscripción: $100 playera, $150 credencial, parte del seguro y lo demás libre`, groups: [gC], go: { label: 'Ir al corte de caja', to: '/corte' } }
         const boxCuts = list.flatMap((c) => (c.savings ?? []).filter((s) => s.key === SAVINGS_BOX_KEY && Number(s.saved)).map((s) => ({ label: `Corte del ${date(c.cut_date, "d 'de' MMM")}`, sub: s.note || undefined, value: Number(s.saved) })))
         const gA: Group = { label: 'Caja de ahorro', total: box.reduce((a, f) => a + f.saved, 0), rows: boxCuts.length ? boxCuts : [{ label: 'Todavía no se ha apartado nada', value: 0 }] }
         const gP: Group = { label: 'Apartado de próximos gastos', total: apart.reduce((a, f) => a + f.saved, 0), rows: apart.map(fundRows) }
-        const groups = kind === 'ahorro' ? [gA] : kind === 'apartado' ? [gP] : [gA, gP]
-        const title = kind === 'ahorro' ? 'Caja de ahorro' : kind === 'apartado' ? 'Apartado de próximos gastos' : 'Caja total'
+        const chica = list[0] ? (cutBalance(list[0], list[1]) < -0.5 ? cutBalance(list[0], list[1]) : carryOver(list[0])) : 0
+        const unif = funds.filter((f) => f.kind === 'uniformes').reduce((a, f) => a + f.saved, 0)
+        const gCh: Group = { label: 'Caja chica (efectivo)', total: chica, rows: [{ label: 'Lo que quedó en caja chica en el último corte', value: chica, tone: chica < 0 ? 'bad' : undefined }] }
+        const gU: Group = { label: 'Fondo de uniformes', total: unif, rows: [{ label: 'Playeras, uniformes y credenciales cobrados aparte', value: unif }] }
+        const groups = kind === 'ahorro' ? [gA] : kind === 'apartado' ? [gP] : [gCh, gA, gP, gC, gU]
+        const title = kind === 'ahorro' ? 'Caja de ahorro' : kind === 'apartado' ? 'Apartado de próximos gastos' : 'Todo el dinero hoy'
         return { title, total: groups.reduce((a, g) => a + Number(g.total ?? 0), 0), note: since, groups, go: { label: 'Ir al corte de caja', to: '/corte' } }
       }
       case 'pendiente': {

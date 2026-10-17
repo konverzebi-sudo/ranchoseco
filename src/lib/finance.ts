@@ -247,12 +247,15 @@ export interface ExpenseEntry {
   from?: PaidFrom
 }
 
-export type PaidFrom = 'caja' | 'ahorro' | 'apartado' | 'uniformes' | 'otro'
+export type PaidFrom = 'caja' | 'ahorro' | 'apartado' | 'uniformes' | 'chivas' | 'chivas_playeras' | 'chivas_credenciales' | 'otro'
 export const PAID_FROM_LABEL: Record<PaidFrom, string> = {
   caja: 'Dinero del mes (caja)',
-  ahorro: 'Caja de ahorro (inscripciones)',
+  ahorro: 'Caja de ahorro',
   apartado: 'Apartado de próximos gastos',
   uniformes: 'Fondo de uniformes',
+  chivas: 'Caja Chivas (libre)',
+  chivas_playeras: 'Caja Chivas · Playeras',
+  chivas_credenciales: 'Caja Chivas · Credenciales',
   otro: 'Otro (préstamo, alguien lo puso…)',
 }
 

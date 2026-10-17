@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { startOfWeek } from 'date-fns'
@@ -8,7 +8,7 @@ import { useToast } from '@/components/toast'
 import RangePicker from '@/components/RangePicker'
 import { useCashCuts, useCoachPay, useCoaches, useExpenses, useFees, usePayments, useStudents } from '@/lib/api'
 import {
-  CARRY_DESTINATION, DESTINATIONS, OUT_GROUPS, SAVINGS_BOX_KEY, cutGaps, isManual, isSalary, manualItem, nextDay, pendingSalaries, prepaidUntil, vacationItems, buildItems, counts, openingCash, itemTotals, itemValue, nextPeriodStart, outGroup, periodSummary, savingFunds,
+  CARRY_DESTINATION, DESTINATIONS, OUT_GROUPS, SAVINGS_BOX_KEY, CHIVAS_KEY, CHIVAS_PLAYERAS_KEY, CHIVAS_CREDENCIALES_KEY, CHIVAS_PLAYERA, CHIVAS_CREDENCIAL, INSURANCE_STUDENTS, cutGaps, isManual, isSalary, manualItem, nextDay, pendingSalaries, prepaidUntil, vacationItems, buildItems, counts, openingCash, itemTotals, itemValue, nextPeriodStart, outGroup, periodSummary, savingFunds,
   type CutItem, type SavingFund,
 } from '@/lib/cashcut'
 import { METHOD_LABEL, date, money, toISODate, today } from '@/lib/format'
@@ -22,7 +22,7 @@ import type { CashCut, PaymentMethod } from '@/lib/types'
 
 const cents = (n: number) => money(Math.round(n * 100) / 100)
 const range = (from: string, to: string) => `${date(from, "d 'de' MMM")} al ${date(to, "d 'de' MMM yyyy")}`
-const FUND_LABEL: Record<SavingFund['kind'], string> = { fijo: 'Gasto fijo', seguro: 'Seguro y credenciales', parte: 'Pago pendiente', prestamo: 'Préstamo', ahorro: 'Ahorro libre', uniformes: 'Fondo de uniformes' }
+const FUND_LABEL: Record<SavingFund['kind'], string> = { fijo: 'Gasto fijo', seguro: 'Seguro y credenciales', parte: 'Pago pendiente', prestamo: 'Préstamo', ahorro: 'Ahorro libre', uniformes: 'Fondo de uniformes', chivas: 'Caja Chivas' }
 /** A quién se le manda el reporte de cada corte por WhatsApp. */
 const REPORT_TO = [
   { name: 'Marco DL', phone: '528442713705' },
@@ -97,8 +97,12 @@ export default function WeeklyCut() {
     return n
   })
 
-  // Sugerencias de ahorro
-  const funds = useMemo(() => savingFunds({ cutDate: to, expenses: expenses.data ?? [], cuts: cuts.data ?? [], excludeCut: editingCut?.id }), [to, expenses.data, cuts.data, editingCut])
+  // Inscripciones de este corte (van a la Caja Chivas)
+  const inscItems = items.filter((i) => i.type === 'entrada' && counts(i) && /^inscripci[oó]n/i.test(i.detail))
+  const inscCount = inscItems.length
+  const inscripciones = inscItems.reduce((a, i) => a + itemValue(i), 0)
+  // Sugerencias de ahorro (el seguro se junta según las inscripciones cobradas)
+  const funds = useMemo(() => savingFunds({ cutDate: to, expenses: expenses.data ?? [], cuts: cuts.data ?? [], excludeCut: editingCut?.id, inscriptions: inscCount }), [to, expenses.data, cuts.data, editingCut, inscCount])
   const [saveAmt, setSaveAmt] = useState<Record<string, string>>({})
   const [saveNote, setSaveNote] = useState<Record<string, string>>({})
   const savedNow = (f: SavingFund) => (f.key in saveAmt ? Number(saveAmt[f.key]) || 0 : 0)
@@ -107,9 +111,30 @@ export default function WeeklyCut() {
   // Las cajas después de este corte
   const box = funds.find((f) => f.kind === 'ahorro')
   const cajaAhorro = box ? box.saved + savedNow(box) : 0
-  const apartado = funds.filter((f) => f.kind !== 'ahorro' && f.kind !== 'uniformes').reduce((a, f) => a + f.saved + savedNow(f), 0)
+  const apartado = funds.filter((f) => f.kind !== 'ahorro' && f.kind !== 'uniformes' && f.kind !== 'chivas').reduce((a, f) => a + f.saved + savedNow(f), 0)
+  const chivasTotal = funds.filter((f) => f.kind === 'chivas').reduce((a, f) => a + f.saved + savedNow(f), 0)
+  const uniformsFund = funds.filter((f) => f.kind === 'uniformes').reduce((a, f) => a + f.saved + savedNow(f), 0)
   const uniformsIn = items.filter((i) => i.type === 'entrada' && counts(i) && isUniformConcept(i.detail.split(' · ')[0])).reduce((a, i) => a + itemValue(i), 0)
-  const inscripciones = items.filter((i) => i.type === 'entrada' && counts(i) && i.detail.startsWith('Inscripción')).reduce((a, i) => a + itemValue(i), 0)
+  // Reparto de las inscripciones: playera, credencial, parte del seguro y lo demás libre en la Caja Chivas
+  const seguroFund = funds.find((f) => f.kind === 'seguro')
+  const chivasSplit = useMemo(() => {
+    const playeras = CHIVAS_PLAYERA * inscCount
+    const credenciales = CHIVAS_CREDENCIAL * inscCount
+    const seguro = seguroFund?.suggested ?? 0
+    return { playeras, credenciales, seguro, libre: Math.max(0, Math.round((inscripciones - playeras - credenciales - seguro) * 100) / 100) }
+  }, [inscCount, inscripciones, seguroFund?.suggested])
+  const applyChivas = () => setSaveAmt((x) => ({
+    ...x,
+    [CHIVAS_PLAYERAS_KEY]: String(chivasSplit.playeras),
+    [CHIVAS_CREDENCIALES_KEY]: String(chivasSplit.credenciales),
+    [CHIVAS_KEY]: String(chivasSplit.libre),
+    ...(seguroFund ? { [seguroFund.key]: String(chivasSplit.seguro) } : {}),
+  }))
+  // Las inscripciones se mandan solas a la Caja Chivas (en un corte nuevo; se puede cambiar a mano)
+  useEffect(() => {
+    if (editingCut || !inscCount) return
+    applyChivas()
+  }, [inscCount, inscripciones, chivasSplit.seguro, editingCut]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Caja
   const expected = carry + tot.income - tot.outflow
@@ -449,13 +474,15 @@ export default function WeeklyCut() {
             <StatCard label="Salió" value={cents(tot.outflow)} icon={TrendingDown} tone="bad" hint="Sueldos, gastos y pagos de préstamos" />
             <StatCard label="Resultado de estas fechas" value={cents(tot.income - tot.outflow)} icon={Scale} tone={tot.income >= tot.outflow ? 'ok' : 'bad'} hint={tot.income >= tot.outflow ? 'Entró más de lo que salió (sin contar la caja chica)' : 'Salió más de lo que entró (sin contar la caja chica)'} />
           </div>
-          <div className="!mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="!mt-3 grid grid-cols-2 gap-3 lg:grid-cols-5">
             <StatCard label="Caja de ahorro" value={cents(cajaAhorro)} icon={PiggyBank} tone="ok"
-              hint={`Ahorro libre (inscripciones, etc.)${box && savedNow(box) > 0 ? ` · hoy + ${cents(savedNow(box))}` : ''}`} />
+              hint={`Ahorro libre${box && savedNow(box) > 0 ? ` · hoy + ${cents(savedNow(box))}` : ''}`} />
             <StatCard label="Apartado de próximos gastos" value={cents(apartado)} icon={Vault} tone="brand"
               hint="Regalías, renta, seguro, partes y préstamos" />
-            <StatCard label="Caja total" value={cents(cajaAhorro + apartado)} icon={Banknote}
-              hint="Caja de ahorro + apartado de próximos gastos" />
+            <StatCard label="Caja Chivas" value={cents(chivasTotal)} icon={Vault} tone="brand"
+              hint="Inscripciones: playeras, credenciales y libre" />
+            <StatCard label="Todo el dinero" value={cents(cajaAhorro + apartado + chivasTotal + uniformsFund + (available < -0.5 ? available : countedN))} icon={Banknote}
+              hint="Caja chica + ahorro + apartado + Caja Chivas + uniformes" />
             <StatCard label="Caja chica" value={cents(available < -0.5 ? available : countedN)} icon={Banknote} tone={available < -0.5 ? 'bad' : undefined}
               hint={`Efectivo que queda después del corte (antes ${cents(carry)})`} />
           </div>
@@ -495,18 +522,52 @@ export default function WeeklyCut() {
                       </div>
                     </li>
                   )
+                  if (f.kind === 'chivas') {
+                    if (f.key !== CHIVAS_KEY) return null
+                    const parts = funds.filter((x) => x.kind === 'chivas')
+                    const label: Record<string, string> = { [CHIVAS_PLAYERAS_KEY]: `Playeras ($${CHIVAS_PLAYERA} c/u)`, [CHIVAS_CREDENCIALES_KEY]: `Credenciales ($${CHIVAS_CREDENCIAL} c/u)`, [CHIVAS_KEY]: 'Libre en Caja Chivas' }
+                    return (
+                      <li key={f.key} className="space-y-3 bg-brand/5 px-5 py-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="flex flex-wrap items-center gap-2 font-medium">Caja Chivas <Badge tone="brand">Inscripciones</Badge></p>
+                            <p className="text-xs text-muted">De cada inscripción: ${CHIVAS_PLAYERA} playera, ${CHIVAS_CREDENCIAL} credencial{seguroFund ? `, ${cents(seguroFund.target / INSURANCE_STUDENTS)} seguro (${cents(seguroFund.target)} ÷ ${INSURANCE_STUDENTS} alumnos)` : ''} y lo demás se queda libre.</p>
+                          </div>
+                          <div className="text-right text-sm">
+                            <p className="text-xs uppercase tracking-wider text-muted">Inscripciones de este corte</p>
+                            <p className="font-display text-2xl font-bold text-brand">{inscCount} · {cents(inscripciones)}</p>
+                            {inscCount > 0 && <button className="text-xs text-brand hover:underline" onClick={applyChivas}>Repartir otra vez</button>}
+                          </div>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                          {parts.map((x) => (
+                            <div key={x.key} className="rounded-xl border border-ink-600 p-3">
+                              <p className="text-xs text-muted">{label[x.key]}</p>
+                              <Input type="number" min="0" inputMode="decimal" value={saveAmt[x.key] ?? ''} placeholder="0" aria-label={label[x.key]}
+                                onChange={(e) => setSaveAmt({ ...saveAmt, [x.key]: e.target.value })} className="mt-1 h-10" />
+                              <p className="mt-1 text-xs">Acumulado <b>{cents(x.saved + savedNow(x))}</b></p>
+                            </div>
+                          ))}
+                          {seguroFund && (
+                            <div className="rounded-xl border border-ink-600 p-3">
+                              <p className="text-xs text-muted">Seguro (se guarda en el apartado)</p>
+                              <p className="mt-1 font-display text-2xl font-bold">{cents(savedNow(seguroFund))}</p>
+                              <p className="mt-1 text-xs">Lleva <b>{cents(seguroFund.saved + savedNow(seguroFund))}</b> de {cents(seguroFund.target)}</p>
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-xs">Caja Chivas en total: <b className="text-brand">{cents(chivasTotal)}</b></p>
+                      </li>
+                    )
+                  }
                   if (f.kind === 'ahorro') return (
                     <li key={f.key} className="grid gap-3 bg-ok/5 px-5 py-3 md:grid-cols-[1fr_220px_150px]">
                       <div className="min-w-0">
                         <p className="flex flex-wrap items-center gap-2 font-medium">Caja de ahorro <Badge tone="ok">Ahorro libre</Badge></p>
-                        <p className="text-xs text-muted">Dinero que se guarda sin un pago asignado, por ejemplo las inscripciones.</p>
+                        <p className="text-xs text-muted">Dinero que se guarda sin un pago asignado. Las inscripciones ahora van a la Caja Chivas.</p>
                         <p className="mt-1 text-sm">Acumulado <b>{cents(f.saved)}</b>{now > 0 ? <> + {cents(now)} hoy = <b className="text-ok">{cents(f.saved + now)}</b></> : ''}</p>
                       </div>
-                      <div className="text-sm">
-                        <p className="text-xs uppercase tracking-wider text-muted">Inscripciones de este corte</p>
-                        <p className="font-display text-2xl font-bold text-ok">{cents(inscripciones)}</p>
-                        {inscripciones > 0 && <button className="text-xs text-brand hover:underline" onClick={() => setSaveAmt({ ...saveAmt, [f.key]: String(inscripciones) })}>Mandar las inscripciones al ahorro</button>}
-                      </div>
+                      <div />
                       <div className="space-y-1">
                         <Input type="number" min="0" inputMode="decimal" value={saveAmt[f.key] ?? ''} placeholder="0" aria-label="Se guarda en la caja de ahorro"
                           onChange={(e) => setSaveAmt({ ...saveAmt, [f.key]: e.target.value })} className="h-10" />
@@ -535,7 +596,7 @@ export default function WeeklyCut() {
                       <div className="text-sm">
                         <p className="text-xs uppercase tracking-wider text-muted">Te sugerimos</p>
                         <p className="font-display text-2xl font-bold text-brand">{cents(f.suggested)}</p>
-                        <p className="text-xs text-muted">{f.kind === 'fijo' || f.kind === 'seguro' ? 'parte de esta semana' : `${cents(Math.max(0, f.target - f.saved))} ÷ ${f.weeksLeft} ${f.weeksLeft === 1 ? 'semana' : 'semanas'}`}</p>
+                        <p className="text-xs text-muted">{f.kind === 'seguro' ? `${inscCount} inscripciones × ${cents(f.target / INSURANCE_STUDENTS)}` : f.kind === 'fijo' ? 'parte de esta semana' : `${cents(Math.max(0, f.target - f.saved))} ÷ ${f.weeksLeft} ${f.weeksLeft === 1 ? 'semana' : 'semanas'}`}</p>
                       </div>
                       <div className="space-y-1">
                         <Input type="number" min="0" inputMode="decimal" value={saveAmt[f.key] ?? ''} placeholder="0" aria-label={`Se guarda para ${f.name}`}

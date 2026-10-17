@@ -149,7 +149,7 @@ function AdminDashboard() {
             </Card>
           )}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            {boxes.total}{boxes.chica}{boxes.apartado}{boxes.ahorro}
+            {boxes.total}{boxes.chica}{boxes.apartado}{boxes.ahorro}{boxes.chivas}
             <StatCard label={`Entradas de ${mes}`} value={money(data.collected)} icon={TrendingUp} tone="ok" hint="Cobrado en el mes · toca para ver el desglose" onClick={() => setIncomeOpen(true)} />
             {fin.gastos}
             <StatCard label={`Pendiente de cobro a ${mes}`} value={money(data.pendingTotal)} icon={Wallet} hint={`${data.openFees.length} cargos abiertos · ${data.overdueStudents.length} alumnos atrasados`} onClick={() => setDetail('pendiente')} />

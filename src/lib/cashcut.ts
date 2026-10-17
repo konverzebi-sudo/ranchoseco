@@ -180,11 +180,23 @@ export function itemTotals(items: CutItem[]) {
 
 /** Algo que hay que ir juntando: un gasto grande, una parte pendiente o un pago de préstamo. */
 export const SAVINGS_BOX_KEY = 'x:caja-ahorro'
+/**
+ * Caja Chivas: aquí va el dinero de las inscripciones. De cada inscripción se aparta
+ * $100 para la playera, $150 para la credencial y la parte del seguro (seguro ÷ 150 alumnos);
+ * lo que sobra se queda libre en la Caja Chivas.
+ */
+export const CHIVAS_KEY = 'x:chivas'
+export const CHIVAS_PLAYERAS_KEY = 'x:chivas-playeras'
+export const CHIVAS_CREDENCIALES_KEY = 'x:chivas-credenciales'
+export const CHIVAS_PLAYERA = 100
+export const CHIVAS_CREDENCIAL = 150
+/** El seguro se reparte entre este número fijo de alumnos */
+export const INSURANCE_STUDENTS = 150
 
 export interface SavingFund {
   key: string
   name: string
-  kind: 'fijo' | 'seguro' | 'parte' | 'prestamo' | 'ahorro' | 'uniformes'
+  kind: 'fijo' | 'seguro' | 'parte' | 'prestamo' | 'ahorro' | 'uniformes' | 'chivas'
   target: number
   due: string
   /** Lo que ya se apartó en cortes anteriores para este mismo pago */
@@ -227,8 +239,8 @@ function nextDue(e: Expense, after: string): string | null {
  * pagos en partes y préstamos: lo que falta ÷ semanas que quedan.
  * Nunca más de lo que falta por juntar.
  */
-export function savingFunds(opts: { cutDate: string; expenses: Expense[]; cuts: Pick<CashCut, 'id' | 'savings'>[]; excludeCut?: string }): SavingFund[] {
-  const { cutDate, expenses, cuts, excludeCut } = opts
+export function savingFunds(opts: { cutDate: string; expenses: Expense[]; cuts: Pick<CashCut, 'id' | 'savings'>[]; excludeCut?: string; inscriptions?: number }): SavingFund[] {
+  const { cutDate, expenses, cuts, excludeCut, inscriptions } = opts
   const savedFor = (key: string) => cuts.filter((c) => c.id !== excludeCut)
     .flatMap((c) => c.savings ?? []).filter((s) => s.key === key).reduce((a, s) => a + Number(s.saved), 0)
   const fund = (f: Omit<SavingFund, 'saved' | 'weeksLeft' | 'suggested'>, weeksInCycle?: number): SavingFund => {
@@ -245,7 +257,11 @@ export function savingFunds(opts: { cutDate: string; expenses: Expense[]; cuts: 
     if (!isLoan(e) && ['mensual', 'quincenal', 'anual'].includes(e.frequency)) {
       const due = nextDue(e, cutDate)
       const perCycle = e.frequency === 'mensual' ? 4 : e.frequency === 'quincenal' ? 2 : 52
-      if (due) out.push(fund({ key: `f:${e.id}:${due}`, name: e.name, kind: /seguro/i.test(e.name) ? 'seguro' : 'fijo', target: Number(e.amount), due }, perCycle))
+      if (!due) continue
+      const f = fund({ key: `f:${e.id}:${due}`, name: e.name, kind: /seguro/i.test(e.name) ? 'seguro' : 'fijo', target: Number(e.amount), due }, perCycle)
+      // El seguro se junta con las inscripciones: (seguro ÷ 150 alumnos) por cada inscripción cobrada
+      if (f.kind === 'seguro' && inscriptions != null) f.suggested = Math.round(Math.min(Math.max(0, f.target - f.saved), (f.target / INSURANCE_STUDENTS) * inscriptions) * 100) / 100
+      out.push(f)
       continue
     }
     const next = (installmentsOf(e) ?? []).find((i) => !i.paid_on)
@@ -263,7 +279,13 @@ export function savingFunds(opts: { cutDate: string; expenses: Expense[]; cuts: 
   out.push({ key: SAVINGS_BOX_KEY, name: 'Caja de ahorro', kind: 'ahorro', target: 0, due: '9999-12-31', saved: savedFor(SAVINGS_BOX_KEY) - spentFrom(expenses, 'ahorro', cutDate), weeksLeft: 0, suggested: 0 })
   // Fondo de uniformes: lo que se cobra de playeras, altas en Chivas, uniformes y credenciales
   out.push({ key: UNIFORMS_FUND_KEY, name: 'Fondo de uniformes', kind: 'uniformes', target: 0, due: '9999-12-31', saved: savedFor(UNIFORMS_FUND_KEY) - spentFrom(expenses, 'uniformes', cutDate), weeksLeft: 0, suggested: 0 })
-  const order = { fijo: 0, seguro: 1, parte: 2, prestamo: 3, ahorro: 4, uniformes: 5 }
+  // Caja Chivas (inscripciones): playeras, credenciales y lo libre
+  const box = (key: string, name: string, src: Parameters<typeof spentFrom>[1]) =>
+    out.push({ key, name, kind: 'chivas', target: 0, due: '9999-12-31', saved: savedFor(key) - spentFrom(expenses, src, cutDate), weeksLeft: 0, suggested: 0 })
+  box(CHIVAS_KEY, 'Caja Chivas (libre)', 'chivas')
+  box(CHIVAS_PLAYERAS_KEY, 'Chivas · Playeras', 'chivas_playeras')
+  box(CHIVAS_CREDENCIALES_KEY, 'Chivas · Credenciales', 'chivas_credenciales')
+  const order = { fijo: 0, seguro: 1, parte: 2, prestamo: 3, ahorro: 4, uniformes: 5, chivas: 6 }
   return out.sort((a, b) => order[a.kind] - order[b.kind] || a.due.localeCompare(b.due))
 }
 
