@@ -207,8 +207,8 @@ function AdminDashboard() {
                     </li>
                   ))}
                   {data.promoAlerts.map((r) => (
-                    <li key={'p' + r.g.id}>
-                      <Link to="/becas" className="flex items-center gap-3 px-5 py-3 hover:bg-ink-700/50">
+                    <li key={'p' + r.g.id} className="flex items-center gap-3 pr-5">
+                      <Link to="/becas" className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-5 hover:bg-ink-700/50">
                         <div className="rounded-full bg-bad/15 p-2"><AlertTriangle className="h-4 w-4 text-bad" /></div>
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-medium">{!r.valid ? 'Promo hermanos no válida' : 'Promo hermanos con pagos vencidos'} · {r.g.name}</p>
@@ -218,6 +218,8 @@ function AdminDashboard() {
                         </div>
                         <ChevronRight className="h-4 w-4 text-muted" />
                       </Link>
+                      {/* Hermanos con pago vencido: un solo mensaje a la familia con lo que deben */}
+                      {r.valid && r.overdue.length > 0 && <CollectButton student={r.overdue[0]} />}
                     </li>
                   ))}
                   {byFamily(data.overdueStudents).slice(0, 6).map(({ list, total }) => {

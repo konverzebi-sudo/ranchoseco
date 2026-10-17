@@ -3,8 +3,9 @@ import { Link, useNavigate } from 'react-router-dom'
 import { ChevronDown } from 'lucide-react'
 import { startOfMonth } from 'date-fns'
 import { Button, Modal, cx } from './ui'
+import { CollectButton } from './WhatsAppButtons'
 import {
-  useAttendanceDetail, useCashCuts, useCategories, useCoachCategories, useCoachPay, useCoaches, useExpenses, useFees, usePayments, useStudents,
+  type StudentRow, useAttendanceDetail, useCashCuts, useCategories, useCoachCategories, useCoachPay, useCoaches, useExpenses, useFees, usePayments, useStudents,
 } from '@/lib/api'
 import { SAVINGS_BOX_KEY, carryOver, cutBalance, savingFunds } from '@/lib/cashcut'
 import { DISCOUNT_LABEL, discountKind, insuranceSaving, isNewEnrollment } from '@/lib/finance'
@@ -15,7 +16,7 @@ export type CardKind =
   | 'total' | 'chica' | 'apartado' | 'ahorro' | 'chivas' | 'adeudo' | 'pendiente' | 'recargos' | 'becas' | 'nuevas'
   | 'muestra' | 'asistencia' | 'activos' | 'profes' | 'seguro' | 'uniformes' | 'porconfirmar'
 
-export interface Row { label: string; sub?: string; value?: number | string; link?: string; tone?: 'bad' | 'ok' }
+export interface Row { label: string; sub?: string; value?: number | string; link?: string; tone?: 'bad' | 'ok'; /** Alumno para cobrarle por WhatsApp */ wa?: StudentRow }
 export interface Group { label: string; total?: number | string; rows: Row[] }
 export interface Detail { title: string; total?: number | string; note?: string; groups: Group[]; go?: { label: string; to: string } }
 
@@ -186,7 +187,7 @@ export default function CardDetailModal({ kind, onClose }: { kind: CardKind; onC
             rows: xs.sort((a, b) => b.total - a.total).map((x) => ({
               label: x.s.full_name,
               sub: x.fs.map((f) => `${f.concept} ${monthName(f.period)}${f.status === 'vencido' ? ' (vencido)' : ''}`).join(' · '),
-              value: x.total, link: `/alumnos/${x.id}?tab=pagos`, tone: x.fs.some((f) => f.status === 'vencido') ? 'bad' as const : undefined,
+              value: x.total, link: `/alumnos/${x.id}?tab=pagos`, wa: x.s, tone: x.fs.some((f) => f.status === 'vencido') ? 'bad' as const : undefined,
             })),
           })),
           go: { label: 'Ir a cobranza', to: '/cobranza?f=pendiente' },
@@ -285,10 +286,11 @@ export function DetailModal({ d, onClose }: { d: Detail; onClose: () => void }) 
                       </>
                     )
                     return (
-                      <li key={k}>
+                      <li key={k} className="flex items-center gap-2 pr-3">
                         {r.link
-                          ? <Link to={r.link} onClick={onClose} className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-ink-700 hover:text-brand">{body}</Link>
-                          : <div className="flex items-center justify-between gap-4 px-4 py-3">{body}</div>}
+                          ? <Link to={r.link} onClick={onClose} className="flex min-w-0 flex-1 items-center justify-between gap-4 px-4 py-3 hover:bg-ink-700 hover:text-brand">{body}</Link>
+                          : <div className="flex min-w-0 flex-1 items-center justify-between gap-4 px-4 py-3">{body}</div>}
+                        {r.wa && <CollectButton student={r.wa} iconOnly />}
                       </li>
                     )
                   })}

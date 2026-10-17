@@ -28,6 +28,8 @@ export function collectionMessage(template: string, studentName: string, fees: F
   kids?: { name: string; fees: FeeBalance[] }[]
   /** Tiene beca o promoción: se recuerda pagar en los primeros días para conservarla */
   beca?: { label: string; dueDay: number } | null
+  /** Días que lleva vencido el pago más atrasado */
+  daysLate?: number
 } = {}) {
   const pending = fees.filter((f) => Number(f.balance) > 0 && f.status !== 'por_confirmar').sort((a, b) => a.period.localeCompare(b.period))
   const months = [...new Set(pending.map((f) => monthOnly(f.period)))]
@@ -45,8 +47,9 @@ export function collectionMessage(template: string, studentName: string, fees: F
     for (const k of kids) msg += `\n• ${k.name}: ${k.fees.sort((a, b) => a.period.localeCompare(b.period)).map((f) => `${f.concept} ${monthOnly(f.period)} $${plainAmount(Number(f.balance))}`).join(', ')}`
     msg += `\nTotal: $${plainAmount(total)} MXN`
   }
+  if (opts.daysLate && opts.daysLate > 0) msg += `\n\nEl pago tiene ${opts.daysLate} ${opts.daysLate === 1 ? 'día' : 'días'} de vencido.`
   if (late > 0) msg += `\n\nEl saldo incluye $${plainAmount(late)} MXN de recargo por pago tardío.`
-  if (opts.beca) msg += `\n\nLes recordamos que cuentan con ${opts.beca.label}. Para conservarla es muy importante mantener el compromiso de pagar en los primeros días de cada mes (a más tardar el día ${opts.beca.dueDay}).`
+  if (opts.beca) msg += `\n\nLes recordamos que cuentan con ${opts.beca.label}. Para respetarla es necesario pagar a más tardar el día ${opts.beca.dueDay} de cada mes.`
   if (portalUrl) msg += `\n\nPuedes consultar su estado de cuenta aquí: ${portalUrl}`
   return { text: msg, total, months, late }
 }

@@ -5,7 +5,7 @@ import { Button, Field, Input, Modal, Textarea } from './ui'
 import { useToast } from './toast'
 import { useFees, usePortalToken, useSettings, useStudents, portalUrl, primaryGuardian, type StudentRow } from '@/lib/api'
 import { collectionMessage, waLink } from '@/lib/whatsapp'
-import { isValidPhone, money, normalizePhone, prettyPhone } from '@/lib/format'
+import { isValidPhone, money, normalizePhone, prettyPhone, today } from '@/lib/format'
 import { supabase, unwrap } from '@/lib/supabase'
 
 /** Captura rápida del tutor cuando falta su teléfono (evita navegar a otra pantalla). */
@@ -59,13 +59,20 @@ export function GuardianQuickForm({ student, onSaved }: { student: StudentRow; o
 }
 
 /** Botón de cobranza: arma el mensaje con el saldo real y abre WhatsApp para revisarlo y enviarlo. */
-export function CollectButton({ student, size = 'sm', label = 'Cobrar' }: { student: StudentRow; size?: 'sm' | 'md'; label?: string }) {
+export function CollectButton({ student, size = 'sm', label = 'Cobrar', iconOnly }: { student: StudentRow; size?: 'sm' | 'md'; label?: string; iconOnly?: boolean }) {
   const [open, setOpen] = useState(false)
   return (
     <>
-      <Button variant="whatsapp" size={size} icon={MessageCircle} onClick={(e) => { e.stopPropagation(); setOpen(true) }}>
-        {label}
-      </Button>
+      {iconOnly ? (
+        <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(true) }} title="Mandar recordatorio de pago por WhatsApp" aria-label={`Cobrar a ${student.full_name} por WhatsApp`}
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-wa text-ink transition hover:brightness-110">
+          <MessageCircle className="h-5 w-5" />
+        </button>
+      ) : (
+        <Button variant="whatsapp" size={size} icon={MessageCircle} onClick={(e) => { e.stopPropagation(); setOpen(true) }}>
+          {label}
+        </Button>
+      )}
       {open && <CollectModal student={student} onClose={() => setOpen(false)} />}
     </>
   )
@@ -91,7 +98,11 @@ function CollectModal({ student, onClose }: { student: StudentRow; onClose: () =
   const built = useMemo(
     () => settings && collectionMessage(settings.collection_template, names, studentFees, token ? portalUrl(token) : undefined, {
       kids: family.map((x) => ({ name: first(x.full_name), fees: studentFees.filter((f) => f.student_id === x.id) })),
-      beca: hasBeca ? { label: family.length > 1 ? 'la promoción de hermanos' : 'beca', dueDay: settings.due_day ?? 10 } : null,
+      beca: hasBeca ? { label: family.length > 1 ? 'la promoción de hermanos' : 'beca', dueDay: settings.due_day ?? 8 } : null,
+      daysLate: (() => {
+        const due = studentFees.filter((f) => f.status === 'vencido').map((f) => f.due_date).sort()[0]
+        return due ? Math.floor((new Date(today() + 'T12:00:00').getTime() - new Date(due + 'T12:00:00').getTime()) / 86_400_000) : 0
+      })(),
     }),
     [settings, names, studentFees, token, family, hasBeca],
   )

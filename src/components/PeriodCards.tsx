@@ -118,7 +118,7 @@ export default function PeriodCards({ period, onDetail }: { period: Period; onDe
 
     const owingRow = ([id, fs]: [string, typeof allFees]) => ({
       label: name.get(id) ?? 'Alumno', sub: fs.map((f) => `${f.concept} ${monthName(f.period)}${f.status === 'vencido' ? ' (vencido)' : ''}`).join(' · '),
-      value: sum(fs, (f) => Number(f.balance)), link: `/alumnos/${id}?tab=pagos`, tone: fs.some((f) => f.status === 'vencido') ? 'bad' as const : undefined,
+      value: sum(fs, (f) => Number(f.balance)), link: `/alumnos/${id}?tab=pagos`, wa: st.find((x) => x.id === id), tone: fs.some((f) => f.status === 'vencido') ? 'bad' as const : undefined,
     })
     return {
       income: { total: sum(pays, (p) => Number(p.amount)), detail: { title: 'Entradas', total: sum(pays, (p) => Number(p.amount)), note: period.label,
