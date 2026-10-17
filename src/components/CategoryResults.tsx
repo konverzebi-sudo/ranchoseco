@@ -89,7 +89,7 @@ export default function CategoryResults({ initialMonth }: { initialMonth?: strin
                     <td>{categories.data?.find((c) => c.id === r.id)?.is_extra
                       ? <span className="text-xs text-muted">No aplica<span className="block">(ya cuentan en su categoría)</span></span>
                       : <>{num(-r.generalExpenses, 'bad')}<span className="block text-xs text-muted">{r.students} × {money(Math.round(data.perStudent * 100) / 100)}</span></>}</td>
-                    <td>{r.salaries > 0 ? num(-r.salaries, 'bad') : <span className="text-muted">—</span>}</td>
+                    <td>{r.salaries > 0 ? <>{num(-r.salaries, 'bad')}{r.coaches.some((c) => c.share > 1) && <span className="block text-xs text-muted">{r.coaches.filter((c) => c.share > 1).map((c) => `${c.share === 2 ? 'mitad' : `1/${c.share}`} de ${money(r0(c.monthly))}`).join(' + ')}</span>}</> : <span className="text-muted">—</span>}</td>
                     <td className="font-display text-lg font-bold">{num(r.result, r.result >= 0 ? 'ok' : 'bad')}</td>
                   </tr>
                 ))}
