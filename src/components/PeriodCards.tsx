@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { addDays } from 'date-fns'
-import { TrendingUp, Receipt, Wallet, AlertTriangle, Users, UserPlus, UserX, ClipboardCheck, GraduationCap, HeartHandshake, CalendarRange } from 'lucide-react'
-import { Input, Select, StatCard } from './ui'
+import { TrendingUp, Receipt, Wallet, AlertTriangle, Users, UserPlus, UserX, ClipboardCheck, GraduationCap, HeartHandshake } from 'lucide-react'
+import { StatCard } from './ui'
+import DateRangeSelect, { basicPresets, type Preset } from './DateRangeSelect'
 import { DetailModal, type CardKind, type Detail } from './CardDetails'
 import {
   useAttendanceDetail, useCashCuts, useCategories, useCoachPay, useCoaches, useExpenses, useFees, usePayments, useStudents,
@@ -23,35 +24,26 @@ const short = (d: string) => date(d, "d 'de' MMM")
 export function usePeriod() {
   const cuts = useCashCuts()
   const t = today()
-  const [mode, setMode] = useState<string>('ultimo')
-  const [range, setRange] = useState({ from: t.slice(0, 8) + '01', to: t })
   const list = cuts.data ?? []
-  const period: Period = useMemo(() => {
-    if (mode === 'fechas') return { ...range, label: `Del ${short(range.from)} al ${short(range.to)}` }
-    const cut = list.find((c) => c.id === mode)
-    if (cut) return { from: cut.period_from, to: cut.period_to, label: `Corte del ${short(cut.cut_date)} (${short(cut.period_from)} al ${short(cut.period_to)})` }
+  // Atajos: desde el último corte, los cortes recientes y los de siempre (hoy, 7 días, este mes…)
+  const presets: Preset[] = useMemo(() => {
     const last = list[0]
     const from = last ? (nextDay(last.period_to) > t ? t : nextDay(last.period_to)) : t.slice(0, 8) + '01'
-    return { from, to: t, label: last ? `Desde el último corte (${short(from)} a hoy)` : `Este mes (${short(from)} a hoy)` }
-  }, [mode, range, list, t])
+    return [
+      { id: 'ultimo', label: 'Desde el último corte', from, to: t },
+      ...list.slice(0, 4).map((c) => ({ id: c.id, label: `Corte del ${short(c.cut_date)}`, from: c.period_from, to: c.period_to })),
+      ...basicPresets(),
+    ]
+  }, [list, t])
+  const [sel, setSel] = useState<{ id: string; from: string; to: string }>({ id: 'ultimo', from: t, to: t })
+  // "Desde el último corte" (y los cortes) se recalculan solos cuando llegan los cortes
+  const live = presets.find((p) => p.id === sel.id)
+  const cur = live && sel.id !== 'personalizado' ? { id: live.id, from: live.from, to: live.to } : sel
+  const label = sel.id === 'personalizado' ? `Del ${short(cur.from)} al ${short(cur.to)}` : `${live?.label ?? ''} (${short(cur.from)}${cur.from === cur.to ? '' : ` al ${short(cur.to)}`})`
+  const period: Period = { from: cur.from, to: cur.to, label }
   const bar = (
     <div className="sticky top-0 z-30 -mx-4 flex flex-wrap items-center gap-2 border-b border-ink-600 bg-page/95 px-4 py-2.5 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-      <CalendarRange className="h-5 w-5 text-brand" />
-      <Select value={mode} onChange={(e) => setMode(e.target.value)} className="h-10 w-auto min-w-[15rem] text-base font-semibold" aria-label="Periodo">
-        <option value="ultimo">Desde el último corte</option>
-        <option value="fechas">Fechas exactas…</option>
-        {list.length > 0 && <optgroup label="Un corte en especial">
-          {list.map((c) => <option key={c.id} value={c.id}>Corte del {short(c.cut_date)}</option>)}
-        </optgroup>}
-      </Select>
-      {mode === 'fechas' && (
-        <>
-          <Input type="date" value={range.from} max={range.to} onChange={(e) => e.target.value && setRange({ ...range, from: e.target.value })} className="h-10 w-40" aria-label="Desde" />
-          <span className="text-muted">al</span>
-          <Input type="date" value={range.to} min={range.from} max={t} onChange={(e) => e.target.value && setRange({ ...range, to: e.target.value })} className="h-10 w-40" aria-label="Hasta" />
-        </>
-      )}
-      <span className="text-sm text-muted">{period.label}</span>
+      <DateRangeSelect value={cur} presets={presets} onChange={(v) => setSel({ id: v.id, from: v.from, to: v.to })} />
     </div>
   )
   return { period, bar }
