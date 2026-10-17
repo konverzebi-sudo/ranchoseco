@@ -605,36 +605,39 @@ export default function WeeklyCut() {
                   )
                   const pctBefore = f.target ? Math.min(100, (f.saved / f.target) * 100) : 0
                   const pctAfter = f.target ? Math.min(100, ((f.saved + now) / f.target) * 100) : 0
+                  const days = Math.max(0, Math.round((new Date(f.due + 'T12:00:00').getTime() - new Date(to + 'T12:00:00').getTime()) / 86_400_000))
+                  // Cuánto es al mes: los mensuales su monto; los anuales (seguro) entre 12; pagos en partes y préstamos no aplica
+                  const monthly = f.kind === 'seguro' || days > 45 ? f.target / 12 : f.kind === 'fijo' ? f.target : null
+                  const how = f.kind === 'seguro' ? `${inscCount} inscripciones × ${cents(f.target / INSURANCE_STUDENTS)}` : f.kind === 'fijo' ? 'la parte de esta semana' : `lo que falta ÷ ${f.weeksLeft} ${f.weeksLeft === 1 ? 'semana' : 'semanas'}`
                   return (
-                    <li key={f.key} className="grid gap-3 px-5 py-3 md:grid-cols-[1fr_220px_150px]">
-                      <div className="min-w-0">
-                        <p className="flex flex-wrap items-center gap-2 font-medium">{f.name} <Badge tone={f.kind === 'prestamo' ? 'warn' : f.kind === 'parte' ? 'info' : 'neutral'}>{FUND_LABEL[f.kind]}</Badge></p>
-                        <p className="text-xs text-muted">Pagar {cents(f.target)} el {date(f.due, "d 'de' MMM")} · {f.weeksLeft === 1 ? 'esta semana' : `quedan ${f.weeksLeft} semanas`}
-                          {f.kind === 'parte' && ' · este dinero aún tiene que irse ahí'}</p>
-                        {f.debt && <p className="text-xs"><span className="text-muted">Deuda total</span> {cents(f.debt.total)} · <span className="text-ok">abonado {cents(f.debt.paid)}</span> · <span className="text-warn">falta {cents(f.debt.total - f.debt.paid)}</span></p>}
-                        <div className="mt-2 flex items-center gap-2">
-                          <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-ink-700">
+                    <li key={f.key} className="px-4 py-3">
+                      <div className="rounded-2xl border border-ink-600 p-4">
+                        <div className="grid items-center gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-[minmax(12rem,1.4fr)_repeat(3,minmax(6rem,1fr))_auto_9rem]">
+                          <div className="min-w-0">
+                            <p className="truncate font-display text-xl font-bold">{f.name}</p>
+                            <Badge tone={f.kind === 'prestamo' ? 'warn' : f.kind === 'parte' ? 'info' : 'neutral'}>{FUND_LABEL[f.kind]}</Badge>
+                            {f.debt && <p className="mt-1 text-xs"><span className="text-muted">Deuda total</span> {cents(f.debt.total)} · <span className="text-warn">falta {cents(f.debt.total - f.debt.paid)}</span></p>}
+                          </div>
+                          <div><p className="text-xs uppercase tracking-wider text-muted">Total</p><p className="text-lg font-semibold text-brand">{cents(f.target)}</p></div>
+                          <div><p className="text-xs uppercase tracking-wider text-muted">En # días</p><p className="text-lg font-semibold">{days === 0 ? 'Hoy' : `${days} ${days === 1 ? 'día' : 'días'}`}</p><p className="text-xs text-muted">{date(f.due, "d 'de' MMM")}</p></div>
+                          <div><p className="text-xs uppercase tracking-wider text-muted">Mensual</p><p className="text-lg font-semibold">{monthly != null ? cents(monthly) : '—'}</p></div>
+                          <div title={`Sugerencia: ${how}`} className="rounded-xl bg-brand px-4 py-2 text-center text-ink">
+                            <p className="text-xs font-semibold uppercase tracking-wider">Sugerencia</p>
+                            <p className="font-display text-2xl font-bold">{cents(f.suggested)}</p>
+                          </div>
+                          <Input type="number" min="0" inputMode="decimal" value={saveAmt[f.key] ?? ''} placeholder="___" aria-label={`Se guarda para ${f.name}`}
+                            onChange={(e) => setSaveAmt({ ...saveAmt, [f.key]: e.target.value })} className="h-12 text-center text-lg font-semibold" />
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center gap-3">
+                          <div className="relative h-2.5 min-w-[8rem] flex-1 overflow-hidden rounded-full bg-ink-700">
                             <div className="absolute inset-y-0 left-0 rounded-full bg-brand/40" style={{ width: `${pctAfter}%` }} />
                             <div className="absolute inset-y-0 left-0 rounded-full bg-brand" style={{ width: `${pctBefore}%` }} />
                           </div>
-                          <span className="w-24 text-right text-xs"><b className={pctAfter >= 100 ? 'text-ok' : 'text-brand'}>Vas al {Math.round(pctAfter)}%</b></span>
+                          <span className="text-sm"><b className={pctAfter >= 100 ? 'text-ok' : 'text-brand'}>Vas al {Math.round(pctAfter)}%</b> <span className="text-muted">· guardado {cents(f.saved)}{now > 0 ? ` + ${cents(now)} hoy` : ''}</span></span>
+                          <button type="button" onClick={() => setSaveAmt({ ...saveAmt, [f.key]: String(f.suggested) })} className="rounded-lg bg-brand px-3 py-1 text-sm font-semibold text-ink hover:brightness-110">Aceptar sugerencia</button>
+                          <button type="button" onClick={() => setSaveAmt({ ...saveAmt, [f.key]: '0' })} className="text-sm text-muted hover:underline">Nada</button>
+                          <Input value={saveNote[f.key] ?? ''} onChange={(e) => setSaveNote({ ...saveNote, [f.key]: e.target.value })} placeholder="Nota" className="h-8 w-40 text-xs" aria-label="Nota" />
                         </div>
-                        <p className="text-xs text-muted">Ya guardado {cents(f.saved)}{now > 0 ? ` + ${cents(now)} hoy` : ''}</p>
-                      </div>
-                      <div className="text-sm">
-                        <p className="text-xs uppercase tracking-wider text-muted">Te sugerimos</p>
-                        <p className="font-display text-2xl font-bold text-brand">{cents(f.suggested)}</p>
-                        <p className="text-xs text-muted">{f.kind === 'seguro' ? `${inscCount} inscripciones × ${cents(f.target / INSURANCE_STUDENTS)}` : f.kind === 'fijo' ? 'parte de esta semana' : `${cents(Math.max(0, f.target - f.saved))} ÷ ${f.weeksLeft} ${f.weeksLeft === 1 ? 'semana' : 'semanas'}`}</p>
-                      </div>
-                      <div className="space-y-1">
-                        <Input type="number" min="0" inputMode="decimal" value={saveAmt[f.key] ?? ''} placeholder="0" aria-label={`Se guarda para ${f.name}`}
-                          onChange={(e) => setSaveAmt({ ...saveAmt, [f.key]: e.target.value })} className="h-10" />
-                        <div className="flex gap-1">
-                          <button className="text-xs text-brand hover:underline" onClick={() => setSaveAmt({ ...saveAmt, [f.key]: String(f.suggested) })}>Lo sugerido</button>
-                          <span className="text-xs text-muted">·</span>
-                          <button className="text-xs text-muted hover:underline" onClick={() => setSaveAmt({ ...saveAmt, [f.key]: '0' })}>Nada</button>
-                        </div>
-                        <Input value={saveNote[f.key] ?? ''} onChange={(e) => setSaveNote({ ...saveNote, [f.key]: e.target.value })} placeholder="Nota" className="h-8 text-xs" aria-label="Nota" />
                       </div>
                     </li>
                   )
