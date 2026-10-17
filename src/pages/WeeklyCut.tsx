@@ -182,6 +182,7 @@ export default function WeeklyCut() {
   /** Cargar un corte guardado para corregirlo */
   const startEdit = (c: CashCut) => {
     setEditingCut(c)
+    setTimeout(() => document.getElementById('hacer-corte')?.scrollIntoView({ behavior: 'smooth' }), 50)
     setReview(Object.fromEntries((c.items ?? []).map((i) => [i.key, { amount: i.amount, approved: i.approved, adjusted: i.adjusted, note: i.note, excluded: i.excluded }])))
     setSaveAmt(Object.fromEntries((c.savings ?? []).map((s) => [s.key, String(s.saved)])))
     setSaveNote(Object.fromEntries((c.savings ?? []).filter((s) => s.note).map((s) => [s.key, s.note!])))
@@ -370,7 +371,27 @@ export default function WeeklyCut() {
           <Button variant="secondary" icon={Printer} onClick={() => window.print()} className="hidden sm:inline-flex">Imprimir</Button>
           <Button icon={Vault} onClick={() => setConfirming(true)} disabled={loading}>{editingCut ? 'Guardar corrección' : 'Hacer corte ahora'}</Button>
         </>} />
-      <div className="mb-4"><CashDoubtsCard /></div>
+      {/* Primero las dudas de caja, luego los cortes anteriores y hasta abajo el corte nuevo */}
+      <div className="mb-6"><CashDoubtsCard /></div>
+      <div className="mb-6 space-y-6">
+          <div>
+            <h2 className="mb-3 font-display text-xl font-bold uppercase tracking-wide">Cortes anteriores</h2>
+            {!cuts.data?.length ? <Card className="p-6 text-center text-sm text-muted">Aún no hay cortes. Cuando pagues a los profes, revisa todo abajo en "Hacer el corte".</Card> : (
+              <div className="space-y-3">{cuts.data.map((c) => <CutCard key={c.id} cut={c} onEdit={() => startEdit(c)} onDelete={() => setDeleting(c)} />)}</div>
+            )}
+          </div>
+          {totals.length > 0 && (
+            <Card className="p-5">
+              <h3 className="mb-3 font-display text-lg font-bold uppercase tracking-wide">Acumulado por destino (todos los cortes)</h3>
+              <div className="flex flex-wrap gap-3">
+                {totals.map(([k, v]) => <div key={k} className="rounded-xl border border-ink-600 px-4 py-2"><p className="text-xs uppercase tracking-wider text-muted">{k}</p><p className="font-display text-2xl font-bold">{cents(v)}</p></div>)}
+              </div>
+            </Card>
+          )}
+      </div>
+
+      <section id="hacer-corte" className="scroll-mt-4 rounded-2xl border border-brand/40 p-3 sm:p-5">
+        <h2 className="mb-4 flex items-center gap-2 font-display text-xl font-bold uppercase tracking-wide"><Vault className="h-5 w-5 text-brand" /> {editingCut ? 'Corregir corte' : 'Hacer el corte'}</h2>
 
       {(() => {
         // Avisos: días sin corte (cobros que no se cuentan) y fechas que se enciman con otro corte
@@ -619,24 +640,10 @@ export default function WeeklyCut() {
             </div>
           </Card>
 
-          {totals.length > 0 && (
-            <Card className="p-5">
-              <h3 className="mb-3 font-display text-lg font-bold uppercase tracking-wide">Acumulado por destino (todos los cortes)</h3>
-              <div className="flex flex-wrap gap-3">
-                {totals.map(([k, v]) => <div key={k} className="rounded-xl border border-ink-600 px-4 py-2"><p className="text-xs uppercase tracking-wider text-muted">{k}</p><p className="font-display text-2xl font-bold">{cents(v)}</p></div>)}
-              </div>
-            </Card>
-          )}
-
-          <div>
-            <h2 className="mb-3 font-display text-xl font-bold uppercase tracking-wide">Cortes anteriores</h2>
-            {!cuts.data?.length ? <Card className="p-6 text-center text-sm text-muted">Aún no hay cortes. Cuando pagues a los profes, revisa todo arriba y pica <b>Guardar corte</b>.</Card> : (
-              <div className="space-y-3">{cuts.data.map((c) => <CutCard key={c.id} cut={c} onEdit={() => startEdit(c)} onDelete={() => setDeleting(c)} />)}</div>
-            )}
-          </div>
           <p className="text-xs text-muted">Los sueldos semanales cuentan el miércoles · gastos mensuales el día 1 · gastos del mes y pagos en partes el día que se pagaron. Se editan en <Link to="/gastos" className="text-brand hover:underline">Gastos</Link>.</p>
         </div>
       )}
+      </section>
 
       <Modal open={confirming} onClose={() => setConfirming(false)} title={editingCut ? 'Confirmar corrección del corte' : 'Confirmar corte de caja'}
         footer={<><Button variant="secondary" onClick={() => setConfirming(false)}>Revisar otra vez</Button><Button icon={Check} onClick={save} loading={saving}>Confirmar corte</Button></>}>
