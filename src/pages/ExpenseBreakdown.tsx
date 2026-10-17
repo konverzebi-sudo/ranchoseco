@@ -1,7 +1,7 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, UserCog, Receipt, CalendarDays } from 'lucide-react'
-import { Badge, Card, ErrorState, Input, PageHeader, Spinner, StatCard, cx } from '@/components/ui'
+import { Badge, Card, ErrorState, Input, Modal, PageHeader, Spinner, StatCard, cx } from '@/components/ui'
 import { monthLabel } from '@/components/FinanceModules'
 import { useCoachPay, useCoaches, useExpenses } from '@/lib/api'
 import { expenseEntries, type ExpenseEntry } from '@/lib/finance'
@@ -23,12 +23,13 @@ export default function ExpenseBreakdown() {
   const coaches = useCoaches()
   const pay = useCoachPay()
 
-  const { days, total, salaries, fixed, extra } = useMemo(() => {
+  const [detail, setDetail] = useState<{ title: string; kinds: ExpenseEntry['kind'][] | null } | null>(null)
+  const { entries, days, total, salaries, fixed, extra } = useMemo(() => {
     const entries = expenseEntries({ month, expenses: expenses.data ?? [], coaches: coaches.data ?? [], coachPay: pay.data ?? [] })
     const byDay = new Map<string, ExpenseEntry[]>()
     for (const e of entries) byDay.set(e.date, [...(byDay.get(e.date) ?? []), e])
     const sum = (k?: ExpenseEntry['kind']) => entries.filter((e) => !k || e.kind === k).reduce((a, e) => a + e.amount, 0)
-    return { days: [...byDay.entries()], total: sum(), salaries: sum('sueldo'), fixed: sum('fijo'), extra: sum('mes') }
+    return { entries, days: [...byDay.entries()], total: sum(), salaries: sum('sueldo'), fixed: sum('fijo'), extra: sum('mes') }
   }, [month, expenses.data, coaches.data, pay.data])
 
   const t = today()
@@ -43,11 +44,12 @@ export default function ExpenseBreakdown() {
         </>} />
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Total del mes" value={money(Math.round(total))} icon={CalendarDays} tone="bad" />
-        <StatCard label="Sueldos de profesores" value={money(Math.round(salaries))} icon={UserCog} hint="Semanales cada miércoles" />
-        <StatCard label="Gastos fijos y staff" value={money(Math.round(fixed))} icon={Receipt} hint="Mensuales el día 1 · anuales en su mes" />
-        <StatCard label="Gastos del mes" value={money(Math.round(extra))} icon={Receipt} hint="En la fecha en que se capturaron" />
+        <StatCard label="Total del mes" value={money(Math.round(total))} icon={CalendarDays} tone="bad" hint="Pica para ver el desglose" onClick={() => setDetail({ title: 'Total del mes', kinds: null })} />
+        <StatCard label="Sueldos de profesores" value={money(Math.round(salaries))} icon={UserCog} hint="Semanales cada miércoles" onClick={() => setDetail({ title: 'Sueldos de profesores', kinds: ['sueldo'] })} />
+        <StatCard label="Gastos fijos y staff" value={money(Math.round(fixed))} icon={Receipt} hint="Mensuales el día 1 · anuales en su mes" onClick={() => setDetail({ title: 'Gastos fijos y staff', kinds: ['fijo'] })} />
+        <StatCard label="Gastos del mes" value={money(Math.round(extra))} icon={Receipt} hint="En la fecha en que se capturaron" onClick={() => setDetail({ title: 'Gastos del mes', kinds: ['mes'] })} />
       </div>
+      {detail && <EntriesDetail title={`${detail.title} · ${monthLabel(month)}`} entries={entries.filter((e) => !detail.kinds || detail.kinds.includes(e.kind))} byKind={!detail.kinds} onClose={() => setDetail(null)} />}
 
       {expenses.isLoading || coaches.isLoading ? <Spinner /> : days.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted">No hay gastos en {monthLabel(month)}.</Card>
@@ -84,5 +86,54 @@ export default function ExpenseBreakdown() {
         </div>
       )}
     </>
+  )
+}
+
+/** Desglose de una tarjeta: agrupado por concepto (cuántas veces y cuánto), con cada fecha. */
+function EntriesDetail({ title, entries, byKind, onClose }: { title: string; entries: ExpenseEntry[]; byKind: boolean; onClose: () => void }) {
+  const total = entries.reduce((a, e) => a + e.amount, 0)
+  const groups = useMemo(() => {
+    const m = new Map<string, { kind: ExpenseEntry['kind']; name: string; items: ExpenseEntry[]; total: number }>()
+    for (const e of entries) {
+      const k = `${e.kind}|${e.name}`
+      const g = m.get(k) ?? { kind: e.kind, name: e.name, items: [], total: 0 }
+      g.items.push(e); g.total += e.amount; m.set(k, g)
+    }
+    return [...m.values()].sort((a, b) => b.total - a.total)
+  }, [entries])
+  const kinds = byKind ? (Object.keys(KIND) as ExpenseEntry['kind'][]).map((k) => ({ k, total: entries.filter((e) => e.kind === k).reduce((a, e) => a + e.amount, 0) })).filter((x) => x.total > 0) : []
+  return (
+    <Modal open onClose={onClose} title={title} wide>
+      <div className="space-y-4 text-sm">
+        {kinds.length > 0 && (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {kinds.map((x) => (
+              <div key={x.k} className="flex items-center justify-between rounded-xl bg-ink-900 px-3 py-2">
+                <Badge tone={KIND[x.k].tone}>{KIND[x.k].label}</Badge><b>{cents(x.total)}</b>
+              </div>
+            ))}
+          </div>
+        )}
+        {groups.length === 0 ? <p className="text-muted">No hay nada en este mes.</p> : (
+          <ul className="divide-y divide-ink-700 rounded-xl border border-ink-600">
+            {groups.map((g) => (
+              <li key={`${g.kind}|${g.name}`} className="px-3 py-2.5">
+                <div className="flex items-center gap-3">
+                  {byKind && <Badge tone={KIND[g.kind].tone}>{KIND[g.kind].label}</Badge>}
+                  <p className="min-w-0 flex-1 truncate font-medium">{g.name}</p>
+                  <b>{cents(g.total)}</b>
+                </div>
+                <p className="mt-0.5 text-xs text-muted">
+                  {g.items.length > 1 ? `${g.items.length} pagos: ` : ''}{g.items.map((e) => `${date(e.date, 'd MMM')} ${cents(e.amount)}`).join(' · ')}{g.items[0].detail ? ` · ${g.items[0].detail}` : ''}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="flex items-center justify-between rounded-xl bg-ink-900 px-3 py-3 font-semibold">
+          <span>Total</span><span className="text-bad">{cents(total)}</span>
+        </div>
+      </div>
+    </Modal>
   )
 }
