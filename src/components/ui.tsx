@@ -109,9 +109,10 @@ export function PageHeader({ title, subtitle, actions, bar }: { title: string; s
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="font-display text-2xl font-bold uppercase leading-none tracking-wide sm:text-3xl">{title}</h1>
-          {subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}
+          {subtitle && <p className="mt-1 hidden text-sm text-muted sm:block">{subtitle}</p>}
         </div>
-        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+        {/* En celular los botones van en una sola fila que se recorre de lado, para que el encabezado no ocupe tanto */}
+        {actions && <div className="-mx-1 flex w-full items-center gap-2 overflow-x-auto px-1 pb-0.5 sm:mx-0 sm:w-auto sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0 [&>*]:shrink-0">{actions}</div>}
       </div>
       {bar && <div className="mt-2.5 flex flex-wrap items-center gap-2">{bar}</div>}
     </div>

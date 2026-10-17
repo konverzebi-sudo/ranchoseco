@@ -419,12 +419,15 @@ export default function WeeklyCut() {
           <div>
             <FoldCard title="Cortes anteriores" subtitle="Pica un corte para ver su desglose · pasa el mouse sobre un número para ver de dónde sale">
             {!cuts.data?.length ? <p className="p-6 text-center text-sm text-muted">Aún no hay cortes. Cuando pagues a los profes, revisa todo abajo en "Hacer el corte".</p> : (
-              <div className="overflow-x-auto">
+              <>
+              <div className="space-y-3 p-3 md:hidden">{cuts.data.map((c, i) => <CutRow key={c.id} mobile cut={c} prev={cuts.data![i + 1]} focus={params.get('ver') === c.id} onEdit={() => startEdit(c)} onDelete={() => setDeleting(c)} />)}</div>
+              <div className="hidden overflow-x-auto md:block">
                 <table className="table-base min-w-[960px]">
                   <thead><tr><th>Corte</th><th>Había</th><th>Entró</th><th>Salió</th><th>Se apartó</th><th>Debería haber</th><th>Contado</th><th>¿Cuadra?</th><th /></tr></thead>
                   <tbody>{cuts.data.map((c, i) => <CutRow key={c.id} cut={c} prev={cuts.data![i + 1]} focus={params.get('ver') === c.id} onEdit={() => startEdit(c)} onDelete={() => setDeleting(c)} />)}</tbody>
                 </table>
               </div>
+              </>
             )}
             </FoldCard>
           </div>
@@ -885,14 +888,14 @@ function ManualLineForm({ type, defaultDate, onAdd, onCancel }: { type: CutItem[
   )
 }
 
-function CutRow({ cut: c, prev, focus, onEdit, onDelete }: { cut: CashCut; prev?: CashCut; focus?: boolean; onEdit: () => void; onDelete: () => void }) {
+function CutRow({ cut: c, prev, focus, mobile, onEdit, onDelete }: { cut: CashCut; prev?: CashCut; focus?: boolean; mobile?: boolean; onEdit: () => void; onDelete: () => void }) {
   const qc = useQueryClient()
   const toast = useToast()
   const [open, setOpen] = useState<CutItem['type'] | null>(null)
   // Si se llegó desde otro lado a "ver este corte", se abre solo y la página baja hasta él
   const [expanded, setExpanded] = useState(!!focus)
   useEffect(() => {
-    if (focus) setTimeout(() => document.getElementById(`corte-${c.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300)
+    if (focus) setTimeout(() => document.getElementById(`corte-${c.id}${mobile ? '-m' : ''}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300)
   }, [focus, c.id])
   const [adding, setAdding] = useState(false)
   const addLine = async (it: CutItem) => {
@@ -917,32 +920,16 @@ function CutRow({ cut: c, prev, focus, onEdit, onDelete }: { cut: CashCut; prev?
   const should = had + Number(c.income) - Number(c.outflow) - savedTotal + covered
   const diff = Number(c.counted) - should
   const show = (t: CutItem['type']) => { setExpanded(true); setOpen(open === t ? null : t); setAdding(false) }
-  return (
-    <>
-      <tr id={`corte-${c.id}`} className={cx('cursor-pointer', expanded && 'bg-ink-900', focus && 'ring-2 ring-inset ring-brand')} onClick={() => setExpanded(!expanded)}>
-        <td>
-          <p className="flex items-center gap-1.5 whitespace-nowrap font-bold"><ChevronDown className={cx('h-4 w-4 shrink-0 text-brand transition-transform', !expanded && '-rotate-90')} />{date(c.period_to, "d 'de' MMM")}</p>
-          <p className="whitespace-nowrap pl-5 text-xs text-muted">desde {date(c.period_from, "d 'de' MMM")}</p>
-        </td>
-        <td><Explain why="Lo que quedó en caja chica en el corte anterior">{cents(had)}</Explain></td>
-        <td><button onClick={(e) => { e.stopPropagation(); show('entrada') }} className="font-semibold text-ok hover:underline">{cents(Number(c.income))}</button></td>
-        <td><button onClick={(e) => { e.stopPropagation(); show('salida') }} className="font-semibold text-bad hover:underline">{cents(Number(c.outflow))}</button></td>
-        <td>{savedTotal > 0 ? <Explain why={savings.map((s) => `${s.name} ${cents(Number(s.saved))}`).join(' · ')}>{cents(savedTotal)}</Explain> : <span className="text-muted">—</span>}</td>
-        <td><Explain why={`Había ${cents(had)} + entró ${cents(Number(c.income))} − salió ${cents(Number(c.outflow))}${savedTotal ? ` − se apartó ${cents(savedTotal)}` : ''}${covered ? ` + vino de otro lado ${cents(covered)}` : ''}`}>{cents(should)}</Explain></td>
-        <td className="font-semibold text-brand">{cents(Number(c.counted))}</td>
-        <td>{should < -0.5 ? <Badge tone="bad">Faltó {cents(-should)}</Badge> : diff < -0.5 ? <Badge tone="bad">Faltan {cents(-diff)}</Badge> : diff > 0.5 ? <Badge tone="info">Sobran {cents(diff)}</Badge> : <Badge tone="ok">Cuadra</Badge>}</td>
-        <td onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center justify-end gap-1">
-            <ReportButtons cut={c} small />
-            <PdfButton cut={c} small />
-            <IconButton icon={Pencil} label="Corregir corte" onClick={onEdit} className="h-8 w-8" />
-            <IconButton icon={Trash2} label="Eliminar corte" onClick={onDelete} className="h-8 w-8" />
-          </div>
-        </td>
-      </tr>
-      {expanded && (
-        <tr className="bg-ink-900">
-          <td colSpan={9} className="!pt-0">
+  const status = should < -0.5 ? <Badge tone="bad">Faltó {cents(-should)}</Badge> : diff < -0.5 ? <Badge tone="bad">Faltan {cents(-diff)}</Badge> : diff > 0.5 ? <Badge tone="info">Sobran {cents(diff)}</Badge> : <Badge tone="ok">Cuadra</Badge>
+  const actions = (
+    <div className="flex flex-wrap items-center justify-end gap-1">
+      <ReportButtons cut={c} small />
+      <PdfButton cut={c} small />
+      <IconButton icon={Pencil} label="Corregir corte" onClick={onEdit} className="h-8 w-8" />
+      <IconButton icon={Trash2} label="Eliminar corte" onClick={onDelete} className="h-8 w-8" />
+    </div>
+  )
+  const detail = (
             <div className="space-y-2 pl-5 text-sm">
               <div className="flex flex-wrap gap-2">
                 <span className="text-xs uppercase tracking-wider text-muted">A dónde se fue:</span>
@@ -982,6 +969,47 @@ function CutRow({ cut: c, prev, focus, onEdit, onDelete }: { cut: CashCut; prev?
                 )
               })()}
             </div>
+  )
+  // Celular: cada corte en su tarjeta (sin tabla que se recorra de lado)
+  if (mobile) return (
+    <div id={`corte-${c.id}-m`} className={cx('rounded-2xl border border-ink-600 bg-ink-800 p-4', focus && 'ring-2 ring-brand')}>
+      <button type="button" onClick={() => setExpanded(!expanded)} className="flex w-full items-start justify-between gap-2 text-left">
+        <span>
+          <span className="flex items-center gap-1.5 text-lg font-bold"><ChevronDown className={cx('h-4 w-4 text-brand transition-transform', !expanded && '-rotate-90')} />{date(c.period_to, "d 'de' MMM")}</span>
+          <span className="block pl-5 text-sm text-muted">desde {date(c.period_from, "d 'de' MMM")}</span>
+        </span>
+        {status}
+      </button>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+        <button type="button" onClick={() => show('entrada')} className="rounded-xl bg-ink-900 p-2 text-left"><span className="block text-xs text-muted">Entró</span><b className="text-ok">{cents(Number(c.income))}</b></button>
+        <button type="button" onClick={() => show('salida')} className="rounded-xl bg-ink-900 p-2 text-left"><span className="block text-xs text-muted">Salió</span><b className="text-bad">{cents(Number(c.outflow))}</b></button>
+        <div className="rounded-xl bg-ink-900 p-2"><span className="block text-xs text-muted">Debería haber</span><b>{cents(should)}</b></div>
+        <div className="rounded-xl bg-ink-900 p-2"><span className="block text-xs text-muted">Contado</span><b className="text-brand">{cents(Number(c.counted))}</b></div>
+      </div>
+      <div className="mt-3">{actions}</div>
+      {expanded && <div className="mt-3 border-t border-ink-600 pt-3">{detail}</div>}
+    </div>
+  )
+  return (
+    <>
+      <tr id={`corte-${c.id}`} className={cx('cursor-pointer', expanded && 'bg-ink-900', focus && 'ring-2 ring-inset ring-brand')} onClick={() => setExpanded(!expanded)}>
+        <td>
+          <p className="flex items-center gap-1.5 whitespace-nowrap font-bold"><ChevronDown className={cx('h-4 w-4 shrink-0 text-brand transition-transform', !expanded && '-rotate-90')} />{date(c.period_to, "d 'de' MMM")}</p>
+          <p className="whitespace-nowrap pl-5 text-xs text-muted">desde {date(c.period_from, "d 'de' MMM")}</p>
+        </td>
+        <td><Explain why="Lo que quedó en caja chica en el corte anterior">{cents(had)}</Explain></td>
+        <td><button onClick={(e) => { e.stopPropagation(); show('entrada') }} className="font-semibold text-ok hover:underline">{cents(Number(c.income))}</button></td>
+        <td><button onClick={(e) => { e.stopPropagation(); show('salida') }} className="font-semibold text-bad hover:underline">{cents(Number(c.outflow))}</button></td>
+        <td>{savedTotal > 0 ? <Explain why={savings.map((s) => `${s.name} ${cents(Number(s.saved))}`).join(' · ')}>{cents(savedTotal)}</Explain> : <span className="text-muted">—</span>}</td>
+        <td><Explain why={`Había ${cents(had)} + entró ${cents(Number(c.income))} − salió ${cents(Number(c.outflow))}${savedTotal ? ` − se apartó ${cents(savedTotal)}` : ''}${covered ? ` + vino de otro lado ${cents(covered)}` : ''}`}>{cents(should)}</Explain></td>
+        <td className="font-semibold text-brand">{cents(Number(c.counted))}</td>
+        <td>{status}</td>
+        <td onClick={(e) => e.stopPropagation()}>{actions}</td>
+      </tr>
+      {expanded && (
+        <tr className="bg-ink-900">
+          <td colSpan={9} className="!pt-0">
+            {detail}
           </td>
         </tr>
       )}

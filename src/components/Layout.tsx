@@ -162,7 +162,7 @@ export default function Layout() {
       </header>
 
       <main className="min-w-0 flex-1 px-4 pb-28 pt-5 sm:px-6 lg:px-8 lg:pb-10 lg:pt-8"><ViewAsBanner />
-        <div className="mx-auto max-w-7xl"><AutoMonthlyFees /><AutoTrainings /><ErrorBoundary resetKey={loc.pathname}><Suspense fallback={<Spinner />}>{role.isProfe && !profeCanOpen(loc.pathname) ? <NoAccess /> : <Outlet />}</Suspense></ErrorBoundary></div>
+        <div className="mx-auto max-w-[110rem]"><AutoMonthlyFees /><AutoTrainings /><ErrorBoundary resetKey={loc.pathname}><Suspense fallback={<Spinner />}>{role.isProfe && !profeCanOpen(loc.pathname) ? <NoAccess /> : <Outlet />}</Suspense></ErrorBoundary></div>
       </main>
 
       {/* Barra inferior celular */}
