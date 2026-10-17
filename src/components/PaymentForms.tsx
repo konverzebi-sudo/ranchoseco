@@ -1,10 +1,11 @@
+import { CHIVAS_CREDENCIAL, CHIVAS_PLAYERA, INSURANCE_STUDENTS } from '@/lib/cashcut'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Save, Paperclip } from 'lucide-react'
 import { addDays, addMonths, startOfMonth, setDate } from 'date-fns'
 import { Button, ConfirmDialog, Field, Input, Modal, Select, Textarea, cx } from './ui'
 import { useToast } from './toast'
-import { useCategories, useFees, useSettings, useStudents, type StudentRow } from '@/lib/api'
+import { useCategories, useFees, useSettings, useStudents, type StudentRow, useExpenses } from '@/lib/api'
 import { supabase, unwrap, BUCKETS } from '@/lib/supabase'
 import { METHOD_LABEL, date, money, monthName, shortDate, toISODate, today } from '@/lib/format'
 import { TIER_LABEL, joinTier, tierAmount, tierNote, type JoinTier } from '@/lib/prorate'
@@ -103,6 +104,12 @@ export function PaymentModal({ student: fixed, feeId, onClose, onAddFee, preset 
     ])
     if (!feeId) setSel({})
   }, [student?.id, nextMonths.join(), price.toPay]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Inscripción: cuánto va a cada mini caja de la Caja Chivas (se puede cambiar)
+  const allExpenses = useExpenses()
+  const seguroCost = Number((allExpenses.data ?? []).find((e) => /seguro/i.test(e.name) && e.active)?.amount ?? 0)
+  const [split, setSplit] = useState<{ playera: string; credencial: string; seguro: string } | null>(null)
+  const splitNow = split ?? { playera: String(CHIVAS_PLAYERA), credencial: String(CHIVAS_CREDENCIAL), seguro: String(Math.round((seguroCost / INSURANCE_STUDENTS) * 100) / 100) }
+  const isInsc = (concept: string) => /^inscripci[oó]n/i.test(concept.trim())
   const [paid, setPaid] = useState('')
   const [method, setMethod] = useState<PaymentMethod>('efectivo')
   const [paidAt, setPaidAt] = useState(today())
@@ -163,16 +170,21 @@ export function PaymentModal({ student: fixed, feeId, onClose, onAddFee, preset 
         if (error) throw new Error('No se pudo subir el comprobante: ' + error.message)
       }
       const base = { student_id: student.id, paid_at: paidAt, method, notes: notes.trim() || null, receipt_path, received_by: receiver.trim() }
-      const rows: Record<string, unknown>[] = open.filter((f) => sel[f.id]?.on && amountOf(f) > 0).map((f) => ({ ...base, student_id: f.student_id, fee_id: f.id, amount: amountOf(f) }))
+      const splitRow = { playera: Number(splitNow.playera) || 0, credencial: Number(splitNow.credencial) || 0, seguro: Number(splitNow.seguro) || 0 }
+      const rows: Record<string, unknown>[] = open.filter((f) => sel[f.id]?.on && amountOf(f) > 0).map((f) => ({ ...base, student_id: f.student_id, fee_id: f.id, amount: amountOf(f), ...(isInsc(f.concept) ? { split: splitRow } : {}) }))
       for (const x of extras.filter((y) => y.on)) {
         const isAdv = x.key.startsWith('adv')
         const created = unwrap(await supabase.from('fees').insert(isAdv
           ? { student_id: student.id, concept: 'Mensualidad', period: x.period, amount: price.regular, discount: price.discount, discount_reason: price.reason, due_date: dueDateFor(x.period, price.dueDay), notes: 'Pagada por adelantado' }
           : { student_id: student.id, concept: x.concept.trim(), period: x.period, amount: Number(x.amount), due_date: paidAt }).select('id').single()) as { id: string }
-        rows.push({ ...base, fee_id: created.id, amount: Number(x.amount) })
+        rows.push({ ...base, fee_id: created.id, amount: Number(x.amount), ...(!isAdv && isInsc(x.concept) ? { split: splitRow } : {}) })
       }
-      // Si la base de datos todavía no tiene la columna "quién recibió", se guarda en las notas
-      const first = await supabase.from('payments').insert(rows)
+      // Si la base de datos todavía no tiene la columna "quién recibió" (o la del reparto), se guarda en las notas
+      let first = await supabase.from('payments').insert(rows)
+      if (first.error && /split/.test(first.error.message)) {
+        rows.forEach((r) => { if (r.split) r.notes = [r.notes, `Caja Chivas: playera ${money(splitRow.playera)}, credencial ${money(splitRow.credencial)}, seguro ${money(splitRow.seguro)}`].filter(Boolean).join(' · '); delete r.split })
+        first = await supabase.from('payments').insert(rows)
+      }
       if (first.error && /received_by/.test(first.error.message)) {
         unwrap(await supabase.from('payments').insert(rows.map(({ received_by, ...r }) => ({ ...r, notes: [r.notes, `Recibió: ${received_by}`].filter(Boolean).join(' · ') }))))
       } else unwrap(first)
@@ -296,6 +308,22 @@ export function PaymentModal({ student: fixed, feeId, onClose, onAddFee, preset 
                   {!moreAdv && extras.filter((x) => x.key.startsWith('adv')).length > 2 && <button type="button" onClick={() => setMoreAdv(true)} className="mt-1 text-xs text-brand hover:underline">Adelantar más meses</button>}
                 </>
               )}
+              {(extras.some((x) => x.on && isInsc(x.concept)) || open.some((f) => sel[f.id]?.on && isInsc(f.concept))) && (() => {
+                const inscAmt = extras.filter((x) => x.on && isInsc(x.concept)).reduce((a, x) => a + (Number(x.amount) || 0), 0) + open.filter((f) => sel[f.id]?.on && isInsc(f.concept)).reduce((a, f) => a + amountOf(f), 0)
+                const parts = (Number(splitNow.playera) || 0) + (Number(splitNow.credencial) || 0) + (Number(splitNow.seguro) || 0)
+                const set = (k: 'playera' | 'credencial' | 'seguro', v: string) => setSplit({ ...splitNow, [k]: v })
+                return (
+                  <div className="mt-3 rounded-xl border border-brand/50 bg-brand-dim p-3 text-sm">
+                    <p className="mb-2 font-semibold">La inscripción va a la Caja Chivas</p>
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      <label className="block"><span className="text-xs text-muted">Playera de entrenamiento</span><Input type="number" min="0" inputMode="decimal" value={splitNow.playera} onChange={(e) => set('playera', e.target.value)} className="h-9" /></label>
+                      <label className="block"><span className="text-xs text-muted">Credencial</span><Input type="number" min="0" inputMode="decimal" value={splitNow.credencial} onChange={(e) => set('credencial', e.target.value)} className="h-9" /></label>
+                      <label className="block"><span className="text-xs text-muted">Seguro ({money(seguroCost)} ÷ {INSURANCE_STUDENTS} alumnos)</span><Input type="number" min="0" inputMode="decimal" value={splitNow.seguro} onChange={(e) => set('seguro', e.target.value)} className="h-9" /></label>
+                    </div>
+                    <p className={cx('mt-2', inscAmt - parts < -0.5 ? 'text-bad' : 'text-muted')}>Libre en Caja Chivas: <b>{money(Math.max(0, inscAmt - parts))}</b>{inscAmt - parts < -0.5 ? ' · lo repartido es más que la inscripción' : ''}</p>
+                  </div>
+                )
+              })()}
               {onAddFee && <button type="button" onClick={onAddFee} className="mt-2 text-xs text-muted hover:text-brand hover:underline">¿Sólo quieres cargarle algo sin que pague todavía? Agregar cargo</button>}
             </div>
 

@@ -115,12 +115,16 @@ export default function WeeklyCut() {
   const uniformsIn = items.filter((i) => i.type === 'entrada' && counts(i) && isUniformConcept(i.detail.split(' · ')[0])).reduce((a, i) => a + itemValue(i), 0)
   // Reparto de las inscripciones: playera, credencial, parte del seguro y lo demás libre en la Caja Chivas
   const seguroFund = funds.find((f) => f.kind === 'seguro')
+  // Cada inscripción con su reparto (el que se anotó al cobrarla, o el de siempre)
   const chivasSplit = useMemo(() => {
-    const playeras = CHIVAS_PLAYERA * inscCount
-    const credenciales = CHIVAS_CREDENCIAL * inscCount
-    const seguro = seguroFund?.suggested ?? 0
+    const byId = new Map((payments.data ?? []).map((x) => [`p:${x.id}`, x.split]))
+    const sp = inscItems.map((i) => byId.get(i.key))
+    const playeras = sp.reduce((a, x) => a + (x ? Number(x.playera) : CHIVAS_PLAYERA), 0)
+    const credenciales = sp.reduce((a, x) => a + (x ? Number(x.credencial) : CHIVAS_CREDENCIAL), 0)
+    const seguroDefault = seguroFund?.suggested ?? 0
+    const seguro = sp.some(Boolean) ? Math.min(seguroFund ? Math.max(0, seguroFund.target - seguroFund.saved) : Infinity, sp.reduce((a, x) => a + (x ? Number(x.seguro) : (seguroFund ? seguroFund.target / INSURANCE_STUDENTS : 0)), 0)) : seguroDefault
     return { playeras, credenciales, seguro, libre: Math.max(0, Math.round((inscripciones - playeras - credenciales - seguro) * 100) / 100) }
-  }, [inscCount, inscripciones, seguroFund?.suggested])
+  }, [inscCount, inscripciones, seguroFund?.suggested, payments.data, inscItems.map((i) => i.key).join()]) // eslint-disable-line react-hooks/exhaustive-deps
   const applyChivas = () => setSaveAmt((x) => ({
     ...x,
     [CHIVAS_PLAYERAS_KEY]: String(chivasSplit.playeras),
@@ -132,7 +136,12 @@ export default function WeeklyCut() {
   useEffect(() => {
     if (editingCut || !inscCount) return
     applyChivas()
-  }, [inscCount, inscripciones, chivasSplit.seguro, editingCut]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [inscCount, inscripciones, chivasSplit.seguro, chivasSplit.playeras, chivasSplit.credenciales, editingCut]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Lo que se cobró de uniformes se manda solo al fondo de uniformes (corte nuevo)
+  useEffect(() => {
+    if (editingCut) return
+    setSaveAmt((x) => ({ ...x, [UNIFORMS_FUND_KEY]: uniformsIn > 0 ? String(uniformsIn) : x[UNIFORMS_FUND_KEY] ?? '' }))
+  }, [uniformsIn, editingCut])
 
   // Caja
   const expected = carry + tot.income - tot.outflow

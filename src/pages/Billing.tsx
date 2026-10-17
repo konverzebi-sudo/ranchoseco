@@ -179,7 +179,7 @@ export default function Billing() {
                               <button onClick={() => setReviewing({ fee: r.toReview[0], name: r.s.full_name })} title="Confirmar beca o adeudo" className="hover:opacity-80">
                                 <Badge tone="warn" className="cursor-pointer underline decoration-dotted">¿Beca? Por confirmar</Badge>
                               </button>
-                            ) : <Badge tone={feeTone(r.status)}>{ACCOUNT_LABEL[r.status]}</Badge>}
+                            ) : <Badge tone={feeTone(r.status)}>{r.status === 'vencido' ? daysLateLabel(r.open) : ACCOUNT_LABEL[r.status]}</Badge>}
                           </div>
                           {r.balance > 0 && (
                             <div className="flex gap-2">
@@ -327,4 +327,12 @@ function PaymentsList({ students, fees, month, setMonth }: { students: StudentRo
       )}
     </Card>
   )
+}
+
+/** "12 días vencido": cuenta desde la fecha límite del cargo más atrasado. */
+function daysLateLabel(fees: { status: string; due_date: string }[]) {
+  const due = fees.filter((f) => f.status === 'vencido').map((f) => f.due_date).sort()[0]
+  if (!due) return 'Vencido'
+  const n = Math.max(1, Math.floor((new Date(today() + 'T12:00:00').getTime() - new Date(due + 'T12:00:00').getTime()) / 86_400_000))
+  return `${n} ${n === 1 ? 'día' : 'días'} vencido`
 }

@@ -8,6 +8,7 @@ import { monthNameOf, useCashBoxCards } from '@/components/FinanceModules'
 import { FundGauges, ProfeGauges } from '@/components/FundProgress'
 import { Gauge, GaugeGrid } from '@/components/Gauges'
 import PeriodCards, { usePeriod } from '@/components/PeriodCards'
+import BreakEvenCard from '@/components/BreakEven'
 import { PayInstallmentModal } from '@/components/Installments'
 import { CloseTrialModal } from '@/components/TrialModals'
 import ActivityFeed from '@/components/ActivityFeed'
@@ -177,6 +178,7 @@ function AdminDashboard() {
             ))}
           </GaugeGrid>
           <ProfeGauges month={period.to.slice(0, 7)} />
+          <BreakEvenCard />
           <PeriodCards period={period} onDetail={setDetail} />
           <FundGauges />
 

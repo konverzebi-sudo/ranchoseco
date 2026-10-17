@@ -250,6 +250,8 @@ export interface Payment {
   notes: string | null
   /** Quién del equipo Rancho Seco recibió el pago */
   received_by?: string | null
+  /** Inscripción: cuánto va a cada mini caja de la Caja Chivas */
+  split?: { playera: number; credencial: number; seguro: number } | null
   created_at: string
 }
 
