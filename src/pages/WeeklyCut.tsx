@@ -142,11 +142,21 @@ export default function WeeklyCut() {
   }, [cuts.data])
 
   // Orígenes (lo que faltó y salió de otro lado) se guardan con monto negativo y "Vino de: …"
-  const distributionNow = () => [
-    ...sources.filter((r) => r.from.trim() && Number(r.amount) > 0).map((r) => ({ to: `${SOURCE_PREFIX}${r.from.trim()}`, amount: -Number(r.amount) })),
-    ...(savingsTotal > 0 ? [{ to: 'Ahorros apartados', amount: Math.round(savingsTotal * 100) / 100 }] : []),
-    ...rows.filter((r) => r.to.trim() && Number(r.amount) > 0).map((r) => ({ to: r.to.trim(), amount: Number(r.amount) })),
-  ]
+  // Lo contado que no se mandó a ningún lado se queda en caja chica (para que el siguiente corte empiece con eso)
+  const distributionNow = () => {
+    const sent = rows.filter((r) => r.to.trim() && Number(r.amount) > 0).map((r) => ({ to: r.to.trim(), amount: Number(r.amount) }))
+    const rest = Math.round((countedN - sent.reduce((x, r) => x + r.amount, 0)) * 100) / 100
+    if (rest > 0.5) {
+      const chica = sent.find((r) => r.to.toLowerCase() === CARRY_DESTINATION.toLowerCase())
+      if (chica) chica.amount = Math.round((chica.amount + rest) * 100) / 100
+      else sent.push({ to: CARRY_DESTINATION, amount: rest })
+    }
+    return [
+      ...sources.filter((r) => r.from.trim() && Number(r.amount) > 0).map((r) => ({ to: `${SOURCE_PREFIX}${r.from.trim()}`, amount: -Number(r.amount) })),
+      ...(savingsTotal > 0 ? [{ to: 'Ahorros apartados', amount: Math.round(savingsTotal * 100) / 100 }] : []),
+      ...sent,
+    ]
+  }
   const save = async () => {
     const distribution = distributionNow()
     setSaving(true)
@@ -662,7 +672,8 @@ export default function WeeklyCut() {
               <ul className="space-y-1">{distributionNow().map((x) => <li key={x.to} className={cx('flex justify-between', x.amount < 0 && 'text-bad')}><span>{x.to}</span><b>{cents(Math.abs(x.amount))}</b></li>)}</ul>
             )}
             {toJustify > 0.5 && <p className="mt-1 text-bad">Faltaron {cents(deficit)} y falta explicar de dónde salieron {cents(toJustify)}.</p>}
-            {Math.abs(left) > 0.5 && <p className="mt-1 text-warn">{left > 0 ? 'Falta asignar' : 'Te pasaste por'} {cents(Math.abs(left))}</p>}
+            {left > 0.5 && <p className="mt-1 text-muted">Los {cents(left)} sin asignar se quedan en {CARRY_DESTINATION}.</p>}
+            {left < -0.5 && <p className="mt-1 text-warn">Te pasaste por {cents(-left)}</p>}
           </div>
           {tot.pending > 0
             ? <p className="rounded-xl border border-warn/40 bg-warn/10 p-3 text-warn">Hay {tot.pending} líneas sin palomear (✓): <b>no se cuentan</b> en este corte. Puedes confirmar así o regresar a revisarlas.</p>
