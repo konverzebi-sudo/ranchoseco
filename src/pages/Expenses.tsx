@@ -3,7 +3,7 @@ import { addMonths } from 'date-fns'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Plus, Receipt, Trash2, Users, Wallet, UserCog, Calculator, Pencil, CalendarDays } from 'lucide-react'
-import { Badge, Button, Card, ConfirmDialog, Empty, ErrorState, Field, IconButton, Input, Modal, PageHeader, Select, Spinner, StatCard, Textarea, cx } from '@/components/ui'
+import { Explain, FoldCard, Badge, Button, ConfirmDialog, Empty, ErrorState, Field, IconButton, Input, Modal, PageHeader, Select, Spinner, StatCard, Textarea, cx } from '@/components/ui'
 import CategoryResults from '@/components/CategoryResults'
 import CoachCategoryPicker from '@/components/CoachCategoryPicker'
 import CoachModal from '@/components/CoachModal'
@@ -107,21 +107,16 @@ export default function Expenses() {
         <StatCard label="Sueldos de profesores al mes" value={money(Math.round(salariesMonthly))} icon={UserCog} hint={`${coachRows.length} profesores con sueldo`} />
       </div>
 
-      <div className="mb-8"><CategoryResults /></div>
+      <div className="mb-6"><CategoryResults /></div>
 
       {/* ---------- Gastos del mes ---------- */}
-      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <h2 className="font-display text-xl font-bold uppercase tracking-wide">Gastos del mes</h2>
-          <p className="text-sm text-muted">Gastos de una sola vez y pagos en partes que caen en el mes. Toca uno para editarlo.</p>
-        </div>
-        <div className="flex gap-2">
+      <FoldCard className="mb-6" title="Gastos del mes" subtitle="Gastos de una sola vez y pagos en partes que caen en el mes. Toca uno para editarlo."
+        actions={<>
           <Input type="month" value={viewMonth} onChange={(e) => setViewMonth(e.target.value || today().slice(0, 7))} className="h-9 w-40" aria-label="Mes" />
           <Button size="sm" icon={Plus} onClick={() => setModal({ mode: 'mes' })}>Agregar</Button>
-        </div>
-      </div>
+        </>}>
       {expenses.isLoading ? <Spinner /> : (
-        <Card className="mb-8 overflow-x-auto">
+        <div className="overflow-x-auto">
           <table className="table-base min-w-[640px]">
             <thead><tr><th>Fecha</th><th>Concepto</th><th>Tipo</th><th>Monto</th><th>Por alumno</th><th /></tr></thead>
             <tbody>
@@ -135,7 +130,7 @@ export default function Expenses() {
                     <td>{inst ? <Badge tone="brand">{label}</Badge> : <span className="text-sm text-muted">{label}</span>}
                       {inst && <p className="text-xs text-muted">Total {money(e.amount)}</p>}</td>
                     <td className="font-semibold">{cents(amount)}</td>
-                    <td>{activeCount ? cents(amount / activeCount) : '—'}</td>
+                    <td>{activeCount ? <Explain why={`${cents(amount)} ÷ ${activeCount} alumnos activos`}>{cents(amount / activeCount)}</Explain> : '—'}</td>
                     <td>
                       <div className="flex items-center justify-end gap-1">
                         {inst && (inst.paid_on
@@ -150,29 +145,25 @@ export default function Expenses() {
             <tfoot>
               <tr className="bg-ink-900">
                 <td colSpan={3} className="font-display text-lg font-bold uppercase">Total gastos del mes · {MONTHS[Number(viewMonth.slice(5, 7)) - 1]}</td>
-                <td className="font-display text-lg font-bold text-bad">{money(Math.round(monthTotal))}{monthPending > 0 && <span className="block font-sans text-xs font-normal text-warn">{cents(monthPending)} pendiente de pagar</span>}</td>
-                <td className="font-semibold text-brand">{activeCount ? cents(monthTotal / activeCount) : '—'}</td>
+                <td className="font-display text-lg font-bold text-bad"><Explain why={`Suma de los gastos de una sola vez y los pagos en partes de ${MONTHS[Number(viewMonth.slice(5, 7)) - 1].toLowerCase()}`}>{money(Math.round(monthTotal))}</Explain>{monthPending > 0 && <span className="block font-sans text-xs font-normal text-warn">{cents(monthPending)} pendiente de pagar</span>}</td>
+                <td className="font-semibold text-brand">{activeCount ? <Explain why={`${cents(monthTotal)} ÷ ${activeCount} alumnos activos`}>{cents(monthTotal / activeCount)}</Explain> : '—'}</td>
                 <td />
               </tr>
             </tfoot>
           </table>
-        </Card>
+        </div>
       )}
+      </FoldCard>
 
       <LoansSection />
 
       {/* ---------- Gastos administrativos ---------- */}
-      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <h2 className="font-display text-xl font-bold uppercase tracking-wide">Gastos administrativos</h2>
-          <p className="text-sm text-muted">Se repiten cada semana, quincena, mes o año. Toca uno para editarlo.</p>
-        </div>
-        <Button size="sm" icon={Plus} onClick={() => setModal({ mode: 'fijo' })}>Agregar gasto fijo</Button>
-      </div>
+      <FoldCard className="mb-6" title="Gastos administrativos" subtitle="Se repiten cada semana, quincena, mes o año. Toca uno para editarlo."
+        actions={<Button size="sm" icon={Plus} onClick={() => setModal({ mode: 'fijo' })}>Agregar gasto fijo</Button>}>
       {expenses.isLoading || students.isLoading ? <Spinner /> : !fixedList.length ? (
-        <Card className="mb-8"><Empty icon={Receipt} title="Aún no hay gastos fijos" text="Agrega regalías, renta, seguro, sueldos generales…" action={<Button icon={Plus} onClick={() => setModal({ mode: 'fijo' })}>Agregar gasto fijo</Button>} /></Card>
+        <div><Empty icon={Receipt} title="Aún no hay gastos fijos" text="Agrega regalías, renta, seguro, sueldos generales…" action={<Button icon={Plus} onClick={() => setModal({ mode: 'fijo' })}>Agregar gasto fijo</Button>} /></div>
       ) : (
-        <Card className="mb-8 overflow-x-auto">
+        <div className="overflow-x-auto">
           <table className="table-base min-w-[640px]">
             <thead><tr><th>Concepto</th><th>Monto</th><th>Al mes</th><th>Por alumno</th><th /></tr></thead>
             <tbody>
@@ -183,8 +174,8 @@ export default function Expenses() {
                     <td><button onClick={() => setModal({ mode: 'fijo', expense: e })} className="text-left font-medium hover:text-brand">{e.name}</button>
                       {e.notes && <p className="text-xs text-muted">{e.notes}</p>}</td>
                     <td>{money(e.amount)} <span className="text-xs text-muted">{EXPENSE_FREQUENCY[e.frequency].per}{e.frequency === 'anual' && e.paid_month ? ` · se paga en ${MONTHS[e.paid_month - 1].toLowerCase()}` : ''}{e.skip_months?.length ? ` · no se paga en ${e.skip_months.map((m) => MONTHS[Number(m) - 1].slice(0, 3).toLowerCase()).join(', ')}` : ''}</span></td>
-                    <td>{money(Math.round(monthly))}</td>
-                    <td>{activeCount ? <>{cents(Number(e.amount) / activeCount)} <span className="text-xs text-muted">{EXPENSE_FREQUENCY[e.frequency].per}</span></> : '—'}</td>
+                    <td><Explain why={perMonthWhy(Number(e.amount), e.frequency, monthly)}>{money(Math.round(monthly))}</Explain></td>
+                    <td>{activeCount ? <><Explain why={`${money(e.amount)} ${EXPENSE_FREQUENCY[e.frequency].per} ÷ ${activeCount} alumnos activos`}>{cents(Number(e.amount) / activeCount)}</Explain> <span className="text-xs text-muted">{EXPENSE_FREQUENCY[e.frequency].per}</span></> : '—'}</td>
                     <td>{rowActions(e, 'fijo')}</td>
                   </tr>
                 )
@@ -194,21 +185,21 @@ export default function Expenses() {
               <tr className="bg-ink-900">
                 <td className="font-display text-lg font-bold uppercase">Total gastos administrativos</td>
                 <td className="text-sm text-muted">{fixedList.filter((e) => e.active).length} gastos</td>
-                <td className="font-display text-lg font-bold text-bad">{money(Math.round(fixedMonthly))}</td>
-                <td className="font-semibold text-brand">{activeCount ? <>{cents(fixedMonthly / activeCount)} <span className="text-xs font-normal text-muted">al mes</span></> : '—'}</td>
+                <td className="font-display text-lg font-bold text-bad"><Explain why="Suma de la columna «Al mes» de todos los gastos administrativos activos">{money(Math.round(fixedMonthly))}</Explain></td>
+                <td className="font-semibold text-brand">{activeCount ? <><Explain why={`${cents(fixedMonthly)} ÷ ${activeCount} alumnos activos`}>{cents(fixedMonthly / activeCount)}</Explain> <span className="text-xs font-normal text-muted">al mes</span></> : '—'}</td>
                 <td />
               </tr>
             </tfoot>
           </table>
-        </Card>
+        </div>
       )}
+      </FoldCard>
 
-      <h2 className="mb-1 font-display text-xl font-bold uppercase tracking-wide">Profesores por categoría</h2>
-      <p className="mb-3 text-sm text-muted">Toca el nombre o el sueldo para abrir la ficha del profesor y su historial de sueldo.</p>
+      <FoldCard className="mb-6" title="Sueldos de profesores" subtitle="Toca el nombre o el sueldo para abrir la ficha del profesor y su historial de sueldo.">
       {coachRows.length === 0 ? (
-        <Card className="mb-8 p-5 text-sm text-muted">Registra el sueldo de cada profesor en <Link to="/profesores" className="text-brand hover:underline">Profesores</Link>.</Card>
+        <div className="p-5 text-sm text-muted">Registra el sueldo de cada profesor en <Link to="/profesores" className="text-brand hover:underline">Profesores</Link>.</div>
       ) : (
-        <Card className="mb-8 overflow-x-auto">
+        <div className="overflow-x-auto">
           <table className="table-base min-w-[640px]">
             <thead><tr><th>Profesor</th><th>Categorías</th><th>Sueldo</th><th>Al mes</th><th>Por alumno de su categoría</th></tr></thead>
             <tbody>
@@ -227,8 +218,8 @@ export default function Expenses() {
                       <span className="underline decoration-dotted group-hover:text-brand">{money(p!.amount)}</span> <span className="text-xs text-muted">{FREQUENCY_LABEL[p!.frequency]}</span>
                     </button>
                   </td>
-                  <td>{money(Math.round(monthly))}</td>
-                  <td>{catStudents ? <>{cents(Number(p!.amount) / catStudents)} <span className="text-xs text-muted">{FREQUENCY_LABEL[p!.frequency]}</span></> : <span className="text-xs text-muted">Se reparte entre todos</span>}</td>
+                  <td><Explain why={perMonthWhy(Number(p!.amount), p!.frequency, monthly)}>{money(Math.round(monthly))}</Explain></td>
+                  <td>{catStudents ? <><Explain why={`${money(p!.amount)} ${FREQUENCY_LABEL[p!.frequency]} ÷ ${catStudents} alumnos de sus categorías`}>{cents(Number(p!.amount) / catStudents)}</Explain> <span className="text-xs text-muted">{FREQUENCY_LABEL[p!.frequency]}</span></> : <span className="text-xs text-muted">Se reparte entre todos</span>}</td>
                 </tr>
               ))}
             </tbody>
@@ -242,15 +233,16 @@ export default function Expenses() {
                     <td className="font-display text-lg font-bold uppercase">Total sueldos</td>
                     <td className="text-sm text-muted">{coachRows.length} profesores</td>
                     <td className="font-semibold">{sameFreq ? <>{money(totalAmount)} <span className="text-xs font-normal text-muted">{FREQUENCY_LABEL[sameFreq]}</span></> : <span className="text-muted">—</span>}</td>
-                    <td className="font-display text-lg font-bold text-bad">{money(Math.round(salariesMonthly))}</td>
+                    <td className="font-display text-lg font-bold text-bad"><Explain why="Suma de la columna «Al mes» de todos los profesores">{money(Math.round(salariesMonthly))}</Explain></td>
                     <td>{activeCount ? <>{cents(salariesMonthly / activeCount)} <span className="text-xs text-muted">al mes por alumno (entre todos)</span></> : '—'}</td>
                   </tr>
                 )
               })()}
             </tfoot>
           </table>
-        </Card>
+        </div>
       )}
+      </FoldCard>
 
       {picking && <CoachCategoryPicker coachId={picking.id} coachName={picking.name} onClose={() => setPicking(null)} />}
       {editingCoach && <CoachModal coach={editingCoach} onClose={() => setEditingCoach(null)} />}
@@ -439,4 +431,16 @@ function ExpenseModal({ mode, expense, defaultMonth, onClose, nextOrder, onPayIn
       </form>
     </Modal>
   )
+}
+
+/** Explica cómo se pasa un monto a "al mes". */
+function perMonthWhy(amount: number, frequency: string, monthly: number) {
+  const m = money(Math.round(monthly))
+  switch (frequency) {
+    case 'semanal': return `${money(amount)} por semana × 4.33 semanas que tiene un mes en promedio (52 ÷ 12) = ${m}`
+    case 'quincenal': return `${money(amount)} por quincena × 2 = ${m}`
+    case 'anual': return `${money(amount)} al año ÷ 12 meses = ${m}`
+    case 'mensual': return monthly ? `${money(amount)} cada mes` : 'Este mes no se paga'
+    default: return `${m} en este mes`
+  }
 }

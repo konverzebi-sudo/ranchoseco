@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { addMonths } from 'date-fns'
 import { HandCoins, Pencil, Plus, Trash2 } from 'lucide-react'
-import { Badge, Button, Card, ConfirmDialog, Field, IconButton, Input, Modal, Textarea } from './ui'
+import { Badge, Button, ConfirmDialog, Field, IconButton, Input, Modal, Textarea, FoldCard } from './ui'
 import { useToast } from './toast'
 import { InstallmentsEditor, PayInstallmentModal } from './Installments'
 import { useExpenses } from '@/lib/api'
@@ -38,14 +38,9 @@ export default function LoansSection() {
 
   return (
     <>
-      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <h2 className="font-display text-xl font-bold uppercase tracking-wide">Préstamos a Rancho Seco</h2>
-          <p className="text-sm text-muted">Quién nos prestó, cuándo le pagamos y cuánto falta. Los pagos salen en el calendario y en el Dashboard.</p>
-        </div>
-        <Button size="sm" icon={Plus} onClick={() => setModal({})}>Agregar préstamo</Button>
-      </div>
-      <Card className="mb-8 overflow-x-auto">
+      <FoldCard className="mb-6" title="Préstamos a Rancho Seco" subtitle="Quién nos prestó, cuándo le pagamos y cuánto falta. Los pagos salen en el calendario y en el Dashboard."
+        actions={<Button size="sm" icon={Plus} onClick={() => setModal({})}>Agregar préstamo</Button>}>
+      <div className="overflow-x-auto">
         <table className="table-base min-w-[720px]">
           <thead><tr><th>Quién nos prestó</th><th>Prestó</th><th>Devuelto</th><th>Falta</th><th>Siguiente pago</th><th /></tr></thead>
           <tbody>
@@ -79,7 +74,8 @@ export default function LoansSection() {
             </tr></tfoot>
           )}
         </table>
-      </Card>
+      </div>
+      </FoldCard>
       {modal && <LoanModal loan={modal.loan} onClose={() => setModal(null)} />}
       {paying && <PayInstallmentModal expense={paying.expense} inst={paying.inst} onClose={() => setPaying(null)} />}
       <ConfirmDialog open={!!deleting} onClose={() => setDeleting(null)} onConfirm={remove} danger title="Eliminar préstamo" confirmLabel="Eliminar"

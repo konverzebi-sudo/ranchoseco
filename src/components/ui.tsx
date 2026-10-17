@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
-import { Loader2, Search, X, AlertTriangle, type LucideIcon } from 'lucide-react'
+import { Loader2, Search, X, AlertTriangle, ChevronDown, type LucideIcon } from 'lucide-react'
 import { initials } from '@/lib/format'
 import { BUCKETS, signedUrl } from '@/lib/supabase'
 
@@ -57,6 +57,38 @@ export function IconButton({ icon: Icon, label, className, ...rest }: ButtonHTML
       <Icon className="h-5 w-5" />
     </button>
   )
+}
+
+/**
+ * Recuadro con título adentro que se abre y se cierra como abanico al picar el título.
+ * Los botones de la derecha (agregar, mes, exportar) no lo cierran.
+ */
+export function FoldCard({ title, subtitle, actions, children, defaultOpen = true, className }: {
+  title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; children: ReactNode; defaultOpen?: boolean; className?: string
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className={cx('overflow-hidden rounded-2xl border border-ink-600 bg-ink-800', className)}>
+      <div className={cx('flex flex-wrap items-center justify-between gap-3 px-5 py-4', open && 'border-b border-ink-600')}>
+        <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="group flex min-w-0 flex-1 items-start gap-2 text-left">
+          <ChevronDown className={cx('mt-0.5 h-5 w-5 shrink-0 text-brand transition-transform duration-300', !open && '-rotate-90')} />
+          <span className="min-w-0">
+            <span className="block font-display text-lg font-bold uppercase tracking-wide group-hover:text-brand">{title}</span>
+            {subtitle && <span className="block text-xs text-muted">{subtitle}</span>}
+          </span>
+        </button>
+        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      </div>
+      <div className={cx('grid transition-[grid-template-rows] duration-300 ease-out', open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]')}>
+        <div className="min-h-0 overflow-hidden">{children}</div>
+      </div>
+    </div>
+  )
+}
+
+/** Un número que, al dejar el mouse encima un momento, explica de dónde sale. */
+export function Explain({ why, children, className }: { why: string; children: ReactNode; className?: string }) {
+  return <span title={why} className={cx('cursor-help underline decoration-ink-500 decoration-dotted underline-offset-4', className)}>{children}</span>
 }
 
 export function Card({ className, children, ...rest }: { className?: string; children: ReactNode } & React.HTMLAttributes<HTMLDivElement>) {

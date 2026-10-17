@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Download, Info } from 'lucide-react'
-import { Button, Card, Input, Spinner, cx } from './ui'
+import { Button, Explain, FoldCard, Input, Spinner, cx } from './ui'
 import { useCategories, useCoachCategories, useCoachPay, useCoaches, useExpenses, useExtraClasses, useFees, usePayments, useStudents } from '@/lib/api'
 import { money, monthName, today } from '@/lib/format'
 import { categoryResults } from '@/lib/finance'
@@ -51,17 +51,11 @@ export default function CategoryResults({ initialMonth }: { initialMonth?: strin
   )
 
   return (
-    <Card className="overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-600 px-5 py-4">
-        <div>
-          <h3 className="font-display text-lg font-bold uppercase tracking-wide">Ganancia real por categoría · {monthName(month + '-01')}</h3>
-          <p className="text-xs text-muted">Ingreso real − gastos generales (según sus alumnos) − sueldo del profe</p>
-        </div>
-        <div className="flex gap-2">
-          <Input type="month" value={month} onChange={(e) => setMonth(e.target.value || today().slice(0, 7))} className="h-9 w-40" aria-label="Mes" />
-          <Button size="sm" variant="secondary" icon={Download} onClick={doExport} disabled={!data}>Exportar</Button>
-        </div>
-      </div>
+    <FoldCard title={`Ganancia real por categoría · ${monthName(month + '-01')}`} subtitle="Ingreso real − gastos generales (según sus alumnos) − sueldo del profe"
+      actions={<>
+        <Input type="month" value={month} onChange={(e) => setMonth(e.target.value || today().slice(0, 7))} className="h-9 w-40" aria-label="Mes" />
+        <Button size="sm" variant="secondary" icon={Download} onClick={doExport} disabled={!data}>Exportar</Button>
+      </>}>
       {!data ? <Spinner /> : (
         <>
           <div className="overflow-x-auto">
@@ -84,13 +78,13 @@ export default function CategoryResults({ initialMonth }: { initialMonth?: strin
                       )) : <Link to="/profesores" className="text-xs text-warn hover:underline">Sin profesor asignado</Link>}
                     </td>
                     <td>{r.students}</td>
-                    <td>{num(r.income, 'ok')}</td>
-                    <td>{r.scholarships > 0 ? num(r.scholarships, 'warn') : <span className="text-muted">—</span>}</td>
+                    <td><Explain why={`Pagos recibidos en ${monthName(month + '-01').split(' ')[0].toLowerCase()} de los ${r.students} alumnos de ${r.name}`}>{num(r.income, 'ok')}</Explain></td>
+                    <td>{r.scholarships > 0 ? <Explain why={`Becas y descuentos de ${monthName(month + '-01').split(' ')[0].toLowerCase()} en ${r.name}: dinero que no se cobró`}>{num(r.scholarships, 'warn')}</Explain> : <span className="text-muted">—</span>}</td>
                     <td>{categories.data?.find((c) => c.id === r.id)?.is_extra
                       ? <span className="text-xs text-muted">No aplica<span className="block">(ya cuentan en su categoría)</span></span>
-                      : <>{num(-r.generalExpenses, 'bad')}<span className="block text-xs text-muted">{r.students} × {money(Math.round(data.perStudent * 100) / 100)}</span></>}</td>
-                    <td>{r.salaries > 0 ? <>{num(-r.salaries, 'bad')}{r.coaches.some((c) => c.share > 1) && <span className="block text-xs text-muted">{r.coaches.filter((c) => c.share > 1).map((c) => `${c.share === 2 ? 'mitad' : `1/${c.share}`} de ${money(r0(c.monthly))}`).join(' + ')}</span>}</> : <span className="text-muted">—</span>}</td>
-                    <td className="font-display text-lg font-bold">{num(r.result, r.result >= 0 ? 'ok' : 'bad')}</td>
+                      : <><Explain why={`Todos los gastos del mes (${money(r0(data.generalTotal))}) ÷ ${data.activeTotal} alumnos = ${money(Math.round(data.perStudent * 100) / 100)} por alumno × ${r.students} alumnos de ${r.name}`}>{num(-r.generalExpenses, 'bad')}</Explain><span className="block text-xs text-muted">{r.students} × {money(Math.round(data.perStudent * 100) / 100)}</span></>}</td>
+                    <td>{r.salaries > 0 ? <><Explain why={r.coaches.map((c) => `${c.name} gana ${money(r0(c.monthly))} al mes${c.share > 1 ? ` y da ${c.share} categorías: ${money(r0(c.monthly))} ÷ ${c.share} = ${money(r0(c.monthly / c.share))}` : ''}`).join(' · ')}>{num(-r.salaries, 'bad')}</Explain>{r.coaches.some((c) => c.share > 1) && <span className="block text-xs text-muted">{r.coaches.filter((c) => c.share > 1).map((c) => `${c.share === 2 ? 'mitad' : `1/${c.share}`} de ${money(r0(c.monthly))}`).join(' + ')}</span>}</> : <span className="text-muted">—</span>}</td>
+                    <td className="font-display text-lg font-bold"><Explain why={`${money(r0(r.income))} de ingreso − ${money(r0(r.generalExpenses))} de gastos generales − ${money(r0(r.salaries))} de sueldo = ${money(r0(r.result))}`}>{num(r.result, r.result >= 0 ? 'ok' : 'bad')}</Explain></td>
                   </tr>
                 ))}
                 <tr className="bg-ink-900">
@@ -119,6 +113,6 @@ export default function CategoryResults({ initialMonth }: { initialMonth?: strin
           </div>
         </>
       )}
-    </Card>
+    </FoldCard>
   )
 }
