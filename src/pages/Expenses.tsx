@@ -161,10 +161,10 @@ export default function Expenses() {
 
       <LoansSection />
 
-      {/* ---------- Gastos generales fijos ---------- */}
+      {/* ---------- Gastos administrativos ---------- */}
       <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 className="font-display text-xl font-bold uppercase tracking-wide">Gastos generales fijos</h2>
+          <h2 className="font-display text-xl font-bold uppercase tracking-wide">Gastos administrativos</h2>
           <p className="text-sm text-muted">Se repiten cada semana, quincena, mes o año. Toca uno para editarlo.</p>
         </div>
         <Button size="sm" icon={Plus} onClick={() => setModal({ mode: 'fijo' })}>Agregar gasto fijo</Button>
@@ -192,7 +192,7 @@ export default function Expenses() {
             </tbody>
             <tfoot>
               <tr className="bg-ink-900">
-                <td className="font-display text-lg font-bold uppercase">Total gastos fijos</td>
+                <td className="font-display text-lg font-bold uppercase">Total gastos administrativos</td>
                 <td className="text-sm text-muted">{fixedList.filter((e) => e.active).length} gastos</td>
                 <td className="font-display text-lg font-bold text-bad">{money(Math.round(fixedMonthly))}</td>
                 <td className="font-semibold text-brand">{activeCount ? <>{cents(fixedMonthly / activeCount)} <span className="text-xs font-normal text-muted">al mes</span></> : '—'}</td>
