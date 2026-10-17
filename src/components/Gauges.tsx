@@ -42,7 +42,8 @@ export function GaugeGrid({ title, subtitle, actions, children }: { title: strin
         </div>
         {actions}
       </div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">{children}</div>
+      {/* Se acomodan solos: si cabe, todos en un renglón; si la ventana es chica, bajan a más renglones */}
+      <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(8.5rem, 1fr))' }}>{children}</div>
     </Card>
   )
 }
