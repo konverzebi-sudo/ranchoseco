@@ -107,7 +107,9 @@ export default function PeriodCards({ period, onDetail }: { period: Period; onDe
     const late = sum(openFees, (f) => Number(f.late_fee))
     const extras = sum(openFees.filter((f) => f.concept !== 'Mensualidad'), (f) => Number(f.balance))
     // 6. Nuevos y 7. Clases muestra
-    const nuevos = st.filter((s) => s.status !== 'muestra' && s.enrolled_at >= from && s.enrolled_at <= to)
+    // Alumnos nuevos: los que se registraron en la plataforma en esas fechas (sin contar los que siguen a prueba)
+    const regDay = (s: (typeof st)[number]) => toISODate(new Date(s.created_at))
+    const nuevos = st.filter((s) => s.status !== 'muestra' && regDay(s) >= from && regDay(s) <= to)
     const muestras = st.filter((s) => (s.trial_on && s.trial_on >= from && s.trial_on <= to) || (s.status === 'muestra' && s.created_at.slice(0, 10) >= from && s.created_at.slice(0, 10) <= to))
     // 8. Asistencia
     const rows = (att.data ?? []).filter((a) => a.status !== 'justificada')
@@ -134,7 +136,7 @@ export default function PeriodCards({ period, onDetail }: { period: Period; onDe
       pend: { total: sum(pend, (f) => Number(f.balance)), students: new Set(pend.map((f) => f.student_id)).size, detail: { title: 'Pendiente por cobrar', total: sum(pend, (f) => Number(f.balance)), note: `Lo que ya debía estar pagado al ${short(to)}`,
         groups: group(pend, (f) => monthName(f.period)).map(([k, fs]) => ({ label: k, total: sum(fs, (f) => Number(f.balance)), rows: fs.map((f) => ({ label: name.get(f.student_id) ?? 'Alumno', sub: `${f.concept} · venció el ${short(f.due_date)}`, value: Number(f.balance), link: `/alumnos/${f.student_id}?tab=pagos` })) })) } as Detail },
       late, extras,
-      nuevos: { n: nuevos.length, detail: { title: 'Alumnos nuevos', total: `${nuevos.length}`, note: period.label, groups: group(nuevos, (s) => catName.get(s.category_id ?? '') ?? 'Sin categoría').map(([k, xs]) => ({ label: k, total: `${xs.length}`, rows: xs.map((s) => ({ label: s.full_name, sub: `Entró el ${short(s.enrolled_at)}`, link: `/alumnos/${s.id}` })) })) } as Detail },
+      nuevos: { n: nuevos.length, detail: { title: 'Alumnos nuevos', total: `${nuevos.length}`, note: period.label, groups: group(nuevos, (s) => catName.get(s.category_id ?? '') ?? 'Sin categoría').map(([k, xs]) => ({ label: k, total: `${xs.length}`, rows: xs.map((s) => ({ label: s.full_name, sub: `Se registró el ${short(regDay(s))}${s.status === 'baja' ? ' · ya está de baja' : ''}`, link: `/alumnos/${s.id}` })) })) } as Detail },
       muestras: { n: muestras.length, detail: { title: 'Clases muestra', total: `${muestras.length}`, note: period.label, groups: [{ label: 'Niños que vinieron a probar', rows: muestras.map((s) => ({ label: s.full_name, sub: `${s.trial_on ? `Clase el ${short(s.trial_on)} · ` : ''}${s.status === 'muestra' ? 'Sigue a prueba' : s.status === 'activo' ? 'Ya se inscribió' : s.status}`, link: `/alumnos/${s.id}` })) }] } as Detail },
       att: { pct, detail: { title: 'Asistencia', total: pct == null ? '—' : `${pct}%`, note: `${came.length} asistencias de ${rows.length} (sin contar justificadas) · ${period.label}`,
         groups: group(rows, (a) => catOf(a.student_id)).map(([k, xs]) => { const c = xs.filter((a) => a.status === 'presente' || a.status === 'retardo').length; return { label: k, total: `${Math.round((c / xs.length) * 100)}%`, rows: [{ label: `${c} de ${xs.length} asistencias`, value: `${Math.round((c / xs.length) * 100)}%` }] } }) } as Detail },
