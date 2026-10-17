@@ -413,7 +413,7 @@ export default function WeeklyCut() {
               <div className="overflow-x-auto">
                 <table className="table-base min-w-[960px]">
                   <thead><tr><th>Corte</th><th>Había</th><th>Entró</th><th>Salió</th><th>Se apartó</th><th>Debería haber</th><th>Contado</th><th>¿Cuadra?</th><th /></tr></thead>
-                  <tbody>{cuts.data.map((c, i) => <CutRow key={c.id} cut={c} prev={cuts.data![i + 1]} onEdit={() => startEdit(c)} onDelete={() => setDeleting(c)} />)}</tbody>
+                  <tbody>{cuts.data.map((c, i) => <CutRow key={c.id} cut={c} prev={cuts.data![i + 1]} focus={params.get('ver') === c.id} onEdit={() => startEdit(c)} onDelete={() => setDeleting(c)} />)}</tbody>
                 </table>
               </div>
             )}
@@ -876,11 +876,15 @@ function ManualLineForm({ type, defaultDate, onAdd, onCancel }: { type: CutItem[
   )
 }
 
-function CutRow({ cut: c, prev, onEdit, onDelete }: { cut: CashCut; prev?: CashCut; onEdit: () => void; onDelete: () => void }) {
+function CutRow({ cut: c, prev, focus, onEdit, onDelete }: { cut: CashCut; prev?: CashCut; focus?: boolean; onEdit: () => void; onDelete: () => void }) {
   const qc = useQueryClient()
   const toast = useToast()
   const [open, setOpen] = useState<CutItem['type'] | null>(null)
-  const [expanded, setExpanded] = useState(false)
+  // Si se llegó desde otro lado a "ver este corte", se abre solo y la página baja hasta él
+  const [expanded, setExpanded] = useState(!!focus)
+  useEffect(() => {
+    if (focus) setTimeout(() => document.getElementById(`corte-${c.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300)
+  }, [focus, c.id])
   const [adding, setAdding] = useState(false)
   const addLine = async (it: CutItem) => {
     try {
@@ -906,7 +910,7 @@ function CutRow({ cut: c, prev, onEdit, onDelete }: { cut: CashCut; prev?: CashC
   const show = (t: CutItem['type']) => { setExpanded(true); setOpen(open === t ? null : t); setAdding(false) }
   return (
     <>
-      <tr className={cx('cursor-pointer', expanded && 'bg-ink-900')} onClick={() => setExpanded(!expanded)}>
+      <tr id={`corte-${c.id}`} className={cx('cursor-pointer', expanded && 'bg-ink-900', focus && 'ring-2 ring-inset ring-brand')} onClick={() => setExpanded(!expanded)}>
         <td>
           <p className="flex items-center gap-1.5 whitespace-nowrap font-bold"><ChevronDown className={cx('h-4 w-4 shrink-0 text-brand transition-transform', !expanded && '-rotate-90')} />{date(c.period_to, "d 'de' MMM")}</p>
           <p className="whitespace-nowrap pl-5 text-xs text-muted">desde {date(c.period_from, "d 'de' MMM")}</p>
