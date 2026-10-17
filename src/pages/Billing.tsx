@@ -82,7 +82,8 @@ export default function Billing() {
 
   const totals = useMemo(() => {
     const active = new Set((students.data ?? []).filter((s) => s.status === 'activo').map((s) => s.id))
-    const open = (fees.data ?? []).filter((f) => Number(f.balance) > 0 && active.has(f.student_id))
+    // Si se escogió un mes en el filtro, las tarjetas muestran sólo ese mes
+    const open = (fees.data ?? []).filter((f) => Number(f.balance) > 0 && active.has(f.student_id) && (!period || f.period === period))
     return {
       review: open.filter((f) => f.status === 'por_confirmar').reduce((a, f) => a + Number(f.balance), 0),
       reviewCount: open.filter((f) => f.status === 'por_confirmar').length,
@@ -94,7 +95,7 @@ export default function Billing() {
       collected: (payments.data ?? []).filter((p) => p.paid_at.startsWith(month)).reduce((a, p) => a + Number(p.amount), 0),
       open,
     }
-  }, [fees.data, students.data, payments.data, soon, month, monthFrom])
+  }, [fees.data, students.data, payments.data, soon, month, monthFrom, period])
 
   const lateTotal = totals.lateFees.reduce((a, f) => a + Number(f.late_fee), 0)
   const setFilter = (f: Filter) => setParams({ f }, { replace: true })
@@ -117,10 +118,10 @@ export default function Billing() {
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
         <StatCard label={`Cobrado en ${monthName(monthFrom).split(' ')[0].toLowerCase()}`} value={money(totals.collected)} icon={TrendingUp} tone="ok" onClick={() => setView('pagos')} />
-        <StatCard label="Vencido" value={money(totals.overdue)} icon={AlertTriangle} tone={totals.overdue ? 'bad' : undefined} hint={lateTotal > 0 ? `Incluye ${money(lateTotal)} de recargos` : undefined} onClick={() => { setView('alumnos'); setFilter('vencido') }} />
-        <StatCard label="¿Beca? Por confirmar" value={money(totals.review)} icon={HelpCircle} hint={`${totals.reviewCount} cargos por revisar`} onClick={() => { setView('alumnos'); setFilter('por_confirmar') }} />
+        <StatCard label={period ? `Vencido de ${monthName(period).split(' ')[0].toLowerCase()}` : 'Vencido'} value={money(totals.overdue)} icon={AlertTriangle} tone={totals.overdue ? 'bad' : undefined} hint={lateTotal > 0 ? `Incluye ${money(lateTotal)} de recargos` : undefined} onClick={() => { setView('alumnos'); setFilter('vencido') }} />
+        <StatCard label={period ? `¿Beca? Por confirmar de ${monthName(period).split(' ')[0].toLowerCase()}` : '¿Beca? Por confirmar'} value={money(totals.review)} icon={HelpCircle} hint={`${totals.reviewCount} cargos por revisar`} onClick={() => { setView('alumnos'); setFilter('por_confirmar') }} />
         <StatCard label={`Becado en ${monthName(monthFrom).split(' ')[0].toLowerCase()}`} value={money(totals.scholarshipMonth)} icon={GraduationCap} hint={`Temporada: ${money(totals.scholarshipAll)}`} onClick={() => setView('resumen')} />
-        <StatCard label="Total pendiente" value={money(totals.pending)} icon={Wallet} onClick={() => { setView('alumnos'); setFilter('pendiente') }} />
+        <StatCard label={period ? `Pendiente de ${monthName(period).split(' ')[0].toLowerCase()}` : 'Total pendiente'} hint={period ? undefined : 'De todos los meses'} value={money(totals.pending)} icon={Wallet} onClick={() => { setView('alumnos'); setFilter('pendiente') }} />
       </div>
 
       <div className="mb-4"><Segmented value={view} onChange={setView} options={[{ id: 'alumnos', label: 'Por alumno' }, { id: 'resumen', label: 'Por categoría y periodo' }, { id: 'pagos', label: 'Pagos recibidos' }]} /></div>
@@ -141,7 +142,7 @@ export default function Billing() {
                 <option value="">Todas las categorías</option>
                 {categories.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </Select>
-              <Select value={period} onChange={(e) => setPeriod(e.target.value)} aria-label="Periodo">
+              <Select value={period} onChange={(e) => { const v = e.target.value; setPeriod(v); setMonth((v || monthStart).slice(0, 7)) }} aria-label="Periodo">
                 <option value="">Todos los meses</option>
                 {periods.map((p) => <option key={p} value={p}>{monthName(p)}</option>)}
               </Select>
