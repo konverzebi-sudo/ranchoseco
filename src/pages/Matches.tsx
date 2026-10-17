@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Plus, Trophy, ChevronRight, MapPin, Copy } from 'lucide-react'
 import { Badge, Button, Card, Empty, ErrorState, Field, Input, Modal, PageHeader, Segmented, Select, Spinner, Textarea, cx } from '@/components/ui'
@@ -26,7 +26,8 @@ export default function Matches() {
   const [cat, setCat] = useState('')
   const [when, setWhen] = useState<'proximos' | 'jugados'>('proximos')
   const matches = useMatches({ categoryId: cat || undefined })
-  const [creating, setCreating] = useState(false)
+  const [params] = useSearchParams()
+  const [creating, setCreating] = useState(params.get('nuevo') === '1')
   const nav = useNavigate()
   const t = today()
   // El profe sólo ve los partidos de sus categorías

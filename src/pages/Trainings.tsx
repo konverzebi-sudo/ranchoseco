@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { addDays, subDays } from 'date-fns'
 import { Plus, Dumbbell, Pencil, ClipboardCheck, Trash2, CalendarClock } from 'lucide-react'
@@ -26,7 +26,8 @@ export default function Trainings() {
   // El profe sólo ve los entrenamientos de sus categorías
   const myTrainings = (trainings.data ?? []).filter((t) => !role.isProfe || role.categoryIds.includes(t.category_id))
   const att = useAttendanceDetail({ categoryId: cat || undefined, from })
-  const [editing, setEditing] = useState<Training | 'new' | null>(null)
+  const [params] = useSearchParams()
+  const [editing, setEditing] = useState<Training | 'new' | null>(params.get('nuevo') === '1' ? 'new' : null)
   const nav = useNavigate()
 
   const attByTraining = useMemo(() => {

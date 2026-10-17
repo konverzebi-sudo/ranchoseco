@@ -2,10 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { startOfMonth } from 'date-fns'
-import { Check, X, Clock, FileCheck2, CheckCheck, ClipboardCheck, Download, Plus, Loader2, ShieldCheck, AlertTriangle, MessageSquare, Save } from 'lucide-react'
+import { Wallet, Check, X, Clock, FileCheck2, CheckCheck, ClipboardCheck, Download, Plus, Loader2, ShieldCheck, AlertTriangle, MessageSquare, Save } from 'lucide-react'
 import { Avatar, Badge, Button, Card, Empty, ErrorState, Field, Input, PageHeader, Segmented, Select, Spinner, Textarea, cx } from '@/components/ui'
 import { useToast } from '@/components/toast'
-import { useAttendanceChecks, useAttendanceDetail, useAttendanceFor, useCategories, useExtraClasses, useStudents, useTeam, useTrainings } from '@/lib/api'
+import { useAccounts, useAttendanceChecks, useAttendanceDetail, useAttendanceFor, useCategories, useExtraClasses, useStudents, useTeam, useTrainings } from '@/lib/api'
 import { getActor, getActorId } from '@/lib/actor'
 import { useRole } from '@/lib/role'
 import { supabase, unwrap } from '@/lib/supabase'
@@ -49,6 +49,9 @@ function useDefaultWho(): [Who, (w: Who) => void] {
 
 function TakeAttendance() {
   const role = useRole()
+  // Niños con pago vencido: se marcan para que el profe se lo comente a sus papás (sin cantidades)
+  const accounts = useAccounts()
+  const owing = new Set((accounts.data ?? []).filter((a) => Number(a.overdue) > 0).map((a) => a.student_id))
   const allCategories = useCategories()
   const categories = { ...allCategories, data: role.isProfe ? allCategories.data?.filter((c) => role.categoryIds.includes(c.id)) : allCategories.data }
   const students = useStudents()
@@ -272,6 +275,7 @@ function TakeAttendance() {
                       <Avatar name={s.full_name} path={s.photo_path} size={40} />
                       <Link to={`/alumnos/${s.id}`} className="min-w-0 flex-1 truncate font-medium hover:text-brand">{s.full_name}</Link>
                       {s.status === 'muestra' && <Badge tone="info">Clase muestra</Badge>}
+                      {owing.has(s.id) && <span title="Tiene un pago vencido: coméntalo con sus papás" className="inline-flex items-center gap-1 rounded-full bg-bad/15 px-2 py-0.5 text-xs font-semibold text-bad"><Wallet className="h-3.5 w-3.5" /> Pago pendiente</span>}
                       {!isAdmin && prof && (
                         <button onClick={() => setNoteOpen(noteOpen === s.id ? null : s.id)} className={cx('rounded-lg p-1.5', prof.notes ? 'text-brand' : 'text-muted hover:text-fg')} aria-label="Nota del niño" title="Nota del niño">
                           <MessageSquare className="h-4 w-4" />
