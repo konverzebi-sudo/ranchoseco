@@ -4,6 +4,7 @@ import { es } from 'date-fns/locale'
 import { CalendarRange, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button, cx } from './ui'
 import { date, toISODate, today } from '@/lib/format'
+const FIRST_DAY = '2026-08-01'
 
 export interface Preset { id: string; label: string; from: string; to: string }
 const DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
@@ -25,6 +26,8 @@ export function basicPresets(): Preset[] {
     { id: 'semana-pasada', label: 'La semana pasada', from: iso(addDays(wk, -7)), to: iso(addDays(wk, -1)) },
     { id: 'mes', label: 'Este mes', from: iso(startOfMonth(t)), to: iso(t) },
     { id: 'mes-pasado', label: 'El mes pasado', from: iso(startOfMonth(lastMonth)), to: iso(endOfMonth(lastMonth)) },
+    // Todo: desde el primer pago registrado (agosto 2026) hasta hoy
+    { id: 'todo', label: 'Todo', from: FIRST_DAY, to: iso(t) },
   ]
 }
 
