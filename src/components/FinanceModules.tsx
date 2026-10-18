@@ -1,7 +1,8 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Receipt, ShieldCheck, UserPlus, GraduationCap, Vault, PiggyBank, Banknote, Wallet, Shirt } from 'lucide-react'
 import { StatCard } from '@/components/ui'
+import { DetailModal, type Detail } from '@/components/CardDetails'
 import { useCashCuts, useCoachPay, useCoaches, useExpenses, useFees, usePayments, useSettings, useStudents } from '@/lib/api'
 import { chivasConfig, openingCash, savingFunds } from '@/lib/cashcut'
 import { DISCOUNT_LABEL, discountsFor, expenseEntries, insuranceSaving, isNewEnrollment } from '@/lib/finance'
@@ -66,22 +67,27 @@ export function useFinanceCards(onDetail?: (k: 'seguro' | 'nuevas' | 'becas') =>
 }
 
 /** Las cajas según el último corte: caja chica, apartado de próximos gastos, caja de ahorro y total. */
-/** Tarjeta de una caja: total acumulado, cuánto se agregó en el último corte y en qué está apartado. */
-function BoxCard({ label, icon: Icon, total, now, items, tone, onClick }: {
-  label: string; icon: typeof Wallet; total: number; now?: number; items?: { name: string; value: number }[]; tone?: string; onClick?: () => void
+/** Tarjeta de una caja: sólo título y total; al picarla se abre su desglose. */
+function BoxCard({ label, icon: Icon, total, now, items, tone, hint, onClick }: {
+  label: string; icon: typeof Wallet; total: number; now?: number; items?: { name: string; value: number }[]; tone?: string; hint?: string; onClick?: () => void
 }) {
+  const [open, setOpen] = useState(false)
   const r = (n: number) => money(Math.round(n)).replace('.00', '')
+  const detail: Detail = {
+    title: label, total,
+    note: now != null ? `Acumulado ${r(total)} · se agregaron ${r(now)} en el último corte` : hint,
+    groups: items && items.length ? [{ label: 'En qué está', total, rows: items.map((x) => ({ label: x.name, value: x.value })) }] : [],
+    go: { label: 'Ir al corte de caja', to: '/corte' },
+  }
   return (
-    <button type="button" onClick={onClick} className="rounded-2xl border border-ink-600 bg-ink-800 p-4 text-left transition hover:border-ink-500 hover:bg-ink-700">
-      <div className="flex items-start justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wider text-muted">{label}</p><Icon className="h-5 w-5 text-brand" /></div>
-      <p className={'mt-1 font-display text-3xl font-bold leading-none ' + (tone ?? '')}>{r(total)}</p>
-      <p className="mt-1 text-sm text-muted">Acumulado{now != null ? <> · <b className="text-ok">+ {r(now)}</b> en el último corte</> : ''}</p>
-      {items && items.length > 0 && (
-        <ul className="mt-2 space-y-0.5 border-t border-ink-600 pt-2 text-sm">
-          {items.map((x) => <li key={x.name} className="flex justify-between gap-2"><span className="truncate text-muted">{x.name}</span><b>{r(x.value)}</b></li>)}
-        </ul>
-      )}
-    </button>
+    <>
+      <button type="button" onClick={() => (onClick ? onClick() : setOpen(true))} title="Pica para ver el desglose"
+        className="rounded-2xl border border-ink-600 bg-ink-800 p-4 text-left transition hover:border-ink-500 hover:bg-ink-700">
+        <div className="flex items-start justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wider text-muted">{label}</p><Icon className="h-5 w-5 text-brand" /></div>
+        <p className={'mt-2 font-display text-3xl font-bold leading-none ' + (tone ?? '')}>{r(total)}</p>
+      </button>
+      {open && <DetailModal d={detail} onClose={() => setOpen(false)} />}
+    </>
   )
 }
 
@@ -133,16 +139,15 @@ export function useCashBoxCards(onDetail?: (k: 'total' | 'chica' | 'apartado' | 
       now: { ahorro: lastNow((k) => k === 'x:caja-ahorro'), apartado: lastNow((k, n) => k !== 'x:caja-ahorro' && !isChivasKey(k, n)), chivas: chivasLast },
     }
   }, [cuts.data, expenses.data, payments.data, coaches.data, coachPay.data, fees.data, settings.data])
-  const since = b.last ? `Al corte del ${b.last.cut_date.slice(8, 10)}/${b.last.cut_date.slice(5, 7)}` : 'Aún no hay cortes'
   const go = (k: 'total' | 'chica' | 'apartado' | 'ahorro' | 'chivas') => () => (onDetail ? onDetail(k) : nav('/corte'))
   return {
     total: <BoxCard key="total" label="Caja total" icon={Wallet} total={b.chica + b.ahorro + b.apartado + b.chivas} now={b.now.ahorro + b.now.apartado + b.now.chivas}
-      items={[{ name: 'Caja chica', value: b.chica }, { name: 'Caja de ahorro', value: b.ahorro }, { name: 'Apartado próx. gastos', value: b.apartado }, { name: 'Caja Chivas', value: b.chivas }]} onClick={go('total')} />,
-    chivas: <BoxCard key="chivas" label="Caja Chivas" icon={Vault} total={b.chivas} now={b.now.chivas} items={b.chivasItems} tone="text-bad" onClick={go('chivas')} />,
-    chica: <StatCard key="chica" label="Caja chica" value={money(Math.round(b.chica))} icon={Banknote} tone={b.chica < 0 ? 'bad' : undefined}
-      hint={b.chica < 0 ? 'En negativo: salió más de lo que había' : `Lo de esta semana que no ha entrado en ningún corte · desde el ${since.replace('Al corte del ', '')}`} onClick={go('chica')} />,
-    apartado: <BoxCard key="apartado" label="Apartado próx. gastos" icon={Vault} total={b.apartado} now={b.now.apartado} items={b.apartItems} tone="text-brand" onClick={go('apartado')} />,
+      items={[{ name: 'Caja chica', value: b.chica }, { name: 'Caja de ahorro', value: b.ahorro }, { name: 'Apartado próx. gastos', value: b.apartado }, { name: 'Caja Chivas', value: b.chivas }]} />,
+    chivas: <BoxCard key="chivas" label="Caja Chivas" icon={Vault} total={b.chivas} now={b.now.chivas} items={b.chivasItems} tone="text-bad" />,
+    chica: <BoxCard key="chica" label="Caja chica" icon={Banknote} total={b.chica} tone={b.chica < 0 ? 'text-bad' : undefined} onClick={go('chica')} />,
+    apartado: <BoxCard key="apartado" label="Apartado próx. gastos" icon={Vault} total={b.apartado} now={b.now.apartado} items={b.apartItems} tone="text-brand" />,
     uniformes: <StatCard key="uniformes" label="Fondo de uniformes" value={money(Math.round(b.uniformes))} icon={Shirt} hint="Playeras, altas en Chivas, uniformes y credenciales" onClick={() => (onDetail ? onDetail('uniformes') : nav('/uniformes'))} />,
-    ahorro: <BoxCard key="ahorro" label="Caja de ahorro" icon={PiggyBank} total={b.ahorro} now={b.now.ahorro} tone="text-ok" onClick={go('ahorro')} />,
+    ahorro: <BoxCard key="ahorro" label="Caja de ahorro" icon={PiggyBank} total={b.ahorro} now={b.now.ahorro} tone="text-ok"
+      items={[{ name: 'Lo ahorrado antes', value: b.ahorro - b.now.ahorro }, { name: 'Lo que se agregó en el último corte', value: b.now.ahorro }]} />,
   }
 }
