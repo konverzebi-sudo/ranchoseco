@@ -85,11 +85,11 @@ export function ProfeGauges({ month, picker }: { month: string; picker?: React.R
 }
 
 /** Fondos y sueldos de profes (se usa en el corte de caja, con su propio mes). */
-export default function FundProgress({ month: initial, now }: { funds?: FundBar[]; month?: string; now?: (key: string) => number }) {
+export default function FundProgress({ month: initial, chivasNew }: { month?: string; chivasNew?: React.ReactNode }) {
   const [month, setMonth] = useState(initial ?? today().slice(0, 7))
   return (
     <div className="space-y-3">
-      <ChivasDistribution now={now} />
+      <ChivasDistribution>{chivasNew}</ChivasDistribution>
       <ProfeGauges month={month} picker={<Input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className="h-10 w-44" aria-label="Mes" />} />
     </div>
   )
@@ -100,7 +100,7 @@ export default function FundProgress({ month: initial, now }: { funds?: FundBar[
  * seguro y libre). El seguro además muestra qué tanto lleva de su meta.
  * `now` suma lo que se está apartando en el corte que se está haciendo.
  */
-export function ChivasDistribution({ now = () => 0 }: { now?: (key: string) => number }) {
+export function ChivasDistribution({ now = () => 0, children }: { now?: (key: string) => number; children?: React.ReactNode }) {
   const cuts = useCashCuts()
   const expenses = useExpenses()
   const settings = useSettings()
@@ -122,13 +122,8 @@ export function ChivasDistribution({ now = () => 0 }: { now?: (key: string) => n
     }
   }, [cuts.data, expenses.data, settings.data, now])
   const total = d.parts.reduce((a, p) => a + p.value, 0)
-  return (
-    <Card className="p-5">
-      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="font-display text-lg font-bold uppercase tracking-wide">Distribución de Caja Chivas</h3>
-        <p className="text-lg">Total <b className="font-display text-2xl text-brand">{cents(total)}</b></p>
-      </div>
-      <div className="grid items-center gap-4 lg:grid-cols-[1fr_auto]">
+  const acumulado = (
+    <div className="grid items-center gap-4 lg:grid-cols-[1fr_auto]">
         {total > 0 ? <PieChart data={d.parts} max={4} /> : <p className="text-sm text-muted">Todavía no se ha guardado nada en la Caja Chivas. Se llena con las inscripciones al hacer el corte.</p>}
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:w-[34rem]">
           {d.parts.map((p) => (
@@ -143,6 +138,25 @@ export function ChivasDistribution({ now = () => 0 }: { now?: (key: string) => n
           </div>
         </div>
       </div>
+  )
+  return (
+    <Card className="border-2 border-bad/70 p-5">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="font-display text-lg font-bold uppercase tracking-wide">Distribución de Caja Chivas</h3>
+        <p className="text-lg">Ya acumulado <b className="font-display text-2xl text-brand">{cents(total)}</b></p>
+      </div>
+      {children ? (
+        <div className="grid gap-4 2xl:grid-cols-2">
+          <section className="rounded-2xl border border-ink-600 p-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">Ya acumulado</p>
+            {acumulado}
+          </section>
+          <section className="rounded-2xl border border-bad/40 bg-bad/5 p-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-bad">Nuevo a acumular en este corte</p>
+            {children}
+          </section>
+        </div>
+      ) : acumulado}
     </Card>
   )
 }

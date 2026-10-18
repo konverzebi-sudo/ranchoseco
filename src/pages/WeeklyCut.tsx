@@ -131,6 +131,13 @@ export default function WeeklyCut() {
     const seguro = chivasOn.seguro ? Math.min(room, sp.reduce((a, x) => a + (x ? Number(x.seguro) : cfg.seguro), 0)) : 0
     return { playeras, credenciales, seguro, libre: Math.max(0, Math.round((inscripciones - playeras - credenciales - seguro) * 100) / 100) }
   }, [inscCount, inscripciones, seguroFund?.target, seguroFund?.saved, payments.data, inscItems.map((i) => i.key).join(), chivasOn, cfg.playera, cfg.credencial, cfg.seguro]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Nuevo a acumular en la Caja Chivas (lista con palomitas); lo ya acumulado se ve a la izquierda
+  const chivasRows: { id: 'credencial' | 'playera' | 'seguro' | 'libre'; label: string; unit: string; field?: 'chivas_credencial' | 'chivas_playera'; price?: number; key: string | undefined; extra?: string }[] = [
+    { id: 'credencial', label: 'Credenciales', unit: `${cents(cfg.credencial)} c/u`, field: 'chivas_credencial', price: cfg.credencial, key: CHIVAS_CREDENCIALES_KEY },
+    { id: 'playera', label: 'Playeras de entrenamiento', unit: `${cents(cfg.playera)} c/u`, field: 'chivas_playera', price: cfg.playera, key: CHIVAS_PLAYERAS_KEY },
+    { id: 'seguro', label: 'Seguro', unit: `${cents(cfg.seguroAnual)} ÷ ${cfg.meta} alumnos = ${cents(cfg.seguro)} c/u`, key: seguroFund?.key },
+    { id: 'libre', label: 'Libre en Caja Chivas', unit: 'lo que queda', key: CHIVAS_KEY },
+  ]
   // Doble clic en el precio: cambia cuánto va de cada inscripción (de aquí en adelante)
   const editPrice = async (field: 'chivas_credencial' | 'chivas_playera', label: string, current: number) => {
     const v = window.prompt(`¿Cuánto va de cada inscripción a ${label}? (aplica de aquí en adelante)`, String(current))
@@ -524,7 +531,35 @@ export default function WeeklyCut() {
             <StatCard label="Gastos" value={cents(tot.outflow)} icon={TrendingDown} tone="bad" hint="Sueldos, gastos y pagos de préstamos" />
             <StatCard label="Resultado de estas fechas" value={cents(tot.income - tot.outflow)} icon={Scale} tone={tot.income >= tot.outflow ? 'ok' : 'bad'} hint={tot.income >= tot.outflow ? 'Entró más de lo que salió (sin contar la caja chica)' : 'Salió más de lo que entró (sin contar la caja chica)'} />
           </div>
-          <FundProgress month={to.slice(0, 7)} now={(k) => { const f = funds.find((x) => x.key === k); return f ? savedNow(f) : 0 }} />
+          <FundProgress month={to.slice(0, 7)} chivasNew={
+            <>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm">Inscripciones de este corte <b className="font-display text-xl text-brand">{inscCount} · {cents(inscripciones)}</b></p>
+                {inscCount > 0 && <button className="text-sm text-brand hover:underline" onClick={applyChivas}>Repartir otra vez</button>}
+              </div>
+              <ul className="divide-y divide-ink-700 rounded-xl border border-ink-600 bg-ink-800">
+                {chivasRows.map((r) => {
+                  const on = r.id === 'libre' || chivasOn[r.id]
+                  return (
+                    <li key={r.id} className={cx('grid grid-cols-[2rem_1fr_8rem] items-center gap-3 px-3 py-2.5', !on && 'opacity-50')}>
+                      {r.id === 'libre' ? <span className="text-center text-lg text-brand">=</span> : (
+                        <input type="checkbox" checked={on} onChange={(e) => setChivasOn({ ...chivasOn, [r.id]: e.target.checked })} className="h-5 w-5 accent-[#F2E30A]" aria-label={r.label} />
+                      )}
+                      <div className="min-w-0">
+                        <p className="font-semibold">{r.label}</p>
+                        <p className="text-sm text-muted">{r.field
+                          ? <span onDoubleClick={() => editPrice(r.field!, r.id === 'credencial' ? 'credencial' : 'playera', r.price!)} title="Doble clic para cambiar el precio (aplica de aquí en adelante)" className="cursor-pointer underline decoration-dotted">{r.unit}</span>
+                          : r.unit}</p>
+                      </div>
+                      {r.key ? <Input type="number" min="0" inputMode="decimal" value={saveAmt[r.key] ?? ''} placeholder="0" aria-label={r.label} disabled={!on}
+                        onChange={(e) => setSaveAmt({ ...saveAmt, [r.key!]: e.target.value })} className="h-10 text-right text-base font-semibold" /> : <span />}
+                    </li>
+                  )
+                })}
+              </ul>
+              <p className="mt-2 text-sm">Se suma a la Caja Chivas: <b className="text-brand">{cents(chivasRows.reduce((a, r) => a + (r.key ? Number(saveAmt[r.key] || 0) : 0), 0))}</b> <span className="text-muted">· doble clic en un precio para cambiarlo</span></p>
+            </>
+          } />
 
           <div className="grid gap-6 xl:grid-cols-2">
             <ReviewList type="entrada" title="Entradas" />
@@ -591,49 +626,7 @@ export default function WeeklyCut() {
                       </div>
                     </li>
                   )
-                  if (f.kind === 'chivas') {
-                    if (f.key !== CHIVAS_KEY) return null
-                    const byKey = (k: string) => funds.find((x) => x.key === k)
-                    // Lista: el 100% de las inscripciones va a la Caja Chivas y se divide así
-                    const rows: { id: 'credencial' | 'playera' | 'seguro' | 'libre'; label: string; unit?: string; edit?: () => void; key: string | undefined; acc: number; extra?: string }[] = [
-                      { id: 'credencial', label: 'Credenciales', unit: `${cents(cfg.credencial)} c/u`, edit: () => editPrice('chivas_credencial', 'credencial', cfg.credencial), key: CHIVAS_CREDENCIALES_KEY, acc: (byKey(CHIVAS_CREDENCIALES_KEY)?.saved ?? 0) },
-                      { id: 'playera', label: 'Playeras de entrenamiento', unit: `${cents(cfg.playera)} c/u`, edit: () => editPrice('chivas_playera', 'playera', cfg.playera), key: CHIVAS_PLAYERAS_KEY, acc: (byKey(CHIVAS_PLAYERAS_KEY)?.saved ?? 0) },
-                      { id: 'seguro', label: 'Seguro', unit: `${cents(cfg.seguroAnual)} ÷ ${cfg.meta} alumnos = ${cents(cfg.seguro)} c/u`, key: seguroFund?.key, acc: seguroFund?.saved ?? 0, extra: seguroFund ? `lleva ${cents((seguroFund.saved) + savedNow(seguroFund))} de ${cents(seguroFund.target)}` : undefined },
-                      { id: 'libre', label: 'Libre en Caja Chivas', unit: 'lo que queda', key: CHIVAS_KEY, acc: f.saved },
-                    ]
-                    return (
-                      <li key={f.key} className="bg-brand/5 px-4 py-4">
-                        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                          <p className="flex flex-wrap items-center gap-2 font-display text-xl font-bold">Caja Chivas <Badge tone="brand">100% de las inscripciones</Badge></p>
-                          <p className="text-right"><span className="text-sm text-muted">Inscripciones de este corte </span><b className="font-display text-2xl text-brand">{inscCount} · {cents(inscripciones)}</b>
-                            {inscCount > 0 && <button className="ml-2 text-sm text-brand hover:underline" onClick={applyChivas}>Repartir otra vez</button>}</p>
-                        </div>
-                        <ul className="divide-y divide-ink-700 rounded-xl border border-ink-600 bg-ink-800">
-                          {rows.map((r) => {
-                            const on = r.id === 'libre' || chivasOn[r.id]
-                            return (
-                              <li key={r.id} className={cx('grid items-center gap-3 px-3 py-2.5 sm:grid-cols-[2rem_1fr_9rem_10rem]', !on && 'opacity-50')}>
-                                {r.id === 'libre' ? <span className="text-center text-lg text-brand">=</span> : (
-                                  <input type="checkbox" checked={on} onChange={(e) => setChivasOn({ ...chivasOn, [r.id]: e.target.checked })} className="h-5 w-5 accent-[#F2E30A]" aria-label={r.label} />
-                                )}
-                                <div className="min-w-0">
-                                  <p className="font-semibold">{r.label}</p>
-                                  <p className="text-sm text-muted">
-                                    {r.edit ? <span onDoubleClick={r.edit} title="Doble clic para cambiar el precio (aplica de aquí en adelante)" className="cursor-pointer underline decoration-dotted">{r.unit}</span> : r.unit}
-                                    {r.extra ? ` · ${r.extra}` : ''}
-                                  </p>
-                                </div>
-                                <p className="text-sm text-muted">Acumulado <b className="text-white">{cents(r.acc)}</b></p>
-                                {r.key ? <Input type="number" min="0" inputMode="decimal" value={saveAmt[r.key] ?? ''} placeholder="0" aria-label={r.label} disabled={!on}
-                                  onChange={(e) => setSaveAmt({ ...saveAmt, [r.key!]: e.target.value })} className="h-10 text-right text-base font-semibold" /> : <span />}
-                              </li>
-                            )
-                          })}
-                        </ul>
-                        <p className="mt-2 text-sm">Caja Chivas en total: <b className="text-brand">{cents(chivasTotal)}</b> <span className="text-muted">· doble clic en un precio para cambiarlo</span></p>
-                      </li>
-                    )
-                  }
+                  if (f.kind === 'chivas') return null
                   if (f.kind === 'seguro') return null
                   if (f.kind === 'ahorro') return (
                     <li key={f.key} className="grid gap-3 bg-ok/5 px-5 py-3 md:grid-cols-[1fr_220px_150px]">
