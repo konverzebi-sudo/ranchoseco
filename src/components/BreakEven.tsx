@@ -53,6 +53,7 @@ export default function BreakEvenCard() {
       ] },
     ],
     go: { label: 'Ir a gastos', to: '/gastos' },
+    pie: d.costs.map((x) => ({ label: x.name, value: x.monthly })),
   }
   return (
     <Card className="p-5">

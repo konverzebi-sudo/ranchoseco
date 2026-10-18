@@ -4,6 +4,7 @@ import { ChevronDown } from 'lucide-react'
 import { startOfMonth } from 'date-fns'
 import { Button, Modal, cx } from './ui'
 import { CollectButton } from './WhatsAppButtons'
+import { PieChart } from './Gauges'
 import {
   type StudentRow, useAttendanceDetail, useCashCuts, useCategories, useCoachCategories, useCoachPay, useCoaches, useExpenses, useFees, usePayments, useStudents,
 } from '@/lib/api'
@@ -18,7 +19,7 @@ export type CardKind =
 
 export interface Row { label: string; sub?: string; value?: number | string; link?: string; tone?: 'bad' | 'ok'; /** Alumno para cobrarle por WhatsApp */ wa?: StudentRow }
 export interface Group { label: string; total?: number | string; rows: Row[] }
-export interface Detail { title: string; total?: number | string; note?: string; groups: Group[]; go?: { label: string; to: string } }
+export interface Detail { title: string; total?: number | string; note?: string; groups: Group[]; go?: { label: string; to: string }; /** Gráfica de pastel arriba del desglose */ pie?: { label: string; value: number }[] }
 
 const fmt = (v: number | string | undefined) => (typeof v === 'number' ? money(v) : v ?? '')
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
@@ -261,6 +262,7 @@ export function DetailModal({ d, onClose }: { d: Detail; onClose: () => void }) 
           </div>
         )}
         {d.note && <p className="text-sm text-muted">{d.note}</p>}
+        {d.pie && <PieChart data={d.pie} />}
         {d.groups.length === 0 && <p className="py-6 text-center text-muted">No hay nada que mostrar.</p>}
         <div className="space-y-3">
           {d.groups.map((g, i) => (

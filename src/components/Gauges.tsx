@@ -47,3 +47,38 @@ export function GaugeGrid({ title, subtitle, actions, children }: { title: strin
     </Card>
   )
 }
+
+const PIE_COLORS = ['#E5D400', '#22C55E', '#3B82F6', '#EF4444', '#A855F7', '#F97316', '#14B8A6', '#9CA3AF']
+
+/** Pastel con el % de cada concepto (los más chicos se juntan en "Otros"). */
+export function PieChart({ data, max = 7 }: { data: { label: string; value: number }[]; max?: number }) {
+  const sorted = [...data].filter((d) => d.value > 0).sort((a, b) => b.value - a.value)
+  const top = sorted.slice(0, max)
+  const rest = sorted.slice(max).reduce((a, d) => a + d.value, 0)
+  const parts = rest > 0 ? [...top, { label: 'Otros', value: rest }] : top
+  const total = parts.reduce((a, d) => a + d.value, 0)
+  if (!total) return null
+  const R = 60, C = 2 * Math.PI * R
+  let acc = 0
+  return (
+    <div className="flex flex-wrap items-center gap-5 rounded-2xl border border-ink-600 p-4">
+      <svg viewBox="0 0 160 160" className="h-40 w-40 shrink-0 -rotate-90" role="img" aria-label="Gráfica de pastel">
+        {parts.map((d, i) => {
+          const len = (d.value / total) * C
+          const el = <circle key={d.label} cx="80" cy="80" r={R} fill="none" stroke={PIE_COLORS[i % PIE_COLORS.length]} strokeWidth="36" strokeDasharray={`${len} ${C - len}`} strokeDashoffset={-acc}><title>{`${d.label}: ${Math.round((d.value / total) * 100)}%`}</title></circle>
+          acc += len
+          return el
+        })}
+      </svg>
+      <ul className="min-w-[12rem] flex-1 space-y-1.5 text-sm">
+        {parts.map((d, i) => (
+          <li key={d.label} className="flex items-center gap-2">
+            <span className="h-3 w-3 shrink-0 rounded-sm" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
+            <span className="min-w-0 flex-1 truncate">{d.label}</span>
+            <b>{Math.round((d.value / total) * 100)}%</b>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
