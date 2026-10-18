@@ -604,7 +604,7 @@ export default function WeeklyCut() {
             })()}
             {funds.length === 0 ? <p className="px-5 py-6 text-center text-sm text-muted">No hay pagos grandes por juntar.</p> : (
               <div className="overflow-x-auto">
-                <table className="table-base min-w-[760px]">
+                <table className="table-base">
                   <thead><tr><th>Próximo pago</th><th>Total</th><th>En # días</th><th>Mensual</th><th>Sugerencia</th><th>Se guarda</th></tr></thead>
                   <tbody>
                     {[...funds].filter((f) => f.kind === 'fijo' || f.kind === 'parte' || f.kind === 'prestamo').sort((x, y) => y.suggested - x.suggested).map((f) => {
@@ -626,8 +626,10 @@ export default function WeeklyCut() {
                             <td><b>{days === 0 ? 'Hoy' : `${days} ${days === 1 ? 'día' : 'días'}`}</b><span className="block text-xs text-muted">{date(f.due, "d 'de' MMM")}</span></td>
                             <td>{monthly != null ? cents(monthly) : '—'}</td>
                             <td><span title={`Sugerencia: ${how}`} className="inline-block rounded-lg bg-brand px-2.5 py-1 font-display text-lg font-bold text-ink">{cents(f.suggested)}</span></td>
-                            <td><Input type="number" min="0" inputMode="decimal" value={saveAmt[f.key] ?? ''} placeholder="0" aria-label={`Se guarda para ${f.name}`}
-                              onChange={(e) => setSaveAmt({ ...saveAmt, [f.key]: e.target.value })} className="h-10 w-32 text-right text-base font-semibold" /></td>
+                            <td><div className="w-36"><Input type="number" min="0" inputMode="decimal" value={saveAmt[f.key] ?? ''} placeholder={String(f.suggested)} aria-label={`Se guarda para ${f.name}`}
+                              title="En gris va la sugerencia: pica el cuadro para usarla o escribe otra cantidad"
+                              onFocus={() => { if (saveAmt[f.key] == null || saveAmt[f.key] === '') setSaveAmt((x) => ({ ...x, [f.key]: String(f.suggested) })) }}
+                              onChange={(e) => setSaveAmt({ ...saveAmt, [f.key]: e.target.value })} className="h-10 text-right text-base font-semibold placeholder:font-normal placeholder:text-muted" /></div></td>
                           </tr>
                           {/* Línea de progreso: separa un pago del otro */}
                           <tr>
@@ -638,9 +640,8 @@ export default function WeeklyCut() {
                                   <div className="absolute inset-y-0 left-0 rounded-full bg-brand" style={{ width: `${pctBefore}%` }} />
                                 </div>
                                 <span className="shrink-0 whitespace-nowrap text-sm"><b className={pctAfter >= 100 ? 'text-ok' : 'text-brand'}>Vas al {Math.round(pctAfter)}%</b> <span className="text-muted">· guardado {cents(f.saved)}{now > 0 ? ` + ${cents(now)} hoy` : ''}</span></span>
-                                <button type="button" onClick={() => setSaveAmt({ ...saveAmt, [f.key]: String(f.suggested) })} className="shrink-0 whitespace-nowrap rounded-lg bg-brand px-2.5 py-1 text-sm font-semibold text-ink hover:brightness-105">Usar sugerencia</button>
                                 <button type="button" onClick={() => setSaveAmt({ ...saveAmt, [f.key]: '0' })} className="shrink-0 text-sm text-muted hover:underline">Nada</button>
-                                <Input value={saveNote[f.key] ?? ''} onChange={(e) => setSaveNote({ ...saveNote, [f.key]: e.target.value })} placeholder="Nota" className="h-8 w-48 shrink-0 text-sm" aria-label="Nota" />
+                                <div className="w-56 shrink-0"><Input value={saveNote[f.key] ?? ''} onChange={(e) => setSaveNote({ ...saveNote, [f.key]: e.target.value })} placeholder="Nota" className="h-8 text-sm" aria-label="Nota" /></div>
                               </div>
                             </td>
                           </tr>
