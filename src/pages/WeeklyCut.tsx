@@ -435,7 +435,13 @@ export default function WeeklyCut() {
           <Button variant="secondary" icon={Download} onClick={doExport} disabled={loading}>Exportar</Button>
           <Button variant="secondary" icon={Printer} onClick={() => window.print()} className="hidden sm:inline-flex">Imprimir</Button>
           <Button icon={Vault} onClick={() => setConfirming(true)} disabled={loading}>{editingCut ? 'Guardar corrección' : 'Hacer corte ahora'}</Button>
-        </>} />
+        </>}
+        bar={<div className="flex flex-wrap items-end gap-3">
+        <RangePicker label="Fechas del corte" from={from} to={to}
+          onChange={(a, b) => { const p = new URLSearchParams(params); p.set('desde', a); p.set('hasta', b); setParams(p, { replace: true }) }} />
+        <p className="pb-2 text-sm text-muted">{prev ? <>Último corte: <b className="text-white">{date(prev.cut_date)}</b> · {carry < 0 ? <span className="text-bad">quedó en negativo {cents(carry)} (faltó dinero)</span> : <>se quedaron {cents(carry)} en caja chica</>}</> : 'Todavía no hay cortes: el primero empieza este lunes.'}</p>
+        {!editingCut && (params.get('desde') || params.get('hasta')) && <Button size="sm" variant="ghost" onClick={() => setParams({}, { replace: true })}>Desde el último corte</Button>}
+        </div>} />
       {/* Primero las dudas de caja, luego los cortes anteriores y hasta abajo el corte nuevo */}
       <div className="mb-6"><CashDoubtsCard /></div>
       <div className="mb-6 space-y-6">
@@ -510,12 +516,6 @@ export default function WeeklyCut() {
           <Button size="sm" variant="ghost" onClick={resetDraft}>Cancelar corrección</Button>
         </Card>
       )}
-      <Card className="mb-5 flex flex-wrap items-end gap-3 p-4">
-        <RangePicker label="Fechas del corte (inicio y día del corte)" from={from} to={to}
-          onChange={(a, b) => { const p = new URLSearchParams(params); p.set('desde', a); p.set('hasta', b); setParams(p, { replace: true }) }} />
-        <p className="pb-2 text-sm text-muted">{prev ? <>Último corte: <b className="text-white">{date(prev.cut_date)}</b> · {carry < 0 ? <span className="text-bad">quedó en negativo {cents(carry)} (faltó dinero)</span> : <>se quedaron {cents(carry)} en caja chica</>}</> : 'Todavía no hay cortes: el primero empieza este lunes.'}</p>
-        {!editingCut && (params.get('desde') || params.get('hasta')) && <Button size="sm" variant="ghost" onClick={() => setParams({}, { replace: true })}>Desde el último corte</Button>}
-      </Card>
 
       {loading ? <Spinner /> : (
         <div className="space-y-6">
