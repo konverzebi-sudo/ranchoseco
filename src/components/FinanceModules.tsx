@@ -2,8 +2,8 @@ import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Receipt, ShieldCheck, UserPlus, GraduationCap, Vault, PiggyBank, Banknote, Wallet, Shirt } from 'lucide-react'
 import { StatCard } from '@/components/ui'
-import { useCashCuts, useCoachPay, useCoaches, useExpenses, useFees, usePayments, useStudents } from '@/lib/api'
-import { openingCash, savingFunds } from '@/lib/cashcut'
+import { useCashCuts, useCoachPay, useCoaches, useExpenses, useFees, usePayments, useSettings, useStudents } from '@/lib/api'
+import { chivasConfig, openingCash, savingFunds } from '@/lib/cashcut'
 import { DISCOUNT_LABEL, discountsFor, expenseEntries, insuranceSaving, isNewEnrollment } from '@/lib/finance'
 import { money, today } from '@/lib/format'
 
@@ -66,6 +66,25 @@ export function useFinanceCards(onDetail?: (k: 'seguro' | 'nuevas' | 'becas') =>
 }
 
 /** Las cajas según el último corte: caja chica, apartado de próximos gastos, caja de ahorro y total. */
+/** Tarjeta de una caja: total acumulado, cuánto se agregó en el último corte y en qué está apartado. */
+function BoxCard({ label, icon: Icon, total, now, items, tone, onClick }: {
+  label: string; icon: typeof Wallet; total: number; now?: number; items?: { name: string; value: number }[]; tone?: string; onClick?: () => void
+}) {
+  const r = (n: number) => money(Math.round(n)).replace('.00', '')
+  return (
+    <button type="button" onClick={onClick} className="rounded-2xl border border-ink-600 bg-ink-800 p-4 text-left transition hover:border-ink-500 hover:bg-ink-700">
+      <div className="flex items-start justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wider text-muted">{label}</p><Icon className="h-5 w-5 text-brand" /></div>
+      <p className={'mt-1 font-display text-3xl font-bold leading-none ' + (tone ?? '')}>{r(total)}</p>
+      <p className="mt-1 text-sm text-muted">Acumulado{now != null ? <> · <b className="text-ok">+ {r(now)}</b> en el último corte</> : ''}</p>
+      {items && items.length > 0 && (
+        <ul className="mt-2 space-y-0.5 border-t border-ink-600 pt-2 text-sm">
+          {items.map((x) => <li key={x.name} className="flex justify-between gap-2"><span className="truncate text-muted">{x.name}</span><b>{r(x.value)}</b></li>)}
+        </ul>
+      )}
+    </button>
+  )
+}
+
 export function useCashBoxCards(onDetail?: (k: 'total' | 'chica' | 'apartado' | 'ahorro' | 'uniformes' | 'chivas') => void) {
   const nav = useNavigate()
   const cuts = useCashCuts()
@@ -73,6 +92,8 @@ export function useCashBoxCards(onDetail?: (k: 'total' | 'chica' | 'apartado' | 
   const payments = usePayments()
   const coaches = useCoaches()
   const coachPay = useCoachPay()
+  const fees = useFees()
+  const settings = useSettings()
   const b = useMemo(() => {
     const list = cuts.data ?? []
     const last = list[0]
@@ -85,20 +106,43 @@ export function useCashBoxCards(onDetail?: (k: 'total' | 'chica' | 'apartado' | 
     const salio = months.flatMap((month) => expenseEntries({ month, expenses: expenses.data ?? [], coaches: coaches.data ?? [], coachPay: coachPay.data ?? [] }))
       .filter((e) => e.date > since && e.date <= t && !e.pending && (e.from ?? 'caja') === 'caja').reduce((a, e) => a + e.amount, 0)
     const ahorro = funds.find((f) => f.kind === 'ahorro')?.saved ?? 0
-    const apartado = funds.filter((f) => f.kind !== 'ahorro' && f.kind !== 'uniformes' && f.kind !== 'chivas' && f.kind !== 'seguro').reduce((a, f) => a + f.saved, 0)
+    const apartFunds = funds.filter((f) => f.kind !== 'ahorro' && f.kind !== 'chivas' && f.kind !== 'seguro')
+    const apartado = apartFunds.reduce((a, f) => a + f.saved, 0)
     const uniformes = funds.find((f) => f.kind === 'uniformes')?.saved ?? 0
-    const chivas = funds.filter((f) => f.kind === 'chivas' || f.kind === 'seguro').reduce((a, f) => a + f.saved, 0)
-    return { last, chica: openingCash(last, list[1]) + cobrado - salio, ahorro, apartado, uniformes, chivas }
-  }, [cuts.data, expenses.data, payments.data, coaches.data, coachPay.data])
+    // Lo que se agregó en el último corte a cada caja
+    const lastNow = (pred: (k: string, name: string) => boolean) => (last?.savings ?? []).filter((x) => pred(x.key, x.name)).reduce((a, x) => a + Number(x.saved), 0)
+    const isChivasKey = (k: string, name: string) => k.startsWith('x:chivas') || /seguro/i.test(name)
+    // Caja Chivas: sólo con las inscripciones cobradas, en sus 4 mini cajas
+    const seguroGasto = Number((expenses.data ?? []).find((e) => /seguro/i.test(e.name) && e.active)?.amount ?? 0)
+    const cfg = chivasConfig(settings.data, seguroGasto)
+    const inscFee = new Set((fees.data ?? []).filter((f) => /^inscripci[oó]n/i.test(f.concept)).map((f) => f.id))
+    const ins = (payments.data ?? []).filter((p) => inscFee.has(p.fee_id))
+    const part = (xs: typeof ins) => {
+      const total = xs.reduce((a, p) => a + Number(p.amount), 0)
+      const cred = xs.reduce((a, p) => a + (p.split ? Number(p.split.credencial) : cfg.credencial), 0)
+      const play = xs.reduce((a, p) => a + (p.split ? Number(p.split.playera) : cfg.playera), 0)
+      const seg = Math.min(cfg.seguroAnual, xs.reduce((a, p) => a + (p.split ? Number(p.split.seguro) : cfg.seguro), 0))
+      return { total, items: [{ name: 'Credenciales', value: cred }, { name: 'Playeras de entrenamiento', value: play }, { name: 'Seguro', value: seg }, { name: 'Libre en Caja Chivas', value: Math.max(0, total - cred - play - seg) }] }
+    }
+    const chivasAll = part(ins)
+    const chivasLast = last ? part(ins.filter((p) => p.paid_at >= last.period_from && p.paid_at <= last.period_to)).total : 0
+    return {
+      last, chica: openingCash(last, list[1]) + cobrado - salio, ahorro, apartado, uniformes, chivas: chivasAll.total,
+      apartItems: apartFunds.filter((f) => f.saved > 0.5).map((f) => ({ name: f.kind === 'uniformes' ? 'Fondo de uniformes' : f.name, value: f.saved })),
+      chivasItems: chivasAll.items,
+      now: { ahorro: lastNow((k) => k === 'x:caja-ahorro'), apartado: lastNow((k, n) => k !== 'x:caja-ahorro' && !isChivasKey(k, n)), chivas: chivasLast },
+    }
+  }, [cuts.data, expenses.data, payments.data, coaches.data, coachPay.data, fees.data, settings.data])
   const since = b.last ? `Al corte del ${b.last.cut_date.slice(8, 10)}/${b.last.cut_date.slice(5, 7)}` : 'Aún no hay cortes'
   const go = (k: 'total' | 'chica' | 'apartado' | 'ahorro' | 'chivas') => () => (onDetail ? onDetail(k) : nav('/corte'))
   return {
-    total: <StatCard key="total" label="Caja total" value={money(Math.round(b.chica + b.ahorro + b.apartado + b.chivas + b.uniformes))} icon={Wallet} tone="brand" hint="Todas las cajas (con el fondo de uniformes)" onClick={go('total')} />,
-    chivas: <StatCard key="chivas" label="Caja Chivas" value={money(Math.round(b.chivas))} icon={Vault} hint="Inscripciones: playeras, credenciales, seguro y libre" onClick={go('chivas')} />,
+    total: <BoxCard key="total" label="Caja total" icon={Wallet} total={b.chica + b.ahorro + b.apartado + b.chivas} now={b.now.ahorro + b.now.apartado + b.now.chivas}
+      items={[{ name: 'Caja chica', value: b.chica }, { name: 'Caja de ahorro', value: b.ahorro }, { name: 'Apartado próx. gastos', value: b.apartado }, { name: 'Caja Chivas', value: b.chivas }]} onClick={go('total')} />,
+    chivas: <BoxCard key="chivas" label="Caja Chivas" icon={Vault} total={b.chivas} now={b.now.chivas} items={b.chivasItems} tone="text-bad" onClick={go('chivas')} />,
     chica: <StatCard key="chica" label="Caja chica" value={money(Math.round(b.chica))} icon={Banknote} tone={b.chica < 0 ? 'bad' : undefined}
       hint={b.chica < 0 ? 'En negativo: salió más de lo que había' : `Lo de esta semana que no ha entrado en ningún corte · desde el ${since.replace('Al corte del ', '')}`} onClick={go('chica')} />,
-    apartado: <StatCard key="apartado" label="Apartado de próximos gastos" value={money(Math.round(b.apartado))} icon={Vault} hint="Regalías, renta, partes y préstamos" onClick={go('apartado')} />,
+    apartado: <BoxCard key="apartado" label="Apartado próx. gastos" icon={Vault} total={b.apartado} now={b.now.apartado} items={b.apartItems} tone="text-brand" onClick={go('apartado')} />,
     uniformes: <StatCard key="uniformes" label="Fondo de uniformes" value={money(Math.round(b.uniformes))} icon={Shirt} hint="Playeras, altas en Chivas, uniformes y credenciales" onClick={() => (onDetail ? onDetail('uniformes') : nav('/uniformes'))} />,
-    ahorro: <StatCard key="ahorro" label="Caja de ahorro" value={money(Math.round(b.ahorro))} icon={PiggyBank} tone="ok" hint="Lo ahorrado en semanas anteriores" onClick={go('ahorro')} />,
+    ahorro: <BoxCard key="ahorro" label="Caja de ahorro" icon={PiggyBank} total={b.ahorro} now={b.now.ahorro} tone="text-ok" onClick={go('ahorro')} />,
   }
 }
