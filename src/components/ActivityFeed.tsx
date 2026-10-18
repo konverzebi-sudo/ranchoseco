@@ -35,8 +35,8 @@ export default function ActivityFeed() {
   const [who, setWho] = useState('')
   const q = useActivity(day)
   const rows = q.data ?? []
-  const people = useMemo(() => [...new Set(rows.map((r) => r.actor ?? 'Sin identificar'))].sort((a, b) => a.localeCompare(b, 'es')), [rows])
-  const shown = rows.filter((r) => (group === 'Todo' || kindOf(r.kind).group === group) && (!who || (r.actor ?? 'Sin identificar') === who))
+  const people = useMemo(() => [...new Set(rows.map((r) => r.actor ?? 'Sistema'))].sort((a, b) => a.localeCompare(b, 'es')), [rows])
+  const shown = rows.filter((r) => (group === 'Todo' || kindOf(r.kind).group === group) && (!who || (r.actor ?? 'Sistema') === who))
   const isToday = day === today()
 
   return (
@@ -84,7 +84,7 @@ export default function ActivityFeed() {
                     {r.body && <span className="block break-words text-xs text-muted">{r.body}</span>}
                   </span>
                   <span className={cx('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium', r.actor ? 'bg-brand-dim text-brand' : 'bg-ink-700 text-muted')}>
-                    {r.actor ?? 'Sin identificar'}
+                    {r.actor ?? 'Sistema'}
                   </span>
                 </>
               )
