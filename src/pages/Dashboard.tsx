@@ -6,7 +6,6 @@ import { Avatar, Button, Card, ErrorState, PageHeader, Spinner, Badge } from '@/
 import { CollectButton } from '@/components/WhatsAppButtons'
 import { monthNameOf, useCashBoxCards } from '@/components/FinanceModules'
 import { ChivasDistribution, ProfeGauges } from '@/components/FundProgress'
-import { Gauge, GaugeGrid } from '@/components/Gauges'
 import PeriodCards, { usePeriod } from '@/components/PeriodCards'
 import BreakEvenCard from '@/components/BreakEven'
 import { PayInstallmentModal } from '@/components/Installments'
@@ -180,13 +179,6 @@ function AdminDashboard() {
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             {boxes.chica}{boxes.ahorro}{boxes.apartado}{boxes.chivas}{boxes.total}
           </div>
-          <GaugeGrid title={`Pagos por categoría · mensualidad de ${monthNameOf(period.to.slice(0, 7) + '-01')}`} subtitle="Qué tan lleno va el cobro de la mensualidad de cada categoría">
-            {data.payByCategory.map((c) => (
-              <Gauge key={c.id} pct={c.pct} label={c.name} onClick={() => nav('/cobranza?f=pendiente')}
-                title={`${c.paidCount} de ${c.students} alumnos ya pagaron · cobrado ${money(c.paid)} de ${money(c.due)} · faltan ${money(c.due - c.paid)}`}
-                sub={<>{c.paidCount} de {c.students} pagaron<span className="block">{money(Math.round(c.paid)).replace('.00', '')} de {money(Math.round(c.due)).replace('.00', '')}</span></>} />
-            ))}
-          </GaugeGrid>
           <ProfeGauges month={period.to.slice(0, 7)} />
           <BreakEvenCard />
           <PeriodCards period={period} onDetail={setDetail} />

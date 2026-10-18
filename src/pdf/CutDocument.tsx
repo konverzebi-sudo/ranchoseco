@@ -61,11 +61,12 @@ const s = StyleSheet.create({
   footer: { position: 'absolute', bottom: 18, left: 28, right: 28, flexDirection: 'row', justifyContent: 'space-between', color: GRAY, fontSize: 7.5, borderTopWidth: 1, borderTopColor: LINE, paddingTop: 6 },
 })
 
-function Kpi({ label, value, color }: { label: string; value: string; color: string }) {
+function Kpi({ label, value, color, sub }: { label: string; value: string; color: string; sub?: string }) {
   return (
     <View style={[s.kpi, { borderTopColor: color }]}>
       <Text style={s.kpiLabel}>{label}</Text>
       <Text style={[s.kpiValue, { color }]}>{value}</Text>
+      {sub && <Text style={{ fontSize: 7, color: GRAY, marginTop: 2 }}>{sub}</Text>}
     </View>
   )
 }
@@ -180,12 +181,29 @@ export function CutDocument({ r, logo, generatedAt, boxes }: { r: CutSummary; lo
             <View style={s.section} wrap={false}>
               <Text style={s.sTitle}>Caja de ahorro y próximos pagos</Text>
               <View style={s.kpis}>
-                <Kpi label="Caja chica" value={m(boxes.chica)} color={GRAY} />
-                <Kpi label="Caja de ahorro" value={m(boxes.ahorro)} color={OK} />
-                <Kpi label="Apartado próx. gastos" value={m(boxes.apartado)} color={SAVE} />
-                <Kpi label="Caja Chivas" value={m(boxes.chivas)} color={'#B8A900'} />
-                <Kpi label="Caja total" value={m(boxes.total)} color={INK} />
+                <Kpi label="Caja chica" value={m(boxes.chica)} color={'#B8A900'} sub="queda para el siguiente corte" />
+                <Kpi label="Caja de ahorro" value={m(boxes.ahorro)} color={'#B8A900'} sub={`+ ${m(boxes.now.ahorro)} en este corte`} />
+                <Kpi label="Apartado próx. gastos" value={m(boxes.apartado)} color={'#B8A900'} sub={`+ ${m(boxes.now.apartado)} en este corte`} />
+                <Kpi label="Caja Chivas" value={m(boxes.chivas)} color={BAD} sub={`+ ${m(boxes.now.chivas)} en este corte`} />
+                <Kpi label="Caja total" value={m(boxes.total)} color={INK} sub={`+ ${m(boxes.now.ahorro + boxes.now.apartado + boxes.now.chivas)} en este corte`} />
               </View>
+              {boxes.detail.length > 0 && (
+                <View style={[s.table, { marginTop: 8 }]}>
+                  <View style={[s.group, { backgroundColor: INK }]}>
+                    <Text style={[s.groupTxt, { flex: 1 }]}>Desglose de cada caja</Text>
+                    <Text style={[s.groupTxt, { width: 90, textAlign: 'right' }]}>Total</Text>
+                    <Text style={[s.groupTxt, { width: 90, textAlign: 'right' }]}>En este corte</Text>
+                  </View>
+                  {boxes.detail.map((x, i) => (
+                    <View key={i} style={s.tr} wrap={false}>
+                      <Text style={[s.td, { width: 110, color: x.caja === 'Caja Chivas' ? BAD : '#8A7E00', fontFamily: 'Helvetica-Bold' }]}>{x.caja}</Text>
+                      <Text style={[s.td, { flex: 1 }]}>{x.name}</Text>
+                      <Text style={[s.td, { width: 90, textAlign: 'right', fontFamily: 'Helvetica-Bold' }]}>{m(x.total)}</Text>
+                      <Text style={[s.td, { width: 90, textAlign: 'right', color: x.now > 0 ? OK : GRAY }]}>{x.now > 0 ? `+ ${m(x.now)}` : '—'}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
             </View>
           )}
           {boxes && boxes.chivas > 0 && (

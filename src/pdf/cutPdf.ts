@@ -8,6 +8,10 @@ export interface CutBoxes {
   chica: number; ahorro: number; apartado: number; chivas: number; uniformes: number; total: number
   chivasParts: { label: string; value: number }[]
   seguro: { saved: number; target: number }
+  /** Lo que se puso en cada caja en este corte */
+  now: { ahorro: number; apartado: number; chivas: number }
+  /** Desglose: cada fondo con su total y lo de este corte */
+  detail: { caja: 'Caja de ahorro' | 'Apartado próx. gastos' | 'Caja Chivas'; name: string; total: number; now: number }[]
 }
 
 export function cutBoxes(cut: CashCut, allCuts: CashCut[], expenses: Expense[], seguro?: { anual: number; meta: number }): CutBoxes {
@@ -27,7 +31,15 @@ export function cutBoxes(cut: CashCut, allCuts: CashCut[], expenses: Expense[], 
   const apartado = funds.filter((f) => f.kind !== 'ahorro' && f.kind !== 'uniformes' && f.kind !== 'chivas' && f.kind !== 'seguro').reduce((a, f) => a + f.saved, 0)
   // Caja chica: lo que se quedó en caja para el siguiente corte (lo mandado a otro lado ya no está)
   const chica = carryOver(cut)
-  return { chica, ahorro, apartado, chivas, uniformes, total: chica + ahorro + apartado + chivas + uniformes, chivasParts, seguro: { saved: seg?.saved ?? 0, target: seg?.target ?? 0 } }
+  const nowOf = (k: string) => (cut.savings ?? []).filter((x) => x.key === k).reduce((a, x) => a + Number(x.saved), 0)
+  const cajaOf = (f: (typeof funds)[number]) => (f.kind === 'ahorro' ? 'Caja de ahorro' : f.kind === 'chivas' || f.kind === 'seguro' ? 'Caja Chivas' : 'Apartado próx. gastos') as CutBoxes['detail'][number]['caja']
+  const detail = funds.map((f) => ({ caja: cajaOf(f), name: f.kind === 'uniformes' ? 'Fondo de uniformes' : f.name, total: f.saved, now: nowOf(f.key) }))
+    .filter((x) => x.total > 0.5 || x.now > 0.5)
+  const sumNow = (c: string) => detail.filter((x) => x.caja === c).reduce((a, x) => a + x.now, 0)
+  return {
+    chica, ahorro, apartado: apartado + uniformes, chivas, uniformes, total: chica + ahorro + apartado + chivas + uniformes, chivasParts, seguro: { saved: seg?.saved ?? 0, target: seg?.target ?? 0 },
+    now: { ahorro: sumNow('Caja de ahorro'), apartado: sumNow('Apartado próx. gastos'), chivas: sumNow('Caja Chivas') }, detail,
+  }
 }
 
 /** PDF visual del corte de caja (se carga sólo cuando se pide). */
