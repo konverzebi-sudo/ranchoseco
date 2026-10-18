@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { startOfWeek } from 'date-fns'
-import { TrendingUp, TrendingDown, Scale, Banknote, Download, MessageCircle, Printer, Plus, Trash2, Vault, PiggyBank, Check, Pencil, CheckCheck, X, ChevronDown, FileText } from 'lucide-react'
+import { TrendingUp, TrendingDown, Scale, Download, MessageCircle, Printer, Plus, Trash2, Vault, PiggyBank, Check, Pencil, CheckCheck, X, ChevronDown, FileText } from 'lucide-react'
 import { Explain, FoldCard, Badge, Button, Card, ConfirmDialog, ErrorState, Field, IconButton, Input, Modal, PageHeader, Spinner, StatCard, Textarea, cx } from '@/components/ui'
 import { useToast } from '@/components/toast'
 import RangePicker from '@/components/RangePicker'
@@ -421,8 +421,8 @@ export default function WeeklyCut() {
               <>
               <div className="space-y-3 p-3 md:hidden">{cuts.data.map((c, i) => <CutRow key={c.id} mobile cut={c} prev={cuts.data![i + 1]} focus={params.get('ver') === c.id} onEdit={() => startEdit(c)} onDelete={() => setDeleting(c)} />)}</div>
               <div className="hidden overflow-x-auto md:block">
-                <table className="table-base min-w-[1200px]">
-                  <thead><tr><th>Corte</th><th>Caja chica al empezar</th><th>Entradas</th><th>Gastos</th><th>Saldo</th><th>Caja de ahorro</th><th>Apartado próx. gastos</th><th>Caja Chivas</th><th>Otro destino / caja chica</th><th>¿Cuadra?</th><th /></tr></thead>
+                <table className="table-base table-compact min-w-[1100px] whitespace-nowrap">
+                  <thead><tr><th>Corte</th><th title="Caja chica al empezar">Caja chica inicial</th><th>Entradas</th><th>Gastos</th><th>Saldo</th><th>Ahorro</th><th title="Apartado de próximos gastos">Apartado</th><th>Chivas</th><th title="Otro destino o lo que quedó en caja chica">Otro / caja chica</th><th>¿Cuadra?</th><th /></tr></thead>
                   <tbody>{cuts.data.map((c, i) => <CutRow key={c.id} cut={c} prev={cuts.data![i + 1]} focus={params.get('ver') === c.id} onEdit={() => startEdit(c)} onDelete={() => setDeleting(c)} />)}</tbody>
                 </table>
               </div>
@@ -489,31 +489,7 @@ export default function WeeklyCut() {
             <StatCard label="Gastos" value={cents(tot.outflow)} icon={TrendingDown} tone="bad" hint="Sueldos, gastos y pagos de préstamos" />
             <StatCard label="Resultado de estas fechas" value={cents(tot.income - tot.outflow)} icon={Scale} tone={tot.income >= tot.outflow ? 'ok' : 'bad'} hint={tot.income >= tot.outflow ? 'Entró más de lo que salió (sin contar la caja chica)' : 'Salió más de lo que entró (sin contar la caja chica)'} />
           </div>
-          {(() => {
-            // Las cajas hoy: caja chica = lo de esta semana que todavía no entra a un corte;
-            // ahorro, apartado y Caja Chivas = lo juntado en semanas anteriores
-            const week = items.filter((i) => !i.excluded && !i.pending && i.date <= t)
-            const chica = carry + week.filter((i) => i.type === 'entrada').reduce((a, i) => a + itemValue(i), 0) - week.filter((i) => i.type === 'salida').reduce((a, i) => a + itemValue(i), 0)
-            const ahorroAntes = box?.saved ?? 0
-            const apartadoAntes = funds.filter((f) => f.kind !== 'ahorro' && f.kind !== 'uniformes' && f.kind !== 'chivas' && f.kind !== 'seguro').reduce((a, f) => a + f.saved, 0)
-            const chivasAntes = funds.filter((f) => f.kind === 'chivas' || f.kind === 'seguro').reduce((a, f) => a + f.saved, 0)
-            const unifAntes = funds.filter((f) => f.kind === 'uniformes').reduce((a, f) => a + f.saved, 0)
-            const bars = fundBars(funds, (k) => { const f = funds.find((x) => x.key === k); return f ? savedNow(f) : 0 })
-            return (
-              <>
-                <div className="!mt-3 grid grid-cols-2 gap-3 lg:grid-cols-5">
-                  <StatCard label="Caja chica" value={cents(chica)} icon={Banknote} tone={chica < -0.5 ? 'bad' : undefined}
-                    hint={`Lo de esta semana que no ha entrado en ningún corte (empezó con ${cents(carry)})`} />
-                  <StatCard label="Caja de ahorro" value={cents(ahorroAntes)} icon={PiggyBank} tone="ok" hint="Lo ahorrado en semanas anteriores" />
-                  <StatCard label="Apartado de próximos gastos" value={cents(apartadoAntes)} icon={Vault} tone="brand" hint="Regalías, renta, partes y préstamos" />
-                  <StatCard label="Caja Chivas" value={cents(chivasAntes)} icon={Vault} tone="brand" hint="Inscripciones: playeras, credenciales, seguro y libre" />
-                  <StatCard label="Caja total" value={cents(chica + ahorroAntes + apartadoAntes + chivasAntes + unifAntes)} icon={Banknote}
-                    hint="Todas las cajas (con el fondo de uniformes)" />
-                </div>
-                <FundProgress funds={bars} month={to.slice(0, 7)} />
-              </>
-            )
-          })()}
+          <FundProgress funds={fundBars(funds, (k) => { const f = funds.find((x) => x.key === k); return f ? savedNow(f) : 0 })} month={to.slice(0, 7)} />
 
           <div className="grid gap-6 xl:grid-cols-2">
             <ReviewList type="entrada" title="Entradas" />
@@ -523,10 +499,40 @@ export default function WeeklyCut() {
           {/* ---------- Sugerencia de ahorro ---------- */}
           <Card>
             <div className="border-b border-ink-600 px-5 py-4">
-              <h3 className="flex items-center gap-2 font-display text-lg font-bold uppercase tracking-wide"><PiggyBank className="h-5 w-5 text-brand" /> Sugerencia de ahorro</h3>
-              <p className="text-xs text-muted">Para cada pago grande te sugerimos cuánto apartar esta semana. Escribe cuánto se guarda de verdad; si no hay dinero, déjalo en 0.
+              <h3 className="flex items-center gap-2 font-display text-xl font-bold uppercase tracking-wide"><PiggyBank className="h-6 w-6 text-brand" /> Sugerencia de ahorro</h3>
+              <p className="text-sm text-muted">Para cada pago grande te sugerimos cuánto apartar esta semana. Escribe cuánto se guarda de verdad; si no hay dinero, déjalo en 0.
                 {expected > 0 ? <> Hay <b className="text-white">{cents(expected)}</b> en caja para repartir.</> : <> <b className="text-warn">Esta semana no hay dinero en caja para ahorrar.</b></>}</p>
             </div>
+            {(() => {
+              // Las cajas: caja chica = lo de esta semana; las demás = lo juntado antes. "Sugerir" llena lo que toca a cada caja.
+              const week = items.filter((i) => !i.excluded && !i.pending && i.date <= t)
+              const chica = carry + week.filter((i) => i.type === 'entrada').reduce((a, i) => a + itemValue(i), 0) - week.filter((i) => i.type === 'salida').reduce((a, i) => a + itemValue(i), 0)
+              const ahorroAntes = box?.saved ?? 0
+              const isApartado = (f: SavingFund) => f.kind !== 'ahorro' && f.kind !== 'uniformes' && f.kind !== 'chivas' && f.kind !== 'seguro'
+              const apartadoAntes = funds.filter(isApartado).reduce((a, f) => a + f.saved, 0)
+              const chivasAntes = funds.filter((f) => f.kind === 'chivas' || f.kind === 'seguro').reduce((a, f) => a + f.saved, 0)
+              const unifAntes = funds.filter((f) => f.kind === 'uniformes').reduce((a, f) => a + f.saved, 0)
+              const sugApartado = () => setSaveAmt((x) => ({ ...x, ...Object.fromEntries(funds.filter(isApartado).map((f) => [f.key, String(f.suggested)])) }))
+              // Ahorro: lo que queda del saldo después de lo demás que se apartó
+              const sugAhorro = () => { if (!box) return; const otros = savingsTotal - savedNow(box); setSaveAmt((x) => ({ ...x, [box.key]: String(Math.max(0, Math.round((expected - otros) * 100) / 100)) })) }
+              const pill = (onClick: () => void) => <button type="button" onClick={onClick} className="rounded-full bg-ink px-3 py-1 text-xs font-bold uppercase tracking-wide text-brand hover:brightness-125">Sugerir</button>
+              const card = (label: string, value: number, hint: string, action?: () => void, tone?: string) => (
+                <div className="rounded-2xl border border-ink-600 bg-ink-800 p-3">
+                  <div className="flex items-start justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wider text-muted">{label}</p>{action && pill(action)}</div>
+                  <p className={cx('mt-1 font-display text-2xl font-bold', tone)}>{cents(value)}</p>
+                  <p className="text-xs text-muted">{hint}</p>
+                </div>
+              )
+              return (
+                <div className="grid gap-3 border-b border-ink-600 p-4 sm:grid-cols-2 lg:grid-cols-5">
+                  {card('Caja chica', chica, `Lo de esta semana (empezó con ${cents(carry)})`, undefined, chica < -0.5 ? 'text-bad' : undefined)}
+                  {card('Caja de ahorro', ahorroAntes + (box ? savedNow(box) : 0), box && savedNow(box) > 0 ? `Antes ${cents(ahorroAntes)} + hoy ${cents(savedNow(box))}` : 'Lo ahorrado en semanas anteriores', sugAhorro, 'text-ok')}
+                  {card('Apartado próx. gastos', apartadoAntes + funds.filter(isApartado).reduce((a, f) => a + savedNow(f), 0), 'Regalías, renta, partes y préstamos', sugApartado)}
+                  {card('Caja Chivas', chivasTotal, 'Playeras, credenciales, seguro y libre', applyChivas, 'text-brand')}
+                  {card('Caja total', chica + ahorroAntes + apartadoAntes + chivasAntes + unifAntes, 'Todas las cajas (con uniformes)')}
+                </div>
+              )
+            })()}
             {funds.length === 0 ? <p className="px-5 py-6 text-center text-sm text-muted">No hay pagos grandes por juntar.</p> : (
               <ul className="divide-y divide-ink-700">
                 {funds.map((f) => {
@@ -817,20 +823,22 @@ function Breakdown({ label, total, tone, lines, empty = 'Nada palomeado.' }: {
 }
 
 /** Enviar el reporte del corte: primero se ve, se puede corregir, copiar y mandar a quien sea. */
-function ReportButtons({ cut, small }: { cut: CashCut; small?: boolean }) {
+function ReportButtons({ cut, small, iconOnly }: { cut: CashCut; small?: boolean; iconOnly?: boolean }) {
   const [open, setOpen] = useState(false)
   return (
     <>
-      <Button variant="whatsapp" size={small ? 'sm' : 'md'} icon={MessageCircle} onClick={() => setOpen(true)} className={small ? '' : 'w-full'}>
-        {small ? 'Reporte' : 'Ver y enviar el reporte por WhatsApp'}
-      </Button>
+      {iconOnly
+        ? <button type="button" onClick={() => setOpen(true)} title="Reporte por WhatsApp" aria-label="Reporte por WhatsApp" className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-wa text-ink hover:brightness-110"><MessageCircle className="h-4 w-4" /></button>
+        : <Button variant="whatsapp" size={small ? 'sm' : 'md'} icon={MessageCircle} onClick={() => setOpen(true)} className={small ? '' : 'w-full'}>
+            {small ? 'Reporte' : 'Ver y enviar el reporte por WhatsApp'}
+          </Button>}
       {open && <ReportModal cut={cut} onClose={() => setOpen(false)} />}
     </>
   )
 }
 
 /** Descarga el corte en un PDF visual (resumen, gráficas y todo el detalle). */
-function PdfButton({ cut, small, className }: { cut: CashCut; small?: boolean; className?: string }) {
+function PdfButton({ cut, small, className, iconOnly }: { cut: CashCut; small?: boolean; className?: string; iconOnly?: boolean }) {
   const cuts = useCashCuts()
   const toast = useToast()
   const [busy, setBusy] = useState(false)
@@ -842,6 +850,7 @@ function PdfButton({ cut, small, className }: { cut: CashCut; small?: boolean; c
       downloadBlob(await renderCutPdf(cut, prev), `Corte de caja ${cut.cut_date}.pdf`)
     } catch (e) { toast.error(e) } finally { setBusy(false) }
   }
+  if (iconOnly) return <IconButton icon={FileText} label="Descargar PDF del corte" onClick={go} className={cx('h-8 w-8', busy && 'animate-pulse')} />
   return <Button variant="secondary" size={small ? 'sm' : 'md'} icon={FileText} loading={busy} onClick={go} className={className}>{small ? 'PDF' : 'Descargar PDF del corte'}</Button>
 }
 
@@ -935,10 +944,17 @@ function CutRow({ cut: c, prev, focus, mobile, onEdit, onDelete }: { cut: CashCu
   const othersTotal = others.reduce((a, x) => a + Number(x.amount), 0)
   const cell = (xs: { name: string; saved: number | string }[]) => sumOf(xs) > 0 ? <Explain why={listOf(xs)}>{cents(sumOf(xs))}</Explain> : <span className="text-muted">—</span>
   const status = should < -0.5 ? <Badge tone="bad">Faltó {cents(-should)}</Badge> : diff < -0.5 ? <Badge tone="bad">Faltan {cents(-diff)}</Badge> : diff > 0.5 ? <Badge tone="info">Sobran {cents(diff)}</Badge> : <Badge tone="ok">Cuadra</Badge>
-  const actions = (
+  const actions = mobile ? (
     <div className="flex flex-wrap items-center justify-end gap-1">
       <ReportButtons cut={c} small />
       <PdfButton cut={c} small />
+      <IconButton icon={Pencil} label="Corregir corte" onClick={onEdit} className="h-8 w-8" />
+      <IconButton icon={Trash2} label="Eliminar corte" onClick={onDelete} className="h-8 w-8" />
+    </div>
+  ) : (
+    <div className="flex items-center justify-end gap-0.5">
+      <ReportButtons cut={c} small iconOnly />
+      <PdfButton cut={c} small iconOnly />
       <IconButton icon={Pencil} label="Corregir corte" onClick={onEdit} className="h-8 w-8" />
       <IconButton icon={Trash2} label="Eliminar corte" onClick={onDelete} className="h-8 w-8" />
     </div>
