@@ -173,3 +173,11 @@ describe('gasto pagado desde otra caja', () => {
     expect(box.saved).toBe(1800)
   })
 })
+
+describe('regalías por mensualidad', () => {
+  it('sugiere (regalías ÷ meta) por cada niño que pagó mensualidad', () => {
+    const reg = { id: 'r', name: 'Regalías Chivas', kind: 'gasto', amount: 7500, frequency: 'mensual', paid_month: null, paid_year: null, active: true, notes: null, sort_order: 1, created_at: '', updated_at: '' } as never
+    const [f] = savingFunds({ cutDate: '2026-10-07', expenses: [reg], cuts: [], mensualidades: 20, seguro: { anual: 13000, meta: 150 } })
+    expect(f.suggested).toBe(1000)
+  })
+})

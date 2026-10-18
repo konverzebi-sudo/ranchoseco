@@ -248,8 +248,8 @@ function nextDue(e: Expense, after: string): string | null {
  * pagos en partes y préstamos: lo que falta ÷ semanas que quedan.
  * Nunca más de lo que falta por juntar.
  */
-export function savingFunds(opts: { cutDate: string; expenses: Expense[]; cuts: Pick<CashCut, 'id' | 'savings'>[]; excludeCut?: string; inscriptions?: number; seguro?: { anual: number; meta: number } }): SavingFund[] {
-  const { cutDate, expenses, cuts, excludeCut, inscriptions, seguro } = opts
+export function savingFunds(opts: { cutDate: string; expenses: Expense[]; cuts: Pick<CashCut, 'id' | 'savings'>[]; excludeCut?: string; inscriptions?: number; seguro?: { anual: number; meta: number }; mensualidades?: number }): SavingFund[] {
+  const { cutDate, expenses, cuts, excludeCut, inscriptions, seguro, mensualidades } = opts
   const savedFor = (key: string) => cuts.filter((c) => c.id !== excludeCut)
     .flatMap((c) => c.savings ?? []).filter((s) => s.key === key).reduce((a, s) => a + Number(s.saved), 0)
   const fund = (f: Omit<SavingFund, 'saved' | 'weeksLeft' | 'suggested'>, weeksInCycle?: number): SavingFund => {
@@ -271,6 +271,8 @@ export function savingFunds(opts: { cutDate: string; expenses: Expense[]; cuts: 
       const f = fund({ key: `f:${e.id}:${due}`, name: e.name, kind: isSeguro ? 'seguro' : 'fijo', target: isSeguro && seguro?.anual ? seguro.anual : Number(e.amount), due }, perCycle)
       // El seguro se junta con las inscripciones: (seguro ÷ 150 alumnos) por cada inscripción cobrada
       if (f.kind === 'seguro' && inscriptions != null) f.suggested = Math.round(Math.min(Math.max(0, f.target - f.saved), (f.target / (seguro?.meta || INSURANCE_STUDENTS)) * inscriptions) * 100) / 100
+      // Regalías Chivas: (regalías ÷ meta de alumnos) por cada niño que pagó mensualidad en el corte
+      if (/regal/i.test(e.name) && mensualidades != null) f.suggested = Math.round(Math.min(Math.max(0, f.target - f.saved), (Number(e.amount) / (seguro?.meta || INSURANCE_STUDENTS)) * mensualidades) * 100) / 100
       out.push(f)
       continue
     }

@@ -107,7 +107,9 @@ export default function WeeklyCut() {
   const settings = useSettings()
   const seguroGasto = Number((expenses.data ?? []).find((e) => /seguro/i.test(e.name) && e.active)?.amount ?? 0)
   const cfg = chivasConfig(settings.data, seguroGasto)
-  const funds = useMemo(() => savingFunds({ cutDate: to, expenses: expenses.data ?? [], cuts: cuts.data ?? [], excludeCut: editingCut?.id, inscriptions: inscCount, seguro: { anual: cfg.seguroAnual, meta: cfg.meta } }), [to, expenses.data, cuts.data, editingCut, inscCount, cfg.seguroAnual, cfg.meta])
+  // Niños que pagaron mensualidad en este corte (para la sugerencia de regalías)
+  const mensCount = new Set(items.filter((i) => i.type === 'entrada' && counts(i) && /^mensualidad/i.test(i.detail)).map((i) => i.concept)).size
+  const funds = useMemo(() => savingFunds({ cutDate: to, expenses: expenses.data ?? [], cuts: cuts.data ?? [], excludeCut: editingCut?.id, inscriptions: inscCount, seguro: { anual: cfg.seguroAnual, meta: cfg.meta }, mensualidades: mensCount }), [to, expenses.data, cuts.data, editingCut, inscCount, cfg.seguroAnual, cfg.meta, mensCount])
   const [saveAmt, setSaveAmt] = useState<Record<string, string>>({})
   const [saveNote, setSaveNote] = useState<Record<string, string>>({})
   const savedNow = (f: SavingFund) => (f.key in saveAmt ? Number(saveAmt[f.key]) || 0 : 0)
@@ -614,7 +616,7 @@ export default function WeeklyCut() {
                       const days = Math.max(0, Math.round((new Date(f.due + 'T12:00:00').getTime() - new Date(to + 'T12:00:00').getTime()) / 86_400_000))
                       // Cuánto es al mes: los mensuales su monto; los anuales entre 12; pagos en partes y préstamos no aplica
                       const monthly = days > 45 ? f.target / 12 : f.kind === 'fijo' ? f.target : null
-                      const how = f.kind === 'fijo' ? 'la parte de esta semana' : `lo que falta ÷ ${f.weeksLeft} ${f.weeksLeft === 1 ? 'semana' : 'semanas'}`
+                      const how = /regal/i.test(f.name) ? `${mensCount} niños pagaron mensualidad × ${cents(f.target / cfg.meta)} (regalías ÷ ${cfg.meta} alumnos)` : f.kind === 'fijo' ? 'la parte de esta semana' : `lo que falta ÷ ${f.weeksLeft} ${f.weeksLeft === 1 ? 'semana' : 'semanas'}`
                       return (
                         <Fragment key={f.key}>
                           <tr className="[&>td]:border-b-0 [&>td]:pb-1">
@@ -625,7 +627,7 @@ export default function WeeklyCut() {
                             <td className="font-semibold text-brand">{cents(f.target)}</td>
                             <td><b>{days === 0 ? 'Hoy' : `${days} ${days === 1 ? 'día' : 'días'}`}</b><span className="block text-xs text-muted">{date(f.due, "d 'de' MMM")}</span></td>
                             <td>{monthly != null ? cents(monthly) : '—'}</td>
-                            <td><span title={`Sugerencia: ${how}`} className="inline-block rounded-lg bg-brand px-2.5 py-1 font-display text-lg font-bold text-ink">{cents(f.suggested)}</span></td>
+                            <td><span title={`Sugerencia: ${how}`} className="inline-block rounded-lg bg-brand px-2.5 py-1 font-display text-lg font-bold text-ink">{cents(f.suggested)}</span><span className="mt-0.5 block max-w-[14rem] whitespace-normal text-xs text-muted">{how}</span></td>
                             <td><div className="w-36"><Input type="number" min="0" inputMode="decimal" value={saveAmt[f.key] ?? ''} placeholder={String(f.suggested)} aria-label={`Se guarda para ${f.name}`}
                               title="En gris va la sugerencia: pica el cuadro para usarla o escribe otra cantidad"
                               onFocus={() => { if (saveAmt[f.key] == null || saveAmt[f.key] === '') setSaveAmt((x) => ({ ...x, [f.key]: String(f.suggested) })) }}
