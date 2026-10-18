@@ -28,6 +28,8 @@ grant select, insert, update, delete on academia.questions to authenticated, ano
 insert into academia.questions (number, assigned_to, topic, question) values
 (1, 'Aby', 'Corte de caja', 'Corte del 7 de octubre: faltan $7,200 (debería haber $27,600 y se contaron $20,400). ¿Sabes qué pasó con ese dinero o a dónde se fue?'),
 (2, 'Aby', 'Corte de caja', 'Corte del 30 de septiembre: salió más dinero del que había y se anotó que $8,850 "vinieron de CAJA". ¿De qué caja salió ese dinero exactamente?'),
+(28, 'Aby', 'Corte de caja', 'Corte del 2 de septiembre: dice que salieron $19,650 (sueldos y gastos) sin que hubiera entradas registradas, y se contaron $16,900. ¿De dónde salió ese dinero? ¿Ya había dinero en caja de antes de ese corte? ¿Cuánto?'),
+(29, 'Aby', 'Corte de caja', 'Corte del 16 de septiembre: salen faltando $10,950 porque en el corte del 9 de septiembre se contaron $19,700 y no se anotó a dónde se fueron. ¿Esos $19,700 se quedaron en caja chica para la semana siguiente? Si no, ¿a dónde se fueron?'),
 (5, 'Aby', 'Pagos', 'Sebastián Abdiel García Esquivel: en septiembre pagó $500 y con la promoción de hermanos le tocaba $450. ¿Los $50 de más se quedan como adelanto de otro mes, se le regresan, o su mensualidad era de $500?'),
 (6, 'Aby', 'Uniformes', '¿Cuál es el precio del uniforme completo?'),
 (7, 'Aby', 'Pagos', 'Fredy Jharet Álvarez Ramos: en el Excel aparece un pago de septiembre de $450 que no está en la plataforma. ¿Sí lo pagó? ¿Lo registramos? (¿qué día y en efectivo o transferencia?)'),

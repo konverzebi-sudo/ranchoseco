@@ -6,6 +6,7 @@ import { useToast } from './toast'
 import { supabase, unwrap } from '@/lib/supabase'
 import { getActor } from '@/lib/actor'
 import { date } from '@/lib/format'
+import { notify } from '@/lib/notify'
 
 export interface Question {
   id: string; number: number; assigned_to: string; topic: string | null; question: string
@@ -35,12 +36,12 @@ export function QuestionsToAnswer({ person }: { person: string }) {
       </div>
       <p className="px-5 pt-3 text-sm text-muted">Contesta cada una con tus palabras y pica <b>Guardar</b>. Si no sabes alguna, escribe "no sé" o a quién preguntarle. Puedes contestar unas hoy y otras después.</p>
       {answered === list.length && <p className="mx-5 mt-3 rounded-xl bg-ok/10 p-3 text-sm font-semibold text-ok">¡Gracias! Ya contestaste todas. Sistemas las va a revisar.</p>}
-      <ol className="space-y-3 p-5">{list.map((x) => <QuestionRow key={x.id} q={x} />)}</ol>
+      <ol className="space-y-3 p-5">{list.map((x) => <QuestionRow key={x.id} q={x} all={list} />)}</ol>
     </Card>
   )
 }
 
-function QuestionRow({ q }: { q: Question }) {
+function QuestionRow({ q, all }: { q: Question; all: Question[] }) {
   const qc = useQueryClient()
   const toast = useToast()
   const [text, setText] = useState(q.answer ?? '')
@@ -51,7 +52,11 @@ function QuestionRow({ q }: { q: Question }) {
     setSaving(true)
     try {
       unwrap(await supabase.from('questions').update({ answer: text.trim(), answered_by: getActor() || q.assigned_to, answered_at: new Date().toISOString() }).eq('id', q.id))
+      // Al contestar la última, a sistemas le llega el aviso con el reporte de respuestas
+      const done = all.filter((x) => x.id !== q.id && x.answer?.trim()).length + 1
+      if (done === all.length && !q.answer) await notify(`${q.assigned_to} contestó todas las preguntas de sistemas`, `${all.length} respuestas listas. Ábrelas en el Dashboard ("Preguntas para ${q.assigned_to}") y regresa con Claude para aplicarlas.`)
       await qc.invalidateQueries({ queryKey: ['questions'] })
+      await qc.invalidateQueries({ queryKey: ['notifications'] })
       toast.ok(`Respuesta ${q.number} guardada`)
     } catch (e) { toast.error(e) } finally { setSaving(false) }
   }
@@ -89,6 +94,14 @@ export function QuestionsStatus({ person }: { person: string }) {
         </span>
       </button>
       {complete && <p className="px-5 pb-3 text-sm font-semibold text-ok">Ya puedes regresar con Claude para tomar acción con sus respuestas.</p>}
+      {answered.length > 0 && (
+        <div className="px-5 pb-3">
+          <Button size="sm" variant="secondary" onClick={async () => {
+            const text = [`Respuestas de ${person} (${answered.length} de ${list.length})`, ...list.map((x) => `${x.number}. ${x.question}\nR: ${x.answer?.trim() || '(sin contestar)'}`)].join('\n\n')
+            try { await navigator.clipboard.writeText(text) } catch { /* sin portapapeles */ }
+          }}>Copiar reporte de respuestas</Button>
+        </div>
+      )}
       {open && (
         <ol className="divide-y divide-ink-700 border-t border-ink-600">
           {list.map((x) => (
