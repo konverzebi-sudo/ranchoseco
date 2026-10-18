@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Input } from './ui'
 import { Card } from './ui'
 import { Gauge, GaugeGrid, PieChart } from './Gauges'
@@ -45,38 +45,56 @@ export function ProfeGauges({ month, picker }: { month: string; picker?: React.R
   const fees = useFees()
   const students = useStudents()
   const extras = useExtraClasses()
+  const statsRef = useRef(new Map<string, { kids: number; paid: number; due: number }>())
   const income = useMemo(() => {
     const base = new Map((students.data ?? []).map((s) => [s.id, s.category_id]))
     const ext = new Map<string, string[]>()
     for (const x of extras.data ?? []) ext.set(x.student_id, [...(ext.get(x.student_id) ?? []), x.category_id])
     const m = new Map<string, number>()
+    const st = new Map<string, { kids: number; paid: number; due: number }>()
+    const active = new Set((students.data ?? []).filter((s) => s.status === 'activo').map((s) => s.id))
     for (const f of fees.data ?? []) {
       if (f.concept !== 'Mensualidad' || f.period !== `${month}-01`) continue
       const cats = [base.get(f.student_id), ...(ext.get(f.student_id) ?? [])].filter(Boolean) as string[]
       const paid = Math.min(Number(f.paid), Number(f.total_due))
-      for (const c of cats) m.set(c, (m.get(c) ?? 0) + paid / cats.length)
+      for (const c of cats) {
+        m.set(c, (m.get(c) ?? 0) + paid / cats.length)
+        if (!active.has(f.student_id)) continue
+        const x = st.get(c) ?? { kids: 0, paid: 0, due: 0 }
+        x.kids++; x.due += Number(f.total_due) / cats.length
+        if (Number(f.balance) <= 0) x.paid++
+        st.set(c, x)
+      }
     }
+    statsRef.current = st
     return m
   }, [fees.data, students.data, extras.data, month])
   const [by, setBy] = useState<'profe' | 'categoria'>('profe')
   // Por categoría: la mensualidad cobrada de la categoría contra la parte del sueldo que le toca
+  const eq = (target: number, catIds: string[]) => {
+    const xs = catIds.map((id) => statsRef.current.get(id)).filter(Boolean) as { kids: number; paid: number; due: number }[]
+    const kids = xs.reduce((a, x) => a + x.kids, 0), paid = xs.reduce((a, x) => a + x.paid, 0), due = xs.reduce((a, x) => a + x.due, 0)
+    const avg = kids ? due / kids : 0
+    return { need: avg ? Math.ceil(target / avg) : 0, paid, kids }
+  }
   const cats = useMemo(() => (data?.list ?? []).filter((r) => r.salaries > 0).map((r) => ({
-    name: r.name, saved: income.get(r.id) ?? 0, target: r.salaries, hint: r.coaches.map((c) => c.name).join(' · '),
-  })), [data, income])
+    name: r.name, saved: income.get(r.id) ?? 0, target: r.salaries, hint: r.coaches.map((c) => c.name).join(' · '), eq: eq(r.salaries, [r.id]),
+  })), [data, income]) // eslint-disable-line react-hooks/exhaustive-deps
   const profes = useMemo(() => {
-    const m = new Map<string, FundBar>()
+    const m = new Map<string, FundBar & { ids: string[] }>()
     for (const r of data?.list ?? []) {
       for (const c of r.coaches) {
         const part = c.monthly / c.share
         const covered = r.salaries > 0 ? ((income.get(r.id) ?? 0) * part) / r.salaries : 0
-        const x = m.get(c.name) ?? { name: c.name, saved: 0, target: c.monthly, hint: '' }
+        const x = m.get(c.name) ?? { name: c.name, saved: 0, target: c.monthly, hint: '', ids: [] as string[] }
         x.saved += covered
         x.hint = [x.hint, r.name].filter(Boolean).join(' · ')
+        x.ids.push(r.id)
         m.set(c.name, x)
       }
     }
-    return [...m.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'))
-  }, [data, income])
+    return [...m.values()].map((x) => ({ ...x, eq: eq(x.target, x.ids) })).sort((a, b) => a.name.localeCompare(b.name, 'es'))
+  }, [data, income]) // eslint-disable-line react-hooks/exhaustive-deps
   const list = by === 'profe' ? profes : cats
   return (
     <GaugeGrid title={`Sueldo de cada ${by === 'profe' ? 'profe' : 'categoría'} · ${mesDe(month)}`}
@@ -89,8 +107,10 @@ export function ProfeGauges({ month, picker }: { month: string; picker?: React.R
       subtitle={by === 'profe' ? '¿Ya alcanza la mensualidad que pagaron sus niños para su sueldo del mes?' : '¿Ya alcanza la mensualidad cobrada de cada categoría para la parte del sueldo que le toca?'}>
       {list.length ? list.map((f) => (
         <Gauge key={f.name} pct={(f.saved / f.target) * 100} label={f.name}
-          title={`Mensualidad cobrada ${cents(f.saved)} · sueldo ${cents(f.target)}`}
-          sub={<>{cents(f.saved)} de {cents(f.target)}<span className="block">{f.hint}</span></>} />
+          title={`Mensualidad cobrada ${cents(f.saved)} · sueldo ${cents(f.target)} · punto de equilibrio: ${f.eq.need} niños pagando · ya pagaron ${f.eq.paid} de ${f.eq.kids}`}
+          sub={<>{cents(f.saved)} de {cents(f.target)}
+            {f.eq.need > 0 && <span className={'block font-semibold ' + (f.eq.paid >= f.eq.need ? 'text-ok' : 'text-bad')}>Equilibrio {f.eq.need} niños · pagaron {f.eq.paid} de {f.eq.kids}</span>}
+            <span className="block">{f.hint}</span></>} />
       )) : <p className="col-span-full text-sm text-muted">Cargando…</p>}
     </GaugeGrid>
   )
