@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { startOfWeek } from 'date-fns'
@@ -446,7 +446,7 @@ export default function WeeklyCut() {
       <div className="mb-6"><CashDoubtsCard /></div>
       <div className="mb-6 space-y-6">
           <div>
-            <FoldCard title="Cortes anteriores" subtitle="Pica un corte para ver su desglose · pasa el mouse sobre un número para ver de dónde sale">
+            <FoldCard defaultOpen={!!params.get('ver')} title="Cortes anteriores" subtitle="Pica un corte para ver su desglose · pasa el mouse sobre un número para ver de dónde sale">
             {!cuts.data?.length ? <p className="p-6 text-center text-sm text-muted">Aún no hay cortes. Cuando pagues a los profes, revisa todo abajo en "Hacer el corte".</p> : (
               <>
               <div className="space-y-3 p-3 md:hidden">{cuts.data.map((c, i) => <CutRow key={c.id} mobile cut={c} prev={cuts.data![i + 1]} focus={params.get('ver') === c.id} onEdit={() => startEdit(c)} onDelete={() => setDeleting(c)} />)}</div>
@@ -603,53 +603,53 @@ export default function WeeklyCut() {
               )
             })()}
             {funds.length === 0 ? <p className="px-5 py-6 text-center text-sm text-muted">No hay pagos grandes por juntar.</p> : (
-              <ul className="divide-y divide-ink-700">
-                {[...funds].sort((x, y) => y.suggested - x.suggested).map((f) => {
-                  const now = savedNow(f)
-                  if (f.kind === 'uniformes') return null
-                  if (f.kind === 'chivas') return null
-                  if (f.kind === 'seguro') return null
-                  if (f.kind === 'ahorro') return null
-                  const pctBefore = f.target ? Math.min(100, (f.saved / f.target) * 100) : 0
-                  const pctAfter = f.target ? Math.min(100, ((f.saved + now) / f.target) * 100) : 0
-                  const days = Math.max(0, Math.round((new Date(f.due + 'T12:00:00').getTime() - new Date(to + 'T12:00:00').getTime()) / 86_400_000))
-                  // Cuánto es al mes: los mensuales su monto; los anuales (seguro) entre 12; pagos en partes y préstamos no aplica
-                  const monthly = days > 45 ? f.target / 12 : f.kind === 'fijo' ? f.target : null
-                  const how = f.kind === 'fijo' ? 'la parte de esta semana' : `lo que falta ÷ ${f.weeksLeft} ${f.weeksLeft === 1 ? 'semana' : 'semanas'}`
-                  return (
-                    <li key={f.key} className="px-4 py-2">
-                      <div className="rounded-2xl border border-ink-600 px-4 py-3">
-                        <div className="grid items-center gap-x-5 gap-y-2 sm:grid-cols-2 xl:grid-cols-[minmax(12rem,1.4fr)_repeat(3,minmax(6rem,1fr))_auto_8rem]">
-                          <div className="min-w-0">
-                            <p className="truncate font-display text-lg font-bold">{f.name}</p>
-                            <Badge tone={f.kind === 'prestamo' ? 'warn' : f.kind === 'parte' ? 'info' : 'neutral'}>{FUND_LABEL[f.kind]}</Badge>
-                            {f.debt && <p className="mt-1 text-xs"><span className="text-muted">Deuda total</span> {cents(f.debt.total)} · <span className="text-warn">falta {cents(f.debt.total - f.debt.paid)}</span></p>}
-                          </div>
-                          <div><p className="text-xs uppercase tracking-wider text-muted">Total</p><p className="text-lg font-semibold text-brand">{cents(f.target)}</p></div>
-                          <div><p className="text-xs uppercase tracking-wider text-muted">En # días</p><p className="text-lg font-semibold">{days === 0 ? 'Hoy' : `${days} ${days === 1 ? 'día' : 'días'}`}</p><p className="text-xs text-muted">{date(f.due, "d 'de' MMM")}</p></div>
-                          <div><p className="text-xs uppercase tracking-wider text-muted">Mensual</p><p className="text-lg font-semibold">{monthly != null ? cents(monthly) : '—'}</p></div>
-                          <div title={`Sugerencia: ${how}`} className="rounded-xl bg-brand px-3 py-1.5 text-center text-ink">
-                            <p className="text-[0.7rem] font-semibold uppercase tracking-wider">Sugerencia</p>
-                            <p className="font-display text-xl font-bold">{cents(f.suggested)}</p>
-                          </div>
-                          <Input type="number" min="0" inputMode="decimal" value={saveAmt[f.key] ?? ''} placeholder="___" aria-label={`Se guarda para ${f.name}`}
-                            onChange={(e) => setSaveAmt({ ...saveAmt, [f.key]: e.target.value })} className="h-11 text-center text-lg font-semibold" />
-                        </div>
-                        <div className="mt-2 flex flex-wrap items-center gap-3 xl:flex-nowrap">
-                          <div className="relative h-2.5 min-w-[8rem] flex-1 overflow-hidden rounded-full bg-ink-700">
-                            <div className="absolute inset-y-0 left-0 rounded-full bg-brand/40" style={{ width: `${pctAfter}%` }} />
-                            <div className="absolute inset-y-0 left-0 rounded-full bg-brand" style={{ width: `${pctBefore}%` }} />
-                          </div>
-                          <span className="text-sm"><b className={pctAfter >= 100 ? 'text-ok' : 'text-brand'}>Vas al {Math.round(pctAfter)}%</b> <span className="text-muted">· guardado {cents(f.saved)}{now > 0 ? ` + ${cents(now)} hoy` : ''}</span></span>
-                          <button type="button" onClick={() => setSaveAmt({ ...saveAmt, [f.key]: String(f.suggested) })} className="rounded-lg bg-brand px-3 py-1 text-sm font-semibold text-ink hover:brightness-110">Aceptar sugerencia</button>
-                          <button type="button" onClick={() => setSaveAmt({ ...saveAmt, [f.key]: '0' })} className="text-sm text-muted hover:underline">Nada</button>
-                          <Input value={saveNote[f.key] ?? ''} onChange={(e) => setSaveNote({ ...saveNote, [f.key]: e.target.value })} placeholder="Nota" className="h-8 w-56 shrink-0 text-sm" aria-label="Nota" />
-                        </div>
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
+              <div className="overflow-x-auto">
+                <table className="table-base min-w-[760px]">
+                  <thead><tr><th>Próximo pago</th><th>Total</th><th>En # días</th><th>Mensual</th><th>Sugerencia</th><th>Se guarda</th></tr></thead>
+                  <tbody>
+                    {[...funds].filter((f) => f.kind === 'fijo' || f.kind === 'parte' || f.kind === 'prestamo').sort((x, y) => y.suggested - x.suggested).map((f) => {
+                      const now = savedNow(f)
+                      const pctBefore = f.target ? Math.min(100, (f.saved / f.target) * 100) : 0
+                      const pctAfter = f.target ? Math.min(100, ((f.saved + now) / f.target) * 100) : 0
+                      const days = Math.max(0, Math.round((new Date(f.due + 'T12:00:00').getTime() - new Date(to + 'T12:00:00').getTime()) / 86_400_000))
+                      // Cuánto es al mes: los mensuales su monto; los anuales entre 12; pagos en partes y préstamos no aplica
+                      const monthly = days > 45 ? f.target / 12 : f.kind === 'fijo' ? f.target : null
+                      const how = f.kind === 'fijo' ? 'la parte de esta semana' : `lo que falta ÷ ${f.weeksLeft} ${f.weeksLeft === 1 ? 'semana' : 'semanas'}`
+                      return (
+                        <Fragment key={f.key}>
+                          <tr className="[&>td]:border-b-0 [&>td]:pb-1">
+                            <td>
+                              <p className="font-semibold">{f.name}</p>
+                              <p className="text-xs text-muted">{FUND_LABEL[f.kind]}{f.debt ? ` · deuda ${cents(f.debt.total)}, falta ${cents(f.debt.total - f.debt.paid)}` : ''}</p>
+                            </td>
+                            <td className="font-semibold text-brand">{cents(f.target)}</td>
+                            <td><b>{days === 0 ? 'Hoy' : `${days} ${days === 1 ? 'día' : 'días'}`}</b><span className="block text-xs text-muted">{date(f.due, "d 'de' MMM")}</span></td>
+                            <td>{monthly != null ? cents(monthly) : '—'}</td>
+                            <td><span title={`Sugerencia: ${how}`} className="inline-block rounded-lg bg-brand px-2.5 py-1 font-display text-lg font-bold text-ink">{cents(f.suggested)}</span></td>
+                            <td><Input type="number" min="0" inputMode="decimal" value={saveAmt[f.key] ?? ''} placeholder="0" aria-label={`Se guarda para ${f.name}`}
+                              onChange={(e) => setSaveAmt({ ...saveAmt, [f.key]: e.target.value })} className="h-10 w-32 text-right text-base font-semibold" /></td>
+                          </tr>
+                          {/* Línea de progreso: separa un pago del otro */}
+                          <tr>
+                            <td colSpan={6} className="!pt-0">
+                              <div className="flex items-center gap-3">
+                                <div className="relative h-2 min-w-[6rem] flex-1 overflow-hidden rounded-full bg-ink-700">
+                                  <div className="absolute inset-y-0 left-0 rounded-full bg-brand/40" style={{ width: `${pctAfter}%` }} />
+                                  <div className="absolute inset-y-0 left-0 rounded-full bg-brand" style={{ width: `${pctBefore}%` }} />
+                                </div>
+                                <span className="shrink-0 whitespace-nowrap text-sm"><b className={pctAfter >= 100 ? 'text-ok' : 'text-brand'}>Vas al {Math.round(pctAfter)}%</b> <span className="text-muted">· guardado {cents(f.saved)}{now > 0 ? ` + ${cents(now)} hoy` : ''}</span></span>
+                                <button type="button" onClick={() => setSaveAmt({ ...saveAmt, [f.key]: String(f.suggested) })} className="shrink-0 whitespace-nowrap rounded-lg bg-brand px-2.5 py-1 text-sm font-semibold text-ink hover:brightness-105">Usar sugerencia</button>
+                                <button type="button" onClick={() => setSaveAmt({ ...saveAmt, [f.key]: '0' })} className="shrink-0 text-sm text-muted hover:underline">Nada</button>
+                                <Input value={saveNote[f.key] ?? ''} onChange={(e) => setSaveNote({ ...saveNote, [f.key]: e.target.value })} placeholder="Nota" className="h-8 w-48 shrink-0 text-sm" aria-label="Nota" />
+                              </div>
+                            </td>
+                          </tr>
+                        </Fragment>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
             )}
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-ink-600 bg-ink-900 px-5 py-3">
               <span className="flex flex-wrap items-center gap-2 text-sm text-muted">Sugerido esta semana {cents(suggestedTotal)}
