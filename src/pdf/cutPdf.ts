@@ -1,7 +1,7 @@
 import { cutSummary } from '@/lib/cutReport'
 import { CHIVAS_CREDENCIALES_KEY, CHIVAS_KEY, CHIVAS_PLAYERAS_KEY, SAVINGS_BOX_KEY, carryOver, savingFunds } from '@/lib/cashcut'
 import { date } from '@/lib/format'
-import type { CashCut, Expense } from '@/lib/types'
+import type { CashCut, Expense, FeeBalance, Payment } from '@/lib/types'
 
 /** Las cajas como quedaron al terminar ese corte (Caja de ahorro y próximos pagos y la Caja Chivas por dentro). */
 export interface CutBoxes {
@@ -14,7 +14,10 @@ export interface CutBoxes {
   detail: { caja: 'Caja de ahorro' | 'Apartado próx. gastos' | 'Caja Chivas'; name: string; total: number; now: number }[]
 }
 
-export function cutBoxes(cut: CashCut, allCuts: CashCut[], expenses: Expense[], seguro?: { anual: number; meta: number }): CutBoxes {
+/** Inscripciones para la Caja Chivas (con el reparto de cada una o el de Configuración). */
+export interface ChivasSource { payments: Payment[]; fees: FeeBalance[]; cfg: { playera: number; credencial: number; seguro: number; seguroAnual: number } }
+
+export function cutBoxes(cut: CashCut, allCuts: CashCut[], expenses: Expense[], seguro?: { anual: number; meta: number }, insc?: ChivasSource): CutBoxes {
   const upTo = allCuts.filter((c) => c.cut_date <= cut.cut_date)
   const funds = savingFunds({ cutDate: cut.cut_date, expenses, cuts: upTo, seguro })
   const val = (k: string) => funds.find((f) => f.key === k)?.saved ?? 0
@@ -36,6 +39,28 @@ export function cutBoxes(cut: CashCut, allCuts: CashCut[], expenses: Expense[], 
   const detail = funds.map((f) => ({ caja: cajaOf(f), name: f.kind === 'uniformes' ? 'Fondo de uniformes' : f.name, total: f.saved, now: nowOf(f.key) }))
     .filter((x) => x.total > 0.5 || x.now > 0.5)
   const sumNow = (c: string) => detail.filter((x) => x.caja === c).reduce((a, x) => a + x.now, 0)
+  // Caja Chivas: con las inscripciones cobradas hasta este corte (y las de este corte), en sus 4 mini cajas
+  if (insc) {
+    const inscFee = new Set(insc.fees.filter((f) => /^inscripci[oó]n/i.test(f.concept)).map((f) => f.id))
+    const all = insc.payments.filter((p) => inscFee.has(p.fee_id) && p.paid_at <= cut.period_to)
+    const split = (xs: Payment[]) => {
+      const total = xs.reduce((a, p) => a + Number(p.amount), 0)
+      const cred = xs.reduce((a, p) => a + (p.split ? Number(p.split.credencial) : insc.cfg.credencial), 0)
+      const play = xs.reduce((a, p) => a + (p.split ? Number(p.split.playera) : insc.cfg.playera), 0)
+      const seg = Math.round(Math.min(insc.cfg.seguroAnual, xs.reduce((a, p) => a + (p.split ? Number(p.split.seguro) : insc.cfg.seguro), 0)))
+      return [{ label: 'Credenciales', value: cred }, { label: 'Playeras de entrenamiento', value: play }, { label: 'Seguro', value: seg }, { label: 'Libre en Caja Chivas', value: Math.max(0, total - cred - play - seg) }]
+    }
+    const parts = split(all)
+    const partsNow = split(all.filter((p) => p.paid_at >= cut.period_from))
+    const chivasI = parts.reduce((a, p) => a + p.value, 0)
+    const chivasNow = partsNow.reduce((a, p) => a + p.value, 0)
+    const detail2 = [...detail.filter((x) => x.caja !== 'Caja Chivas'), ...parts.map((p, i) => ({ caja: 'Caja Chivas' as const, name: p.label, total: p.value, now: partsNow[i].value }))]
+    return {
+      chica, ahorro, apartado: apartado + uniformes, chivas: chivasI, uniformes, total: chica + ahorro + apartado + chivasI + uniformes, chivasParts: parts,
+      seguro: { saved: parts[2].value, target: insc.cfg.seguroAnual },
+      now: { ahorro: sumNow('Caja de ahorro'), apartado: sumNow('Apartado próx. gastos'), chivas: chivasNow }, detail: detail2,
+    }
+  }
   return {
     chica, ahorro, apartado: apartado + uniformes, chivas, uniformes, total: chica + ahorro + apartado + chivas + uniformes, chivasParts, seguro: { saved: seg?.saved ?? 0, target: seg?.target ?? 0 },
     now: { ahorro: sumNow('Caja de ahorro'), apartado: sumNow('Apartado próx. gastos'), chivas: sumNow('Caja Chivas') }, detail,

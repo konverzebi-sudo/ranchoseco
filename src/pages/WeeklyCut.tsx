@@ -844,6 +844,8 @@ function PdfButton({ cut, small, className, iconOnly }: { cut: CashCut; small?: 
   const cuts = useCashCuts()
   const expenses = useExpenses()
   const settings = useSettings()
+  const payments = usePayments()
+  const fees = useFees()
   const toast = useToast()
   const [busy, setBusy] = useState(false)
   const go = async () => {
@@ -853,7 +855,7 @@ function PdfButton({ cut, small, className, iconOnly }: { cut: CashCut; small?: 
       const { renderCutPdf, cutBoxes } = await import('@/pdf/cutPdf')
       const seguroGasto = Number((expenses.data ?? []).find((e) => /seguro/i.test(e.name) && e.active)?.amount ?? 0)
       const cfg = chivasConfig(settings.data, seguroGasto)
-      const boxes = cutBoxes(cut, cuts.data ?? [], expenses.data ?? [], { anual: cfg.seguroAnual, meta: cfg.meta })
+      const boxes = cutBoxes(cut, cuts.data ?? [], expenses.data ?? [], { anual: cfg.seguroAnual, meta: cfg.meta }, { payments: payments.data ?? [], fees: fees.data ?? [], cfg })
       downloadBlob(await renderCutPdf(cut, prev, boxes), `Corte de caja ${cut.cut_date}.pdf`)
     } catch (e) { toast.error(e) } finally { setBusy(false) }
   }
