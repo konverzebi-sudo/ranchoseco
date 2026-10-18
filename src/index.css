@@ -86,3 +86,7 @@ input[type='search']::-webkit-search-cancel-button {
     @apply transition-colors hover:bg-ink-700/50;
   }
 }
+
+/* Cortes anteriores: columnas apretadas para que la tabla quepa sin deslizar */
+.cuts-fit th, .cuts-fit td { padding-left: 0.5rem; padding-right: 0.5rem; }
+.cuts-fit th { font-size: 0.72rem; letter-spacing: 0.04em; }

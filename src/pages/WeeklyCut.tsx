@@ -189,11 +189,6 @@ export default function WeeklyCut() {
     return [...m.entries()]
   }, [d.ins, items])
 
-  const totals = useMemo(() => {
-    const m = new Map<string, number>()
-    for (const c of cuts.data ?? []) for (const x of c.distribution) if (Number(x.amount) > 0 && x.to.toLowerCase() !== CARRY_DESTINATION.toLowerCase()) m.set(x.to, (m.get(x.to) ?? 0) + Number(x.amount))
-    return [...m.entries()].sort((a, b) => b[1] - a[1])
-  }, [cuts.data])
 
   // Orígenes (lo que faltó y salió de otro lado) se guardan con monto negativo y "Vino de: …"
   // Lo contado que no se mandó a ningún lado se queda en caja chica (para que el siguiente corte empiece con eso)
@@ -443,14 +438,14 @@ export default function WeeklyCut() {
               <>
               <div className="space-y-3 p-3 md:hidden">{cuts.data.map((c, i) => <CutRow key={c.id} mobile cut={c} prev={cuts.data![i + 1]} focus={params.get('ver') === c.id} onEdit={() => startEdit(c)} onDelete={() => setDeleting(c)} />)}</div>
               <div className="hidden overflow-x-auto md:block">
-                <table className="table-base table-compact min-w-[1100px] whitespace-nowrap">
+                <table className="table-base table-compact cuts-fit w-full whitespace-nowrap text-[0.85rem] lg:min-w-0 min-w-[820px]">
                   <thead><tr>{CUT_COLUMNS.map(([label, why]) => <th key={label} title={why} className="cursor-help underline decoration-ink-500 decoration-dotted underline-offset-4">{label}</th>)}<th /></tr></thead>
                   <tbody>{cuts.data.map((c, i) => <CutRow key={c.id} cut={c} prev={cuts.data![i + 1]} focus={params.get('ver') === c.id} onEdit={() => startEdit(c)} onDelete={() => setDeleting(c)} />)}</tbody>
                   <tfoot>
                     {(() => {
                       const t = cuts.data!.map((c, i) => cutNums(c, cuts.data![i + 1])).reduce((a, n) => ({ income: a.income + n.income, outflow: a.outflow + n.outflow, ahorro: a.ahorro + n.ahorro, apartado: a.apartado + n.apartado, chivas: a.chivas + n.chivas, otro: a.otro + n.otro }), { income: 0, outflow: 0, ahorro: 0, apartado: 0, chivas: 0, otro: 0 })
                       return (
-                        <tr className="bg-ink-900 font-bold">
+                        <tr className="bg-ink-900 font-bold [&>td]:whitespace-nowrap">
                           <td className="font-display uppercase">Total · {cuts.data!.length} cortes</td>
                           <td className="text-muted">—</td>
                           <td className="text-ok">{cents(t.income)}</td>
@@ -471,14 +466,6 @@ export default function WeeklyCut() {
             )}
             </FoldCard>
           </div>
-          {totals.length > 0 && (
-            <Card className="p-5">
-              <h3 className="mb-3 font-display text-lg font-bold uppercase tracking-wide">Acumulado por destino (todos los cortes)</h3>
-              <div className="flex flex-wrap gap-3">
-                {totals.map(([k, v]) => <div key={k} className="rounded-xl border border-ink-600 px-4 py-2"><p className="text-xs uppercase tracking-wider text-muted">{k}</p><p className="font-display text-2xl font-bold">{cents(v)}</p></div>)}
-              </div>
-            </Card>
-          )}
       </div>
 
       <section id="hacer-corte" className="scroll-mt-4 rounded-2xl border border-brand/40 p-3 sm:p-5">
@@ -530,7 +517,7 @@ export default function WeeklyCut() {
             <StatCard label="Gastos" value={cents(tot.outflow)} icon={TrendingDown} tone="bad" hint="Sueldos, gastos y pagos de préstamos" />
             <StatCard label="Resultado de estas fechas" value={cents(tot.income - tot.outflow)} icon={Scale} tone={tot.income >= tot.outflow ? 'ok' : 'bad'} hint={tot.income >= tot.outflow ? 'Entró más de lo que salió (sin contar la caja chica)' : 'Salió más de lo que entró (sin contar la caja chica)'} />
           </div>
-          <FundProgress month={to.slice(0, 7)} chivasNew={
+          <FundProgress month={to.slice(0, 7)} before={from} chivasNew={
             <>
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm">Inscripciones de este corte <b className="font-display text-xl text-brand">{inscCount} · {cents(inscripciones)}</b></p>
@@ -947,6 +934,7 @@ function CutRow({ cut: c, prev, focus, mobile, onEdit, onDelete }: { cut: CashCu
   const covered = c.distribution.filter((x) => Number(x.amount) < 0).reduce((a, x) => a - Number(x.amount), 0)
   const should = had + Number(c.income) - Number(c.outflow) - savedTotal + covered
   const diff = Number(c.counted) - should
+  const cents = (n: number) => money(Math.round(n)).replace('.00', '')
   const show = (t: CutItem['type']) => { setExpanded(true); setOpen(open === t ? null : t); setAdding(false) }
   // A qué caja se fue el saldo (mismos nombres que el Dashboard)
   const isChivas = (k: string, name: string) => k.startsWith('x:chivas') || /seguro/i.test(name)

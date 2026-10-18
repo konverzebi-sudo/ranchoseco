@@ -3,8 +3,8 @@ import { Input } from './ui'
 import { Card } from './ui'
 import { Gauge, GaugeGrid, PieChart } from './Gauges'
 import { useCategoryResults } from './CategoryResults'
-import { useCashCuts, useExpenses, useExtraClasses, useFees, useSettings, useStudents } from '@/lib/api'
-import { CHIVAS_CREDENCIALES_KEY, CHIVAS_KEY, CHIVAS_PLAYERAS_KEY, chivasConfig, savingFunds } from '@/lib/cashcut'
+import { useCashCuts, useExpenses, useExtraClasses, useFees, usePayments, useSettings, useStudents } from '@/lib/api'
+import { chivasConfig, savingFunds } from '@/lib/cashcut'
 import { date, money, monthName, today } from '@/lib/format'
 
 export interface FundBar { name: string; saved: number; target: number; hint?: string }
@@ -58,6 +58,11 @@ export function ProfeGauges({ month, picker }: { month: string; picker?: React.R
     }
     return m
   }, [fees.data, students.data, extras.data, month])
+  const [by, setBy] = useState<'profe' | 'categoria'>('profe')
+  // Por categoría: la mensualidad cobrada de la categoría contra la parte del sueldo que le toca
+  const cats = useMemo(() => (data?.list ?? []).filter((r) => r.salaries > 0).map((r) => ({
+    name: r.name, saved: income.get(r.id) ?? 0, target: r.salaries, hint: r.coaches.map((c) => c.name).join(' · '),
+  })), [data, income])
   const profes = useMemo(() => {
     const m = new Map<string, FundBar>()
     for (const r of data?.list ?? []) {
@@ -72,12 +77,19 @@ export function ProfeGauges({ month, picker }: { month: string; picker?: React.R
     }
     return [...m.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'))
   }, [data, income])
+  const list = by === 'profe' ? profes : cats
   return (
-    <GaugeGrid title={`Sueldo de cada profe · ${mesDe(month)}`} actions={picker}
-      subtitle="¿Ya alcanza la mensualidad que pagaron sus niños para su sueldo del mes?">
-      {profes.length ? profes.map((f) => (
+    <GaugeGrid title={`Sueldo de cada ${by === 'profe' ? 'profe' : 'categoría'} · ${mesDe(month)}`}
+      actions={<div className="flex flex-wrap items-center gap-2">
+        <div className="flex rounded-xl border border-ink-600 p-0.5 text-sm">
+          {(['profe', 'categoria'] as const).map((k) => <button key={k} type="button" onClick={() => setBy(k)} className={'rounded-lg px-3 py-1.5 font-semibold ' + (by === k ? 'bg-brand text-ink' : 'text-muted hover:text-white')}>{k === 'profe' ? 'Por profe' : 'Por categoría'}</button>)}
+        </div>
+        {picker}
+      </div>}
+      subtitle={by === 'profe' ? '¿Ya alcanza la mensualidad que pagaron sus niños para su sueldo del mes?' : '¿Ya alcanza la mensualidad cobrada de cada categoría para la parte del sueldo que le toca?'}>
+      {list.length ? list.map((f) => (
         <Gauge key={f.name} pct={(f.saved / f.target) * 100} label={f.name}
-          title={`Mensualidad cobrada de ${f.hint}: ${cents(f.saved)} · sueldo del mes ${cents(f.target)}`}
+          title={`Mensualidad cobrada ${cents(f.saved)} · sueldo ${cents(f.target)}`}
           sub={<>{cents(f.saved)} de {cents(f.target)}<span className="block">{f.hint}</span></>} />
       )) : <p className="col-span-full text-sm text-muted">Cargando…</p>}
     </GaugeGrid>
@@ -85,12 +97,12 @@ export function ProfeGauges({ month, picker }: { month: string; picker?: React.R
 }
 
 /** Fondos y sueldos de profes (se usa en el corte de caja, con su propio mes). */
-export default function FundProgress({ month: initial, chivasNew }: { month?: string; chivasNew?: React.ReactNode }) {
+export default function FundProgress({ month: initial, chivasNew, before }: { month?: string; chivasNew?: React.ReactNode; before?: string }) {
   const [month, setMonth] = useState(initial ?? today().slice(0, 7))
   return (
     <div className="space-y-3">
-      <ChivasDistribution>{chivasNew}</ChivasDistribution>
-      <ProfeGauges month={month} picker={<Input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className="h-10 w-44" aria-label="Mes" />} />
+      <ChivasDistribution before={before}>{chivasNew}</ChivasDistribution>
+      <ProfeGauges month={month} picker={<Input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className="h-10 w-48" aria-label="Mes" />} />
     </div>
   )
 }
@@ -100,31 +112,37 @@ export default function FundProgress({ month: initial, chivasNew }: { month?: st
  * seguro y libre). El seguro además muestra qué tanto lleva de su meta.
  * `now` suma lo que se está apartando en el corte que se está haciendo.
  */
-export function ChivasDistribution({ now = () => 0, children }: { now?: (key: string) => number; children?: React.ReactNode }) {
-  const cuts = useCashCuts()
+export function ChivasDistribution({ before, children }: { before?: string; children?: React.ReactNode }) {
   const expenses = useExpenses()
   const settings = useSettings()
+  const payments = usePayments()
+  const fees = useFees()
   const d = useMemo(() => {
     const seguroGasto = Number((expenses.data ?? []).find((e) => /seguro/i.test(e.name) && e.active)?.amount ?? 0)
     const cfg = chivasConfig(settings.data, seguroGasto)
-    const funds = savingFunds({ cutDate: today(), expenses: expenses.data ?? [], cuts: cuts.data ?? [], seguro: { anual: cfg.seguroAnual, meta: cfg.meta } })
-    const val = (k: string) => { const f = funds.find((x) => x.key === k); return f ? f.saved + now(k) : 0 }
-    const seg = funds.find((f) => f.kind === 'seguro')
-    const seguro = seg ? seg.saved + now(seg.key) : 0
+    // Sólo las inscripciones cobradas (antes de este corte, si se está haciendo uno)
+    const inscFee = new Set((fees.data ?? []).filter((f) => /^inscripci[oó]n/i.test(f.concept)).map((f) => f.id))
+    const ins = (payments.data ?? []).filter((p) => inscFee.has(p.fee_id) && (!before || p.paid_at < before))
+    const total = ins.reduce((a, p) => a + Number(p.amount), 0)
+    const credenciales = ins.reduce((a, p) => a + (p.split ? Number(p.split.credencial) : cfg.credencial), 0)
+    const playeras = ins.reduce((a, p) => a + (p.split ? Number(p.split.playera) : cfg.playera), 0)
+    const seguro = Math.min(cfg.seguroAnual, ins.reduce((a, p) => a + (p.split ? Number(p.split.seguro) : cfg.seguro), 0))
+    const libre = Math.max(0, total - credenciales - playeras - seguro)
     return {
+      count: ins.length,
       parts: [
-        { label: 'Credenciales', value: val(CHIVAS_CREDENCIALES_KEY) },
-        { label: 'Playeras de entrenamiento', value: val(CHIVAS_PLAYERAS_KEY) },
+        { label: 'Credenciales', value: credenciales },
+        { label: 'Playeras de entrenamiento', value: playeras },
         { label: 'Seguro', value: seguro },
-        { label: 'Libre en Caja Chivas', value: val(CHIVAS_KEY) },
+        { label: 'Libre en Caja Chivas', value: libre },
       ],
-      seguro, seguroMeta: seg?.target ?? cfg.seguroAnual, seguroDue: seg?.due,
+      seguro, seguroMeta: cfg.seguroAnual, seguroDue: undefined as string | undefined,
     }
-  }, [cuts.data, expenses.data, settings.data, now])
+  }, [expenses.data, settings.data, payments.data, fees.data, before])
   const total = d.parts.reduce((a, p) => a + p.value, 0)
   const acumulado = (
     <div className="grid items-center gap-4 lg:grid-cols-[1fr_auto]">
-        {total > 0 ? <PieChart data={d.parts} max={4} /> : <p className="text-sm text-muted">Todavía no se ha guardado nada en la Caja Chivas. Se llena con las inscripciones al hacer el corte.</p>}
+        {total > 0 ? <PieChart data={d.parts} max={4} /> : <p className="text-sm text-muted">Todavía no hay inscripciones cobradas.</p>}
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:w-[34rem]">
           {d.parts.map((p) => (
             <div key={p.label} className="rounded-xl bg-ink-900 p-3">
@@ -143,7 +161,7 @@ export function ChivasDistribution({ now = () => 0, children }: { now?: (key: st
     <Card className="border-2 border-bad/70 p-5">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="font-display text-lg font-bold uppercase tracking-wide">Distribución de Caja Chivas (inscripciones)</h3>
-        <p className="text-lg">Ya acumulado <b className="font-display text-2xl text-brand">{cents(total)}</b></p>
+        <p className="text-lg">Ya acumulado <b className="font-display text-2xl text-brand">{cents(total)}</b> <span className="text-sm text-muted">· {d.count} inscripciones</span></p>
       </div>
       {children ? (
         <div className="grid gap-4 2xl:grid-cols-2">
