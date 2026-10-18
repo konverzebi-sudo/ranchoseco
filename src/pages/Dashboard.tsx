@@ -176,7 +176,7 @@ function AdminDashboard() {
               </ul>
             </Card>
           )}
-          <h2 className="!mb-[-0.75rem] font-display text-lg font-bold uppercase tracking-wide">Cajas de ahorro Rancho Seco</h2>
+          <h2 className="!mb-[-0.75rem] font-display text-lg font-bold uppercase tracking-wide">Caja de ahorro y próximos pagos</h2>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             {boxes.chica}{boxes.ahorro}{boxes.apartado}{boxes.chivas}{boxes.total}
           </div>

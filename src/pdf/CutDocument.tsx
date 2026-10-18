@@ -182,7 +182,7 @@ export function CutDocument({ r, logo, generatedAt, boxes }: { r: CutSummary; lo
           </View>
           {boxes && (
             <View style={s.section} wrap={false}>
-              <Text style={s.sTitle}>Cajas de ahorro Rancho Seco</Text>
+              <Text style={s.sTitle}>Caja de ahorro y próximos pagos</Text>
               <View style={s.kpis}>
                 <Kpi label="Caja chica" value={m(boxes.chica)} color={GRAY} />
                 <Kpi label="Caja de ahorro" value={m(boxes.ahorro)} color={OK} />
@@ -194,7 +194,7 @@ export function CutDocument({ r, logo, generatedAt, boxes }: { r: CutSummary; lo
           )}
           {boxes && boxes.chivas > 0 && (
             <View style={s.section} wrap={false}>
-              <Text style={s.sTitle}>Distribución de Caja Chivas · {m(boxes.chivas)}</Text>
+              <Text style={s.sTitle}>Distribución de Caja Chivas (inscripciones) · {m(boxes.chivas)}</Text>
               {boxes.chivasParts.map((p, i) => <Bar key={p.label} label={p.label} from={0} to={p.value} lo={0} hi={Math.max(1, ...boxes.chivasParts.map((x) => x.value))} color={['#B8A900', OK, INFO, GRAY][i]} value={`${m(p.value)} · ${Math.round((p.value / boxes.chivas) * 100)}%`} />)}
               {boxes.seguro.target > 0 && <Text style={{ fontSize: 8, color: GRAY, marginTop: 2 }}>Seguro: lleva {m(boxes.seguro.saved)} de {m(boxes.seguro.target)} ({Math.round((boxes.seguro.saved / boxes.seguro.target) * 100)}%)</Text>}
             </View>

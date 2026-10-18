@@ -3,7 +3,7 @@ import { CHIVAS_CREDENCIALES_KEY, CHIVAS_KEY, CHIVAS_PLAYERAS_KEY, SAVINGS_BOX_K
 import { date } from '@/lib/format'
 import type { CashCut, Expense } from '@/lib/types'
 
-/** Las cajas como quedaron al terminar ese corte (Cajas de ahorro Rancho Seco y la Caja Chivas por dentro). */
+/** Las cajas como quedaron al terminar ese corte (Caja de ahorro y próximos pagos y la Caja Chivas por dentro). */
 export interface CutBoxes {
   chica: number; ahorro: number; apartado: number; chivas: number; uniformes: number; total: number
   chivasParts: { label: string; value: number }[]
