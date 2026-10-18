@@ -687,7 +687,7 @@ export default function WeeklyCut() {
                       const l = items.filter((i) => i.type === 'salida' && counts(i) && outGroup(i) === g.id)
                       return l.length ? [[g.label.toUpperCase(), l.reduce((a, i) => a + itemValue(i), 0), true] as const, ...l.map((i) => [`${i.concept}`, itemValue(i)] as const)] : []
                     })} />
-                  <Breakdown label="− Total de ahorro" total={savingsTotal} tone="text-brand"
+                  <Breakdown label="− Total en cajas de ahorro" total={savingsTotal} tone="text-brand"
                     lines={funds.filter((f) => savedNow(f) > 0).map((f) => [f.name, savedNow(f)])} empty="No se apartó ahorro." />
                   <div className="flex justify-between px-3 py-2.5 font-semibold">
                     <span>= Saldo final al día de hoy <span className="block text-xs font-normal text-muted">lo que queda en caja</span></span>

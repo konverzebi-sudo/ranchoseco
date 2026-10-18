@@ -86,30 +86,26 @@ function Bar({ label, from, to, lo, hi, color, value, bold }: { label: string; f
   )
 }
 
-/** Cómo se llega a "debería haber": había + entró - salió - se apartó + se cubrió. */
-function Waterfall({ r }: { r: CutSummary }) {
-  const steps: { label: string; delta: number; color: string; sign: string }[] = [
-    { label: 'Había en caja', delta: r.had, color: GRAY, sign: '' },
-    { label: 'Entró', delta: r.income, color: OK, sign: '+ ' },
-    { label: 'Salió', delta: -r.outflow, color: BAD, sign: '- ' },
+
+/** Resumen claro, renglón por renglón (como en la página del corte). */
+function Summary({ r }: { r: CutSummary }) {
+  const rows: { label: string; value: string; color?: string; bold?: boolean }[] = [
+    { label: 'Caja chica anterior', value: m(r.had) },
+    { label: '+ Total de entradas', value: m(r.income), color: OK },
+    { label: '- Total de salidas', value: m(r.outflow), color: BAD },
+    { label: '- Total en cajas de ahorro', value: m(r.saved), color: '#B8A900' },
+    ...(r.coveredTotal > 0 ? [{ label: '+ Lo que faltó salió de otro lado', value: m(r.coveredTotal), color: INFO }] : []),
+    { label: '= Saldo final (lo que queda en caja)', value: m(r.balance), bold: true, color: r.balance < 0 ? BAD : INK },
+    { label: 'Se contó en caja', value: m(r.counted), bold: true },
   ]
-  if (r.saved > 0) steps.push({ label: 'Se apartó (ahorros)', delta: -r.saved, color: SAVE, sign: '- ' })
-  if (r.coveredTotal > 0) steps.push({ label: 'Se cubrió con', delta: r.coveredTotal, color: INFO, sign: '+ ' })
-  let acc = 0
-  const rows = steps.map((x, i) => {
-    const from = i === 0 ? 0 : acc
-    acc += x.delta
-    return { ...x, from, to: acc }
-  })
-  const all = [0, ...rows.flatMap((x) => [x.from, x.to])]
-  const lo = Math.min(...all), hi = Math.max(...all)
   return (
-    <View>
-      {rows.map((x) => <Bar key={x.label} label={x.label} from={x.from} to={x.to} lo={lo} hi={hi} color={x.color} value={`${x.sign}${m(Math.abs(x.delta))}`} />)}
-      <View style={{ borderTopWidth: 1, borderTopColor: LINE, marginTop: 3, paddingTop: 4 }}>
-        <Bar label="Debería haber" from={0} to={r.balance} lo={lo} hi={hi} color={r.balance < 0 ? BAD : INK} value={m(r.balance)} bold />
-        {r.balance >= -0.5 && <Bar label="Se contó" from={0} to={r.counted} lo={lo} hi={hi} color="#B8A900" value={m(r.counted)} bold />}
-      </View>
+    <View style={{ backgroundColor: LIGHT, borderRadius: 8 }}>
+      {rows.map((x, i) => (
+        <View key={x.label} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, paddingHorizontal: 12, borderTopWidth: i ? 1 : 0, borderTopColor: LINE }}>
+          <Text style={{ fontSize: x.bold ? 10.5 : 9.5, fontFamily: x.bold ? 'Helvetica-Bold' : 'Helvetica' }}>{x.label}</Text>
+          <Text style={{ fontSize: x.bold ? 12 : 10, fontFamily: 'Helvetica-Bold', color: x.color ?? INK }}>{x.value}</Text>
+        </View>
+      ))}
     </View>
   )
 }
@@ -201,8 +197,8 @@ export function CutDocument({ r, logo, generatedAt, boxes }: { r: CutSummary; lo
           )}
 
           <View style={s.section} wrap={false}>
-            <Text style={s.sTitle}>Cómo se llegó al saldo</Text>
-            <Waterfall r={r} />
+            <Text style={s.sTitle}>Caja y a dónde se va el dinero</Text>
+            <Summary r={r} />
           </View>
 
           <View style={s.two}>
