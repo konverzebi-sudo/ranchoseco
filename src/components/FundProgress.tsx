@@ -142,7 +142,7 @@ export function ChivasDistribution({ now = () => 0, children }: { now?: (key: st
   return (
     <Card className="border-2 border-bad/70 p-5">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="font-display text-lg font-bold uppercase tracking-wide">Distribución de Caja Chivas</h3>
+        <h3 className="font-display text-lg font-bold uppercase tracking-wide">Distribución de Caja Chivas (inscripciones)</h3>
         <p className="text-lg">Ya acumulado <b className="font-display text-2xl text-brand">{cents(total)}</b></p>
       </div>
       {children ? (

@@ -115,7 +115,6 @@ export default function WeeklyCut() {
   const suggestedTotal = funds.reduce((a, f) => a + f.suggested, 0)
   // Las cajas después de este corte
   const box = funds.find((f) => f.kind === 'ahorro')
-  const chivasTotal = funds.filter((f) => f.kind === 'chivas' || f.kind === 'seguro').reduce((a, f) => a + f.saved + savedNow(f), 0)
   const uniformsIn = items.filter((i) => i.type === 'entrada' && counts(i) && isUniformConcept(i.detail.split(' · ')[0])).reduce((a, i) => a + itemValue(i), 0)
   // Reparto de las inscripciones: playera, credencial, parte del seguro y lo demás libre en la Caja Chivas
   const seguroFund = funds.find((f) => f.kind === 'seguro')
@@ -569,8 +568,8 @@ export default function WeeklyCut() {
           {/* ---------- Sugerencia de ahorro ---------- */}
           <Card>
             <div className="border-b border-ink-600 px-5 py-4">
-              <h3 className="flex items-center gap-2 font-display text-xl font-bold uppercase tracking-wide"><PiggyBank className="h-6 w-6 text-brand" /> Cajas de ahorro Rancho Seco</h3>
-              <p className="text-sm text-muted">Para cada pago grande te sugerimos cuánto apartar esta semana. Escribe cuánto se guarda de verdad; si no hay dinero, déjalo en 0.
+              <h3 className="flex items-center gap-2 font-display text-xl font-bold uppercase tracking-wide"><PiggyBank className="h-6 w-6 text-brand" /> Caja de ahorro y próximos pagos</h3>
+              <p className="text-sm text-muted">Cada caja dice cuánto tiene acumulado y cuánto pones esta vez. Abajo, los próximos pagos ordenados por lo que toca apartar esta semana.
                 {expected > 0 ? <> Hay <b className="text-white">{cents(expected)}</b> en caja para repartir.</> : <> <b className="text-warn">Esta semana no hay dinero en caja para ahorrar.</b></>}</p>
             </div>
             {(() => {
@@ -580,69 +579,48 @@ export default function WeeklyCut() {
               const ahorroAntes = box?.saved ?? 0
               const isApartado = (f: SavingFund) => f.kind !== 'ahorro' && f.kind !== 'uniformes' && f.kind !== 'chivas' && f.kind !== 'seguro'
               const apartadoAntes = funds.filter(isApartado).reduce((a, f) => a + f.saved, 0)
-              const chivasAntes = funds.filter((f) => f.kind === 'chivas' || f.kind === 'seguro').reduce((a, f) => a + f.saved, 0)
               const unifAntes = funds.filter((f) => f.kind === 'uniformes').reduce((a, f) => a + f.saved, 0)
               const sugApartado = () => setSaveAmt((x) => ({ ...x, ...Object.fromEntries(funds.filter(isApartado).map((f) => [f.key, String(f.suggested)])) }))
               // Ahorro: lo que queda del saldo después de lo demás que se apartó
               const sugAhorro = () => { if (!box) return; const otros = savingsTotal - savedNow(box); setSaveAmt((x) => ({ ...x, [box.key]: String(Math.max(0, Math.round((expected - otros) * 100) / 100)) })) }
               const pill = (onClick: () => void) => <button type="button" onClick={onClick} className="rounded-full bg-ink px-3 py-1 text-xs font-bold uppercase tracking-wide text-brand hover:brightness-125">Sugerir</button>
-              const card = (label: string, value: number, hint: string, action?: () => void, tone?: string) => (
+              const apartadoNow = funds.filter(isApartado).reduce((a, f) => a + savedNow(f), 0)
+              const unifNow = funds.filter((f) => f.kind === 'uniformes').reduce((a, f) => a + savedNow(f), 0)
+              const ahorroNow = box ? savedNow(box) : 0
+              const box2 = (label: string, antes: number, ahora: number, hint: string, opts: { action?: () => void; input?: React.ReactNode; tone?: string } = {}) => (
                 <div className="rounded-2xl border border-ink-600 bg-ink-800 p-3">
-                  <div className="flex items-start justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wider text-muted">{label}</p>{action && pill(action)}</div>
-                  <p className={cx('mt-1 font-display text-2xl font-bold', tone)}>{cents(value)}</p>
-                  <p className="text-xs text-muted">{hint}</p>
+                  <div className="flex items-start justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wider text-muted">{label}</p>{opts.action && pill(opts.action)}</div>
+                  <div className="mt-1 grid grid-cols-2 gap-2">
+                    <div><p className="text-xs text-muted">Acumulado</p><p className={cx('font-display text-xl font-bold', opts.tone)}>{cents(antes)}</p></div>
+                    <div><p className="text-xs text-muted">Esta vez</p>{opts.input ?? <p className="font-display text-xl font-bold text-brand">+ {cents(ahora)}</p>}</div>
+                  </div>
+                  <p className="mt-1 text-xs text-muted">{hint} · después del corte <b className="text-white">{cents(antes + ahora)}</b></p>
                 </div>
               )
               return (
-                <div className="grid gap-3 border-b border-ink-600 p-4 sm:grid-cols-2 lg:grid-cols-5">
-                  {card('Caja chica', chica, `Lo de esta semana (empezó con ${cents(carry)})`, undefined, chica < -0.5 ? 'text-bad' : undefined)}
-                  {card('Caja de ahorro', ahorroAntes + (box ? savedNow(box) : 0), box && savedNow(box) > 0 ? `Antes ${cents(ahorroAntes)} + hoy ${cents(savedNow(box))}` : 'Lo ahorrado en semanas anteriores', sugAhorro, 'text-ok')}
-                  {card('Apartado próx. gastos', apartadoAntes + funds.filter(isApartado).reduce((a, f) => a + savedNow(f), 0), 'Regalías, renta, partes y préstamos', sugApartado)}
-                  {card('Caja Chivas', chivasTotal, 'Playeras, credenciales, seguro y libre', applyChivas, 'text-brand')}
-                  {card('Caja total', chica + ahorroAntes + apartadoAntes + chivasAntes + unifAntes, 'Todas las cajas (con uniformes)')}
+                <div className="grid gap-3 border-b border-ink-600 p-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-2xl border border-ink-600 bg-ink-800 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted">Caja chica</p>
+                    <p className={cx('mt-1 font-display text-2xl font-bold', chica < -0.5 && 'text-bad')}>{cents(chica)}</p>
+                    <p className="text-xs text-muted">Lo de esta semana (empezó con {cents(carry)}). Al cerrar el corte queda en cero.</p>
+                  </div>
+                  {box2('Caja de ahorro', ahorroAntes, ahorroNow, 'Lo que sobra sin destino', {
+                    action: sugAhorro, tone: 'text-ok',
+                    input: box ? <Input type="number" min="0" inputMode="decimal" value={saveAmt[box.key] ?? ''} placeholder="0" aria-label="Esta vez a la caja de ahorro" onChange={(e) => setSaveAmt({ ...saveAmt, [box.key]: e.target.value })} className="h-9 text-base font-semibold" /> : undefined,
+                  })}
+                  {box2('Apartado próx. gastos', apartadoAntes + unifAntes, apartadoNow + unifNow, `Regalías, renta, pagos pendientes${unifNow || unifAntes ? ' y uniformes' : ''}`, { action: sugApartado })}
+                  {box2('Total ahorro y apartados', ahorroAntes + apartadoAntes + unifAntes, ahorroNow + apartadoNow + unifNow, 'Caja de ahorro + apartado')}
                 </div>
               )
             })()}
             {funds.length === 0 ? <p className="px-5 py-6 text-center text-sm text-muted">No hay pagos grandes por juntar.</p> : (
               <ul className="divide-y divide-ink-700">
-                {funds.map((f) => {
+                {[...funds].sort((x, y) => y.suggested - x.suggested).map((f) => {
                   const now = savedNow(f)
-                  if (f.kind === 'uniformes') return (
-                    <li key={f.key} className="grid gap-3 bg-info/5 px-5 py-3 md:grid-cols-[1fr_220px_150px]">
-                      <div className="min-w-0">
-                        <p className="flex flex-wrap items-center gap-2 font-medium">Fondo de uniformes <Badge tone="info">Sólo para uniformes</Badge></p>
-                        <p className="text-xs text-muted">Lo que se cobra de playeras, altas en Chivas, uniformes y credenciales se guarda aquí.</p>
-                        <p className="mt-1 text-sm">Acumulado <b>{cents(f.saved)}</b>{now > 0 ? <> + {cents(now)} hoy = <b className="text-info">{cents(f.saved + now)}</b></> : ''}</p>
-                      </div>
-                      <div className="text-sm">
-                        <p className="text-xs uppercase tracking-wider text-muted">Cobrado de uniformes en este corte</p>
-                        <p className="font-display text-2xl font-bold text-info">{cents(uniformsIn)}</p>
-                        {uniformsIn > 0 && <button className="text-xs text-brand hover:underline" onClick={() => setSaveAmt({ ...saveAmt, [f.key]: String(uniformsIn) })}>Mandarlo al fondo de uniformes</button>}
-                      </div>
-                      <div className="space-y-1">
-                        <Input type="number" min="0" inputMode="decimal" value={saveAmt[f.key] ?? ''} placeholder="0" aria-label="Se guarda en el fondo de uniformes"
-                          onChange={(e) => setSaveAmt({ ...saveAmt, [f.key]: e.target.value })} className="h-10" />
-                        <Input value={saveNote[f.key] ?? ''} onChange={(e) => setSaveNote({ ...saveNote, [f.key]: e.target.value })} placeholder="Nota" className="h-8 text-xs" aria-label="Nota" />
-                      </div>
-                    </li>
-                  )
+                  if (f.kind === 'uniformes') return null
                   if (f.kind === 'chivas') return null
                   if (f.kind === 'seguro') return null
-                  if (f.kind === 'ahorro') return (
-                    <li key={f.key} className="grid gap-3 bg-ok/5 px-5 py-3 md:grid-cols-[1fr_220px_150px]">
-                      <div className="min-w-0">
-                        <p className="flex flex-wrap items-center gap-2 font-medium">Caja de ahorro <Badge tone="ok">Ahorro libre</Badge></p>
-                        <p className="text-xs text-muted">Dinero que se guarda sin un pago asignado. Las inscripciones ahora van a la Caja Chivas.</p>
-                        <p className="mt-1 text-sm">Acumulado <b>{cents(f.saved)}</b>{now > 0 ? <> + {cents(now)} hoy = <b className="text-ok">{cents(f.saved + now)}</b></> : ''}</p>
-                      </div>
-                      <div />
-                      <div className="space-y-1">
-                        <Input type="number" min="0" inputMode="decimal" value={saveAmt[f.key] ?? ''} placeholder="0" aria-label="Se guarda en la caja de ahorro"
-                          onChange={(e) => setSaveAmt({ ...saveAmt, [f.key]: e.target.value })} className="h-10" />
-                        <Input value={saveNote[f.key] ?? ''} onChange={(e) => setSaveNote({ ...saveNote, [f.key]: e.target.value })} placeholder="Nota" className="h-8 text-xs" aria-label="Nota" />
-                      </div>
-                    </li>
-                  )
+                  if (f.kind === 'ahorro') return null
                   const pctBefore = f.target ? Math.min(100, (f.saved / f.target) * 100) : 0
                   const pctAfter = f.target ? Math.min(100, ((f.saved + now) / f.target) * 100) : 0
                   const days = Math.max(0, Math.round((new Date(f.due + 'T12:00:00').getTime() - new Date(to + 'T12:00:00').getTime()) / 86_400_000))
