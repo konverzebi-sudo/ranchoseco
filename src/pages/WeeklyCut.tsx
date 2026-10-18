@@ -573,7 +573,7 @@ export default function WeeklyCut() {
               const apartadoAntes = funds.filter(isApartado).reduce((a, f) => a + f.saved, 0)
               const unifAntes = funds.filter((f) => f.kind === 'uniformes').reduce((a, f) => a + f.saved, 0)
               const sugApartado = () => setSaveAmt((x) => ({ ...x, ...Object.fromEntries(funds.filter(isApartado).map((f) => [f.key, String(f.suggested)])) }))
-              const pill = (onClick: () => void) => <button type="button" onClick={onClick} className="rounded-full bg-ink px-3 py-1 text-xs font-bold uppercase tracking-wide text-brand hover:brightness-125">Sugerir</button>
+              const pill = (onClick: () => void) => <button type="button" onClick={onClick} title="Llena lo que se sugiere apartar esta semana" className="shrink-0 rounded-lg bg-brand px-3 py-1.5 text-sm font-semibold text-ink shadow-sm hover:brightness-105">Usar sugerencia</button>
               const apartadoNow = funds.filter(isApartado).reduce((a, f) => a + savedNow(f), 0)
               const unifNow = funds.filter((f) => f.kind === 'uniformes').reduce((a, f) => a + savedNow(f), 0)
               const ahorroNow = box ? savedNow(box) : 0
