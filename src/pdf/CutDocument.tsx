@@ -6,7 +6,6 @@ import type { CutBoxes } from './cutPdf'
 const Y = '#F2E30A'
 const INK = '#111111'
 const GRAY = '#6B6B6B'
-const LIGHT = '#F4F4F2'
 const LINE = '#E2E2E2'
 const OK = '#16A34A'
 const BAD = '#DC2626'
@@ -19,43 +18,43 @@ const m = (n: number) => money(Math.round(n * 100) / 100).replace('.00', '').rep
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
 
 const s = StyleSheet.create({
-  page: { fontFamily: 'Helvetica', fontSize: 9, color: INK, paddingBottom: 46 },
-  header: { backgroundColor: INK, paddingVertical: 14, paddingHorizontal: 28, flexDirection: 'row', alignItems: 'center' },
-  logo: { width: 54, height: 54, marginRight: 12 },
-  hTitle: { color: '#FFFFFF', fontSize: 20, fontFamily: 'Helvetica-Bold', letterSpacing: 1 },
+  page: { fontFamily: 'Helvetica', fontSize: 9.5, color: INK, paddingBottom: 46, backgroundColor: '#F6F6F3' },
+  header: { backgroundColor: INK, paddingVertical: 18, paddingHorizontal: 28, flexDirection: 'row', alignItems: 'center' },
+  logo: { width: 58, height: 58, marginRight: 14 },
+  hTitle: { color: '#FFFFFF', fontSize: 24, fontFamily: 'Helvetica-Bold', letterSpacing: 0.5 },
   hSub: { color: Y, fontSize: 9, fontFamily: 'Helvetica-Bold', letterSpacing: 2, marginTop: 3 },
   hRight: { marginLeft: 'auto', alignItems: 'flex-end' },
-  hDate: { color: '#FFFFFF', fontSize: 12, fontFamily: 'Helvetica-Bold' },
-  hSmall: { color: '#BBBBBB', fontSize: 8, marginTop: 2 },
-  stripe: { height: 4, backgroundColor: Y },
-  body: { paddingHorizontal: 28, paddingTop: 14 },
-  section: { marginBottom: 14 },
-  sTitle: { fontSize: 11, fontFamily: 'Helvetica-Bold', letterSpacing: 1, textTransform: 'uppercase', borderLeftWidth: 3, borderLeftColor: Y, paddingLeft: 6, marginBottom: 8, flexDirection: 'row' },
-  kpis: { flexDirection: 'row', gap: 8 },
-  kpi: { flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: 9, borderTopWidth: 3 },
-  kpiLabel: { fontSize: 7.5, color: GRAY, textTransform: 'uppercase', letterSpacing: 0.5 },
-  kpiValue: { fontSize: 16, fontFamily: 'Helvetica-Bold', marginTop: 3 },
-  result: { borderRadius: 8, padding: 14, flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
-  resBig: { color: '#FFFFFF', fontSize: 22, fontFamily: 'Helvetica-Bold' },
-  resSmall: { color: '#FFFFFF', fontSize: 9, marginTop: 2 },
+  hDate: { color: Y, fontSize: 15, fontFamily: 'Helvetica-Bold' },
+  hSmall: { color: '#CCCCCC', fontSize: 9, marginTop: 3 },
+  stripe: { height: 5, backgroundColor: Y },
+  body: { paddingHorizontal: 26, paddingTop: 16 },
+  section: { marginBottom: 16 },
+  sTitle: { fontSize: 12.5, fontFamily: 'Helvetica-Bold', letterSpacing: 0.8, textTransform: 'uppercase', borderLeftWidth: 5, borderLeftColor: Y, paddingLeft: 8, marginBottom: 9, flexDirection: 'row' },
+  kpis: { flexDirection: 'row', gap: 9 },
+  kpi: { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 12, paddingVertical: 11, paddingHorizontal: 12, borderLeftWidth: 5, borderWidth: 1, borderColor: '#E8E8E4' },
+  kpiLabel: { fontSize: 7.5, color: GRAY, textTransform: 'uppercase', letterSpacing: 0.6, fontFamily: 'Helvetica-Bold' },
+  kpiValue: { fontSize: 21, fontFamily: 'Helvetica-Bold', marginTop: 4 },
+  result: { borderRadius: 16, paddingVertical: 18, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+  resBig: { color: '#FFFFFF', fontSize: 30, fontFamily: 'Helvetica-Bold' },
+  resSmall: { color: '#FFFFFF', fontSize: 10, marginTop: 3 },
   resCol: { marginLeft: 'auto', flexDirection: 'row', gap: 16 },
   resLbl: { color: '#FFFFFF', fontSize: 7.5, textTransform: 'uppercase', letterSpacing: 0.5, opacity: 0.85 },
-  resVal: { color: '#FFFFFF', fontSize: 14, fontFamily: 'Helvetica-Bold', marginTop: 2 },
+  resVal: { color: '#FFFFFF', fontSize: 18, fontFamily: 'Helvetica-Bold', marginTop: 2 },
   barRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
   barLabel: { width: 150, fontSize: 8.5 },
-  barTrack: { flex: 1, height: 11, backgroundColor: '#ECECEC', borderRadius: 2, position: 'relative' },
+  barTrack: { flex: 1, height: 12, backgroundColor: '#E9E9E4', borderRadius: 6, position: 'relative' },
   barVal: { width: 70, textAlign: 'right', fontFamily: 'Helvetica-Bold', fontSize: 8.5 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
-  chip: { backgroundColor: LIGHT, borderRadius: 10, paddingVertical: 3, paddingHorizontal: 8, fontSize: 8 },
-  table: { borderWidth: 1, borderColor: LINE, borderRadius: 4, marginBottom: 8 },
-  group: { flexDirection: 'row', backgroundColor: INK, paddingVertical: 4, paddingHorizontal: 6 },
-  groupTxt: { color: '#FFFFFF', fontFamily: 'Helvetica-Bold', fontSize: 8.5 },
-  tr: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#EEEEEE', paddingVertical: 3, paddingHorizontal: 6 },
-  td: { fontSize: 8 },
+  chip: { backgroundColor: '#FFFFFF', borderRadius: 12, paddingVertical: 4, paddingHorizontal: 10, fontSize: 8.5, borderWidth: 1, borderColor: '#E8E8E4' },
+  table: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E8E8E4', borderRadius: 10, marginBottom: 9, overflow: 'hidden' },
+  group: { flexDirection: 'row', backgroundColor: INK, paddingVertical: 6, paddingHorizontal: 9 },
+  groupTxt: { color: '#FFFFFF', fontFamily: 'Helvetica-Bold', fontSize: 9.5 },
+  tr: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#F0F0EC', paddingVertical: 4, paddingHorizontal: 9 },
+  td: { fontSize: 8.5 },
   note: { fontSize: 7.5, color: GRAY, marginTop: 1 },
   two: { flexDirection: 'row', gap: 10 },
-  box: { flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: 10, marginBottom: 10 },
-  solo: { backgroundColor: LIGHT, borderRadius: 6, padding: 10, marginBottom: 10 },
+  box: { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 12, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: '#E8E8E4' },
+  solo: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: '#E8E8E4' },
   boxTitle: { fontFamily: 'Helvetica-Bold', fontSize: 9, marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.5 },
   boxRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 },
   footer: { position: 'absolute', bottom: 18, left: 28, right: 28, flexDirection: 'row', justifyContent: 'space-between', color: GRAY, fontSize: 7.5, borderTopWidth: 1, borderTopColor: LINE, paddingTop: 6 },
@@ -63,10 +62,10 @@ const s = StyleSheet.create({
 
 function Kpi({ label, value, color, sub }: { label: string; value: string; color: string; sub?: string }) {
   return (
-    <View style={[s.kpi, { borderTopColor: color }]}>
+    <View style={[s.kpi, { borderLeftColor: color }]}>
       <Text style={s.kpiLabel}>{label}</Text>
       <Text style={[s.kpiValue, { color }]}>{value}</Text>
-      {sub && <Text style={{ fontSize: 7, color: GRAY, marginTop: 2 }}>{sub}</Text>}
+      {sub && <Text style={{ fontSize: 7.5, color: GRAY, marginTop: 3 }}>{sub}</Text>}
     </View>
   )
 }
@@ -90,23 +89,33 @@ function Bar({ label, from, to, lo, hi, color, value, bold }: { label: string; f
 
 /** Resumen claro, renglón por renglón (como en la página del corte). */
 function Summary({ r }: { r: CutSummary }) {
-  const rows: { label: string; value: string; color?: string; bold?: boolean }[] = [
+  const rows: { label: string; value: string; color?: string }[] = [
     { label: 'Caja chica anterior', value: m(r.had) },
     { label: '+ Total de entradas', value: m(r.income), color: OK },
     { label: '- Total de salidas', value: m(r.outflow), color: BAD },
-    { label: '- Total en cajas de ahorro', value: m(r.saved), color: '#B8A900' },
+    { label: '- Total en cajas de ahorro', value: m(r.saved), color: '#9A8C00' },
     ...(r.coveredTotal > 0 ? [{ label: '+ Lo que faltó salió de otro lado', value: m(r.coveredTotal), color: INFO }] : []),
-    { label: '= Saldo final (lo que queda en caja)', value: m(r.balance), bold: true, color: r.balance < 0 ? BAD : INK },
-    { label: 'Se contó en caja', value: m(r.counted), bold: true },
   ]
   return (
-    <View style={{ backgroundColor: LIGHT, borderRadius: 8 }}>
-      {rows.map((x, i) => (
-        <View key={x.label} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, paddingHorizontal: 12, borderTopWidth: i ? 1 : 0, borderTopColor: LINE }}>
-          <Text style={{ fontSize: x.bold ? 10.5 : 9.5, fontFamily: x.bold ? 'Helvetica-Bold' : 'Helvetica' }}>{x.label}</Text>
-          <Text style={{ fontSize: x.bold ? 12 : 10, fontFamily: 'Helvetica-Bold', color: x.color ?? INK }}>{x.value}</Text>
+    <View style={{ flexDirection: 'row', gap: 10 }}>
+      <View style={{ flex: 1.4, backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: '#E8E8E4', paddingVertical: 4 }}>
+        {rows.map((x, i) => (
+          <View key={x.label} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 7, paddingHorizontal: 14, borderTopWidth: i ? 1 : 0, borderTopColor: '#F0F0EC' }}>
+            <Text style={{ fontSize: 10 }}>{x.label}</Text>
+            <Text style={{ fontSize: 12, fontFamily: 'Helvetica-Bold', color: x.color ?? INK }}>{x.value}</Text>
+          </View>
+        ))}
+      </View>
+      <View style={{ flex: 1, gap: 8 }}>
+        <View style={{ flex: 1, backgroundColor: INK, borderRadius: 12, padding: 14, justifyContent: 'center' }}>
+          <Text style={{ color: '#BBBBBB', fontSize: 8, fontFamily: 'Helvetica-Bold', letterSpacing: 0.6, textTransform: 'uppercase' }}>Saldo final · queda en caja</Text>
+          <Text style={{ color: r.balance < 0 ? '#FF6B6B' : Y, fontSize: 26, fontFamily: 'Helvetica-Bold', marginTop: 4 }}>{m(r.balance)}</Text>
         </View>
-      ))}
+        <View style={{ backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: '#E8E8E4', padding: 12 }}>
+          <Text style={{ color: GRAY, fontSize: 8, fontFamily: 'Helvetica-Bold', letterSpacing: 0.6, textTransform: 'uppercase' }}>Se contó en caja</Text>
+          <Text style={{ fontSize: 18, fontFamily: 'Helvetica-Bold', marginTop: 3 }}>{m(r.counted)}</Text>
+        </View>
+      </View>
     </View>
   )
 }
