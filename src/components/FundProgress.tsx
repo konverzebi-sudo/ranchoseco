@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
 import { Input } from './ui'
-import { Gauge, GaugeGrid } from './Gauges'
+import { Card } from './ui'
+import { Gauge, GaugeGrid, PieChart } from './Gauges'
 import { useCategoryResults } from './CategoryResults'
-import { useCashCuts, useExpenses, useExtraClasses, useFees, useStudents } from '@/lib/api'
-import { savingFunds } from '@/lib/cashcut'
+import { useCashCuts, useExpenses, useExtraClasses, useFees, useSettings, useStudents } from '@/lib/api'
+import { CHIVAS_CREDENCIALES_KEY, CHIVAS_KEY, CHIVAS_PLAYERAS_KEY, chivasConfig, savingFunds } from '@/lib/cashcut'
 import { date, money, monthName, today } from '@/lib/format'
 
 export interface FundBar { name: string; saved: number; target: number; hint?: string }
@@ -84,12 +85,64 @@ export function ProfeGauges({ month, picker }: { month: string; picker?: React.R
 }
 
 /** Fondos y sueldos de profes (se usa en el corte de caja, con su propio mes). */
-export default function FundProgress({ funds, month: initial }: { funds?: FundBar[]; month?: string }) {
+export default function FundProgress({ month: initial, now }: { funds?: FundBar[]; month?: string; now?: (key: string) => number }) {
   const [month, setMonth] = useState(initial ?? today().slice(0, 7))
   return (
     <div className="space-y-3">
-      <FundGauges funds={funds} />
+      <ChivasDistribution now={now} />
       <ProfeGauges month={month} picker={<Input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className="h-10 w-44" aria-label="Mes" />} />
     </div>
+  )
+}
+
+/**
+ * Distribución de la Caja Chivas: cuánto hay en cada mini caja (credenciales, playeras,
+ * seguro y libre). El seguro además muestra qué tanto lleva de su meta.
+ * `now` suma lo que se está apartando en el corte que se está haciendo.
+ */
+export function ChivasDistribution({ now = () => 0 }: { now?: (key: string) => number }) {
+  const cuts = useCashCuts()
+  const expenses = useExpenses()
+  const settings = useSettings()
+  const d = useMemo(() => {
+    const seguroGasto = Number((expenses.data ?? []).find((e) => /seguro/i.test(e.name) && e.active)?.amount ?? 0)
+    const cfg = chivasConfig(settings.data, seguroGasto)
+    const funds = savingFunds({ cutDate: today(), expenses: expenses.data ?? [], cuts: cuts.data ?? [], seguro: { anual: cfg.seguroAnual, meta: cfg.meta } })
+    const val = (k: string) => { const f = funds.find((x) => x.key === k); return f ? f.saved + now(k) : 0 }
+    const seg = funds.find((f) => f.kind === 'seguro')
+    const seguro = seg ? seg.saved + now(seg.key) : 0
+    return {
+      parts: [
+        { label: 'Credenciales', value: val(CHIVAS_CREDENCIALES_KEY) },
+        { label: 'Playeras de entrenamiento', value: val(CHIVAS_PLAYERAS_KEY) },
+        { label: 'Seguro', value: seguro },
+        { label: 'Libre en Caja Chivas', value: val(CHIVAS_KEY) },
+      ],
+      seguro, seguroMeta: seg?.target ?? cfg.seguroAnual, seguroDue: seg?.due,
+    }
+  }, [cuts.data, expenses.data, settings.data, now])
+  const total = d.parts.reduce((a, p) => a + p.value, 0)
+  return (
+    <Card className="p-5">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="font-display text-lg font-bold uppercase tracking-wide">Distribución de Caja Chivas</h3>
+        <p className="text-lg">Total <b className="font-display text-2xl text-brand">{cents(total)}</b></p>
+      </div>
+      <div className="grid items-center gap-4 lg:grid-cols-[1fr_auto]">
+        {total > 0 ? <PieChart data={d.parts} max={4} /> : <p className="text-sm text-muted">Todavía no se ha guardado nada en la Caja Chivas. Se llena con las inscripciones al hacer el corte.</p>}
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:w-[34rem]">
+          {d.parts.map((p) => (
+            <div key={p.label} className="rounded-xl bg-ink-900 p-3">
+              <p className="text-xs text-muted">{p.label}</p>
+              <p className="font-display text-xl font-bold">{cents(p.value)}</p>
+            </div>
+          ))}
+          <div className="col-span-2 sm:col-span-4">
+            <Gauge pct={d.seguroMeta ? (d.seguro / d.seguroMeta) * 100 : null} label="Seguro: lo juntado de su meta"
+              sub={`${cents(d.seguro)} de ${cents(d.seguroMeta)}${d.seguroDue ? ` · para el ${date(d.seguroDue, "d 'de' MMM yyyy")}` : ''}`} />
+          </div>
+        </div>
+      </div>
+    </Card>
   )
 }

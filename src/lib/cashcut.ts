@@ -193,6 +193,15 @@ export const CHIVAS_CREDENCIAL = 150
 /** El seguro se reparte entre este número fijo de alumnos */
 export const INSURANCE_STUDENTS = 150
 
+/** Configuración de la Caja Chivas (de Configuración; si aún no existe, los valores de siempre). */
+export function chivasConfig(st?: { chivas_playera?: number; chivas_credencial?: number; seguro_anual?: number; meta_alumnos?: number } | null, seguroGasto = 0) {
+  const playera = Number(st?.chivas_playera ?? CHIVAS_PLAYERA)
+  const credencial = Number(st?.chivas_credencial ?? CHIVAS_CREDENCIAL)
+  const seguroAnual = Number(st?.seguro_anual ?? seguroGasto)
+  const meta = Number(st?.meta_alumnos ?? INSURANCE_STUDENTS) || INSURANCE_STUDENTS
+  return { playera, credencial, seguroAnual, meta, seguro: Math.round((seguroAnual / meta) * 100) / 100 }
+}
+
 export interface SavingFund {
   key: string
   name: string
@@ -239,8 +248,8 @@ function nextDue(e: Expense, after: string): string | null {
  * pagos en partes y préstamos: lo que falta ÷ semanas que quedan.
  * Nunca más de lo que falta por juntar.
  */
-export function savingFunds(opts: { cutDate: string; expenses: Expense[]; cuts: Pick<CashCut, 'id' | 'savings'>[]; excludeCut?: string; inscriptions?: number }): SavingFund[] {
-  const { cutDate, expenses, cuts, excludeCut, inscriptions } = opts
+export function savingFunds(opts: { cutDate: string; expenses: Expense[]; cuts: Pick<CashCut, 'id' | 'savings'>[]; excludeCut?: string; inscriptions?: number; seguro?: { anual: number; meta: number } }): SavingFund[] {
+  const { cutDate, expenses, cuts, excludeCut, inscriptions, seguro } = opts
   const savedFor = (key: string) => cuts.filter((c) => c.id !== excludeCut)
     .flatMap((c) => c.savings ?? []).filter((s) => s.key === key).reduce((a, s) => a + Number(s.saved), 0)
   const fund = (f: Omit<SavingFund, 'saved' | 'weeksLeft' | 'suggested'>, weeksInCycle?: number): SavingFund => {
@@ -258,9 +267,10 @@ export function savingFunds(opts: { cutDate: string; expenses: Expense[]; cuts: 
       const due = nextDue(e, cutDate)
       const perCycle = e.frequency === 'mensual' ? 4 : e.frequency === 'quincenal' ? 2 : 52
       if (!due) continue
-      const f = fund({ key: `f:${e.id}:${due}`, name: e.name, kind: /seguro/i.test(e.name) ? 'seguro' : 'fijo', target: Number(e.amount), due }, perCycle)
+      const isSeguro = /seguro/i.test(e.name)
+      const f = fund({ key: `f:${e.id}:${due}`, name: e.name, kind: isSeguro ? 'seguro' : 'fijo', target: isSeguro && seguro?.anual ? seguro.anual : Number(e.amount), due }, perCycle)
       // El seguro se junta con las inscripciones: (seguro ÷ 150 alumnos) por cada inscripción cobrada
-      if (f.kind === 'seguro' && inscriptions != null) f.suggested = Math.round(Math.min(Math.max(0, f.target - f.saved), (f.target / INSURANCE_STUDENTS) * inscriptions) * 100) / 100
+      if (f.kind === 'seguro' && inscriptions != null) f.suggested = Math.round(Math.min(Math.max(0, f.target - f.saved), (f.target / (seguro?.meta || INSURANCE_STUDENTS)) * inscriptions) * 100) / 100
       out.push(f)
       continue
     }

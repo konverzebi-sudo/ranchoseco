@@ -1,4 +1,4 @@
-import { CHIVAS_CREDENCIAL, CHIVAS_PLAYERA, INSURANCE_STUDENTS } from '@/lib/cashcut'
+import { chivasConfig } from '@/lib/cashcut'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Save, Paperclip } from 'lucide-react'
@@ -106,9 +106,11 @@ export function PaymentModal({ student: fixed, feeId, onClose, onAddFee, preset 
   }, [student?.id, nextMonths.join(), price.toPay]) // eslint-disable-line react-hooks/exhaustive-deps
   // Inscripción: cuánto va a cada mini caja de la Caja Chivas (se puede cambiar)
   const allExpenses = useExpenses()
+  const settingsCfg = useSettings()
   const seguroCost = Number((allExpenses.data ?? []).find((e) => /seguro/i.test(e.name) && e.active)?.amount ?? 0)
   const [split, setSplit] = useState<{ playera: string; credencial: string; seguro: string } | null>(null)
-  const splitNow = split ?? { playera: String(CHIVAS_PLAYERA), credencial: String(CHIVAS_CREDENCIAL), seguro: String(Math.round((seguroCost / INSURANCE_STUDENTS) * 100) / 100) }
+  const cfgChivas = chivasConfig(settingsCfg.data, seguroCost)
+  const splitNow = split ?? { playera: String(cfgChivas.playera), credencial: String(cfgChivas.credencial), seguro: String(cfgChivas.seguro) }
   const isInsc = (concept: string) => /^inscripci[oó]n/i.test(concept.trim())
   const [paid, setPaid] = useState('')
   const [method, setMethod] = useState<PaymentMethod>('efectivo')
@@ -318,7 +320,7 @@ export function PaymentModal({ student: fixed, feeId, onClose, onAddFee, preset 
                     <div className="grid gap-2 sm:grid-cols-3">
                       <label className="block"><span className="text-xs text-muted">Playera de entrenamiento</span><Input type="number" min="0" inputMode="decimal" value={splitNow.playera} onChange={(e) => set('playera', e.target.value)} className="h-9" /></label>
                       <label className="block"><span className="text-xs text-muted">Credencial</span><Input type="number" min="0" inputMode="decimal" value={splitNow.credencial} onChange={(e) => set('credencial', e.target.value)} className="h-9" /></label>
-                      <label className="block"><span className="text-xs text-muted">Seguro ({money(seguroCost)} ÷ {INSURANCE_STUDENTS} alumnos)</span><Input type="number" min="0" inputMode="decimal" value={splitNow.seguro} onChange={(e) => set('seguro', e.target.value)} className="h-9" /></label>
+                      <label className="block"><span className="text-xs text-muted">Seguro ({money(cfgChivas.seguroAnual)} ÷ {cfgChivas.meta} alumnos)</span><Input type="number" min="0" inputMode="decimal" value={splitNow.seguro} onChange={(e) => set('seguro', e.target.value)} className="h-9" /></label>
                     </div>
                     <p className={cx('mt-2', inscAmt - parts < -0.5 ? 'text-bad' : 'text-muted')}>Libre en Caja Chivas: <b>{money(Math.max(0, inscAmt - parts))}</b>{inscAmt - parts < -0.5 ? ' · lo repartido es más que la inscripción' : ''}</p>
                   </div>

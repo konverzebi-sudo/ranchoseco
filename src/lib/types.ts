@@ -17,6 +17,11 @@ export interface Settings {
   collection_template: string
   report_template: string
   open_mode: boolean
+  /** Caja Chivas: cuánto va de cada inscripción a playera y credencial; seguro anual y meta mínima de alumnos */
+  chivas_playera?: number
+  chivas_credencial?: number
+  seguro_anual?: number
+  meta_alumnos?: number
 }
 
 export interface Category {

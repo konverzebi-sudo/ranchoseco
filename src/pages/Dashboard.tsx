@@ -5,7 +5,7 @@ import { ClipboardCheck, AlertTriangle, Wallet, Plus, ChevronRight, Trophy, Dumb
 import { Avatar, Button, Card, ErrorState, PageHeader, Spinner, Badge } from '@/components/ui'
 import { CollectButton } from '@/components/WhatsAppButtons'
 import { monthNameOf, useCashBoxCards } from '@/components/FinanceModules'
-import { FundGauges, ProfeGauges } from '@/components/FundProgress'
+import { ChivasDistribution, ProfeGauges } from '@/components/FundProgress'
 import { Gauge, GaugeGrid } from '@/components/Gauges'
 import PeriodCards, { usePeriod } from '@/components/PeriodCards'
 import BreakEvenCard from '@/components/BreakEven'
@@ -176,6 +176,7 @@ function AdminDashboard() {
               </ul>
             </Card>
           )}
+          <h2 className="!mb-[-0.75rem] font-display text-lg font-bold uppercase tracking-wide">Cajas de ahorro Rancho Seco</h2>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             {boxes.chica}{boxes.ahorro}{boxes.apartado}{boxes.chivas}{boxes.total}
           </div>
@@ -189,7 +190,7 @@ function AdminDashboard() {
           <ProfeGauges month={period.to.slice(0, 7)} />
           <BreakEvenCard />
           <PeriodCards period={period} onDetail={setDetail} />
-          <FundGauges />
+          <ChivasDistribution />
 
           <div className="grid gap-6">
             <Card>

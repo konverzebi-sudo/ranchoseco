@@ -6,9 +6,9 @@ import { TrendingUp, TrendingDown, Scale, Download, MessageCircle, Printer, Plus
 import { Explain, FoldCard, Badge, Button, Card, ConfirmDialog, ErrorState, Field, IconButton, Input, Modal, PageHeader, Spinner, StatCard, Textarea, cx } from '@/components/ui'
 import { useToast } from '@/components/toast'
 import RangePicker from '@/components/RangePicker'
-import { useCashCuts, useCoachPay, useCoaches, useExpenses, useFees, usePayments, useStudents } from '@/lib/api'
+import { useCashCuts, useCoachPay, useCoaches, useExpenses, useFees, usePayments, useSettings, useStudents } from '@/lib/api'
 import {
-  CARRY_DESTINATION, DESTINATIONS, carryOver as carryOverOf, OUT_GROUPS, SAVINGS_BOX_KEY, CHIVAS_KEY, CHIVAS_PLAYERAS_KEY, CHIVAS_CREDENCIALES_KEY, CHIVAS_PLAYERA, CHIVAS_CREDENCIAL, INSURANCE_STUDENTS, cutGaps, isManual, isSalary, manualItem, nextDay, pendingSalaries, prepaidUntil, vacationItems, buildItems, counts, openingCash, itemTotals, itemValue, nextPeriodStart, outGroup, periodSummary, savingFunds,
+  CARRY_DESTINATION, DESTINATIONS, carryOver as carryOverOf, OUT_GROUPS, SAVINGS_BOX_KEY, CHIVAS_KEY, CHIVAS_PLAYERAS_KEY, CHIVAS_CREDENCIALES_KEY, chivasConfig, cutGaps, isManual, isSalary, manualItem, nextDay, pendingSalaries, prepaidUntil, vacationItems, buildItems, counts, openingCash, itemTotals, itemValue, nextPeriodStart, outGroup, periodSummary, savingFunds,
   type CutItem, type SavingFund,
 } from '@/lib/cashcut'
 import { METHOD_LABEL, date, money, toISODate, today } from '@/lib/format'
@@ -30,7 +30,7 @@ const REPORT_TO = [
 ]
 
 import { CashDoubtsCard, SOURCE_PREFIX, SOURCES } from '@/components/CashDoubts'
-import FundProgress, { fundBars } from '@/components/FundProgress'
+import FundProgress from '@/components/FundProgress'
 
 type Review = Record<string, { amount?: number; approved?: boolean; adjusted?: number | null; note?: string; excluded?: boolean; pending?: boolean }>
 
@@ -103,7 +103,11 @@ export default function WeeklyCut() {
   const inscCount = inscItems.length
   const inscripciones = inscItems.reduce((a, i) => a + itemValue(i), 0)
   // Sugerencias de ahorro (el seguro se junta según las inscripciones cobradas)
-  const funds = useMemo(() => savingFunds({ cutDate: to, expenses: expenses.data ?? [], cuts: cuts.data ?? [], excludeCut: editingCut?.id, inscriptions: inscCount }), [to, expenses.data, cuts.data, editingCut, inscCount])
+  // Caja Chivas: precios por inscripción y seguro anual ÷ meta de alumnos (de Configuración)
+  const settings = useSettings()
+  const seguroGasto = Number((expenses.data ?? []).find((e) => /seguro/i.test(e.name) && e.active)?.amount ?? 0)
+  const cfg = chivasConfig(settings.data, seguroGasto)
+  const funds = useMemo(() => savingFunds({ cutDate: to, expenses: expenses.data ?? [], cuts: cuts.data ?? [], excludeCut: editingCut?.id, inscriptions: inscCount, seguro: { anual: cfg.seguroAnual, meta: cfg.meta } }), [to, expenses.data, cuts.data, editingCut, inscCount, cfg.seguroAnual, cfg.meta])
   const [saveAmt, setSaveAmt] = useState<Record<string, string>>({})
   const [saveNote, setSaveNote] = useState<Record<string, string>>({})
   const savedNow = (f: SavingFund) => (f.key in saveAmt ? Number(saveAmt[f.key]) || 0 : 0)
@@ -116,15 +120,27 @@ export default function WeeklyCut() {
   // Reparto de las inscripciones: playera, credencial, parte del seguro y lo demás libre en la Caja Chivas
   const seguroFund = funds.find((f) => f.kind === 'seguro')
   // Cada inscripción con su reparto (el que se anotó al cobrarla, o el de siempre)
+  // Lista de la Caja Chivas: qué secciones se apartan (lo que no, se queda libre)
+  const [chivasOn, setChivasOn] = useState({ credencial: true, playera: true, seguro: true })
   const chivasSplit = useMemo(() => {
     const byId = new Map((payments.data ?? []).map((x) => [`p:${x.id}`, x.split]))
     const sp = inscItems.map((i) => byId.get(i.key))
-    const playeras = sp.reduce((a, x) => a + (x ? Number(x.playera) : CHIVAS_PLAYERA), 0)
-    const credenciales = sp.reduce((a, x) => a + (x ? Number(x.credencial) : CHIVAS_CREDENCIAL), 0)
-    const seguroDefault = seguroFund?.suggested ?? 0
-    const seguro = sp.some(Boolean) ? Math.min(seguroFund ? Math.max(0, seguroFund.target - seguroFund.saved) : Infinity, sp.reduce((a, x) => a + (x ? Number(x.seguro) : (seguroFund ? seguroFund.target / INSURANCE_STUDENTS : 0)), 0)) : seguroDefault
+    const playeras = chivasOn.playera ? sp.reduce((a, x) => a + (x ? Number(x.playera) : cfg.playera), 0) : 0
+    const credenciales = chivasOn.credencial ? sp.reduce((a, x) => a + (x ? Number(x.credencial) : cfg.credencial), 0) : 0
+    const room = seguroFund ? Math.max(0, seguroFund.target - seguroFund.saved) : Infinity
+    const seguro = chivasOn.seguro ? Math.min(room, sp.reduce((a, x) => a + (x ? Number(x.seguro) : cfg.seguro), 0)) : 0
     return { playeras, credenciales, seguro, libre: Math.max(0, Math.round((inscripciones - playeras - credenciales - seguro) * 100) / 100) }
-  }, [inscCount, inscripciones, seguroFund?.suggested, payments.data, inscItems.map((i) => i.key).join()]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [inscCount, inscripciones, seguroFund?.target, seguroFund?.saved, payments.data, inscItems.map((i) => i.key).join(), chivasOn, cfg.playera, cfg.credencial, cfg.seguro]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Doble clic en el precio: cambia cuánto va de cada inscripción (de aquí en adelante)
+  const editPrice = async (field: 'chivas_credencial' | 'chivas_playera', label: string, current: number) => {
+    const v = window.prompt(`¿Cuánto va de cada inscripción a ${label}? (aplica de aquí en adelante)`, String(current))
+    if (v == null || !(Number(v) >= 0)) return
+    try {
+      unwrap(await supabase.from('settings').update({ [field]: Number(v) }).eq('id', 1))
+      await qc.invalidateQueries({ queryKey: ['settings'] })
+      toast.ok(`Listo: ${label} ahora es ${cents(Number(v))} por inscripción`)
+    } catch (e) { toast.error(e) }
+  }
   const applyChivas = () => setSaveAmt((x) => ({
     ...x,
     [CHIVAS_PLAYERAS_KEY]: String(chivasSplit.playeras),
@@ -136,7 +152,7 @@ export default function WeeklyCut() {
   useEffect(() => {
     if (editingCut || !inscCount) return
     applyChivas()
-  }, [inscCount, inscripciones, chivasSplit.seguro, chivasSplit.playeras, chivasSplit.credenciales, editingCut]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [inscCount, inscripciones, chivasSplit.seguro, chivasSplit.playeras, chivasSplit.credenciales, chivasSplit.libre, editingCut]) // eslint-disable-line react-hooks/exhaustive-deps
   // Lo que se cobró de uniformes se manda solo al fondo de uniformes (corte nuevo)
   useEffect(() => {
     if (editingCut) return
@@ -422,8 +438,27 @@ export default function WeeklyCut() {
               <div className="space-y-3 p-3 md:hidden">{cuts.data.map((c, i) => <CutRow key={c.id} mobile cut={c} prev={cuts.data![i + 1]} focus={params.get('ver') === c.id} onEdit={() => startEdit(c)} onDelete={() => setDeleting(c)} />)}</div>
               <div className="hidden overflow-x-auto md:block">
                 <table className="table-base table-compact min-w-[1100px] whitespace-nowrap">
-                  <thead><tr><th>Corte</th><th title="Caja chica al empezar">Caja chica inicial</th><th>Entradas</th><th>Gastos</th><th>Saldo</th><th>Ahorro</th><th title="Apartado de próximos gastos">Apartado</th><th>Chivas</th><th title="Otro destino o lo que quedó en caja chica">Otro / caja chica</th><th>¿Cuadra?</th><th /></tr></thead>
+                  <thead><tr>{CUT_COLUMNS.map(([label, why]) => <th key={label} title={why} className="cursor-help underline decoration-ink-500 decoration-dotted underline-offset-4">{label}</th>)}<th /></tr></thead>
                   <tbody>{cuts.data.map((c, i) => <CutRow key={c.id} cut={c} prev={cuts.data![i + 1]} focus={params.get('ver') === c.id} onEdit={() => startEdit(c)} onDelete={() => setDeleting(c)} />)}</tbody>
+                  <tfoot>
+                    {(() => {
+                      const t = cuts.data!.map((c, i) => cutNums(c, cuts.data![i + 1])).reduce((a, n) => ({ income: a.income + n.income, outflow: a.outflow + n.outflow, ahorro: a.ahorro + n.ahorro, apartado: a.apartado + n.apartado, chivas: a.chivas + n.chivas, otro: a.otro + n.otro }), { income: 0, outflow: 0, ahorro: 0, apartado: 0, chivas: 0, otro: 0 })
+                      return (
+                        <tr className="bg-ink-900 font-bold">
+                          <td className="font-display uppercase">Total · {cuts.data!.length} cortes</td>
+                          <td className="text-muted">—</td>
+                          <td className="text-ok">{cents(t.income)}</td>
+                          <td className="text-bad">{cents(t.outflow)}</td>
+                          <td>{cents(t.income - t.outflow)}</td>
+                          <td>{cents(t.ahorro)}</td>
+                          <td>{cents(t.apartado)}</td>
+                          <td>{cents(t.chivas)}</td>
+                          <td>{cents(t.otro)}</td>
+                          <td colSpan={2} />
+                        </tr>
+                      )
+                    })()}
+                  </tfoot>
                 </table>
               </div>
               </>
@@ -489,7 +524,7 @@ export default function WeeklyCut() {
             <StatCard label="Gastos" value={cents(tot.outflow)} icon={TrendingDown} tone="bad" hint="Sueldos, gastos y pagos de préstamos" />
             <StatCard label="Resultado de estas fechas" value={cents(tot.income - tot.outflow)} icon={Scale} tone={tot.income >= tot.outflow ? 'ok' : 'bad'} hint={tot.income >= tot.outflow ? 'Entró más de lo que salió (sin contar la caja chica)' : 'Salió más de lo que entró (sin contar la caja chica)'} />
           </div>
-          <FundProgress funds={fundBars(funds, (k) => { const f = funds.find((x) => x.key === k); return f ? savedNow(f) : 0 })} month={to.slice(0, 7)} />
+          <FundProgress month={to.slice(0, 7)} now={(k) => { const f = funds.find((x) => x.key === k); return f ? savedNow(f) : 0 }} />
 
           <div className="grid gap-6 xl:grid-cols-2">
             <ReviewList type="entrada" title="Entradas" />
@@ -499,7 +534,7 @@ export default function WeeklyCut() {
           {/* ---------- Sugerencia de ahorro ---------- */}
           <Card>
             <div className="border-b border-ink-600 px-5 py-4">
-              <h3 className="flex items-center gap-2 font-display text-xl font-bold uppercase tracking-wide"><PiggyBank className="h-6 w-6 text-brand" /> Sugerencia de ahorro</h3>
+              <h3 className="flex items-center gap-2 font-display text-xl font-bold uppercase tracking-wide"><PiggyBank className="h-6 w-6 text-brand" /> Cajas de ahorro Rancho Seco</h3>
               <p className="text-sm text-muted">Para cada pago grande te sugerimos cuánto apartar esta semana. Escribe cuánto se guarda de verdad; si no hay dinero, déjalo en 0.
                 {expected > 0 ? <> Hay <b className="text-white">{cents(expected)}</b> en caja para repartir.</> : <> <b className="text-warn">Esta semana no hay dinero en caja para ahorrar.</b></>}</p>
             </div>
@@ -558,42 +593,48 @@ export default function WeeklyCut() {
                   )
                   if (f.kind === 'chivas') {
                     if (f.key !== CHIVAS_KEY) return null
-                    const parts = funds.filter((x) => x.kind === 'chivas')
-                    const label: Record<string, string> = { [CHIVAS_PLAYERAS_KEY]: `Playeras ($${CHIVAS_PLAYERA} c/u)`, [CHIVAS_CREDENCIALES_KEY]: `Credenciales ($${CHIVAS_CREDENCIAL} c/u)`, [CHIVAS_KEY]: 'Libre en Caja Chivas' }
+                    const byKey = (k: string) => funds.find((x) => x.key === k)
+                    // Lista: el 100% de las inscripciones va a la Caja Chivas y se divide así
+                    const rows: { id: 'credencial' | 'playera' | 'seguro' | 'libre'; label: string; unit?: string; edit?: () => void; key: string | undefined; acc: number; extra?: string }[] = [
+                      { id: 'credencial', label: 'Credenciales', unit: `${cents(cfg.credencial)} c/u`, edit: () => editPrice('chivas_credencial', 'credencial', cfg.credencial), key: CHIVAS_CREDENCIALES_KEY, acc: (byKey(CHIVAS_CREDENCIALES_KEY)?.saved ?? 0) },
+                      { id: 'playera', label: 'Playeras de entrenamiento', unit: `${cents(cfg.playera)} c/u`, edit: () => editPrice('chivas_playera', 'playera', cfg.playera), key: CHIVAS_PLAYERAS_KEY, acc: (byKey(CHIVAS_PLAYERAS_KEY)?.saved ?? 0) },
+                      { id: 'seguro', label: 'Seguro', unit: `${cents(cfg.seguroAnual)} ÷ ${cfg.meta} alumnos = ${cents(cfg.seguro)} c/u`, key: seguroFund?.key, acc: seguroFund?.saved ?? 0, extra: seguroFund ? `lleva ${cents((seguroFund.saved) + savedNow(seguroFund))} de ${cents(seguroFund.target)}` : undefined },
+                      { id: 'libre', label: 'Libre en Caja Chivas', unit: 'lo que queda', key: CHIVAS_KEY, acc: f.saved },
+                    ]
                     return (
-                      <li key={f.key} className="space-y-3 bg-brand/5 px-5 py-4">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <p className="flex flex-wrap items-center gap-2 font-medium">Caja Chivas <Badge tone="brand">Inscripciones</Badge></p>
-                            <p className="text-xs text-muted">De cada inscripción: ${CHIVAS_PLAYERA} playera, ${CHIVAS_CREDENCIAL} credencial{seguroFund ? `, ${cents(seguroFund.target / INSURANCE_STUDENTS)} seguro (${cents(seguroFund.target)} ÷ ${INSURANCE_STUDENTS} alumnos)` : ''} y lo demás se queda libre.</p>
-                          </div>
-                          <div className="text-right text-sm">
-                            <p className="text-xs uppercase tracking-wider text-muted">Inscripciones de este corte</p>
-                            <p className="font-display text-2xl font-bold text-brand">{inscCount} · {cents(inscripciones)}</p>
-                            {inscCount > 0 && <button className="text-xs text-brand hover:underline" onClick={applyChivas}>Repartir otra vez</button>}
-                          </div>
+                      <li key={f.key} className="bg-brand/5 px-4 py-4">
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                          <p className="flex flex-wrap items-center gap-2 font-display text-xl font-bold">Caja Chivas <Badge tone="brand">100% de las inscripciones</Badge></p>
+                          <p className="text-right"><span className="text-sm text-muted">Inscripciones de este corte </span><b className="font-display text-2xl text-brand">{inscCount} · {cents(inscripciones)}</b>
+                            {inscCount > 0 && <button className="ml-2 text-sm text-brand hover:underline" onClick={applyChivas}>Repartir otra vez</button>}</p>
                         </div>
-                        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                          {parts.map((x) => (
-                            <div key={x.key} className="rounded-xl border border-ink-600 p-3">
-                              <p className="text-xs text-muted">{label[x.key]}</p>
-                              <Input type="number" min="0" inputMode="decimal" value={saveAmt[x.key] ?? ''} placeholder="0" aria-label={label[x.key]}
-                                onChange={(e) => setSaveAmt({ ...saveAmt, [x.key]: e.target.value })} className="mt-1 h-10" />
-                              <p className="mt-1 text-xs">Acumulado <b>{cents(x.saved + savedNow(x))}</b></p>
-                            </div>
-                          ))}
-                          {seguroFund && (
-                            <div className="rounded-xl border border-ink-600 p-3">
-                              <p className="text-xs text-muted">Seguro (mini caja de la Caja Chivas)</p>
-                              <p className="mt-1 font-display text-2xl font-bold">{cents(savedNow(seguroFund))}</p>
-                              <p className="mt-1 text-xs">Lleva <b>{cents(seguroFund.saved + savedNow(seguroFund))}</b> de {cents(seguroFund.target)}</p>
-                            </div>
-                          )}
-                        </div>
-                        <p className="text-xs">Caja Chivas en total: <b className="text-brand">{cents(chivasTotal)}</b></p>
+                        <ul className="divide-y divide-ink-700 rounded-xl border border-ink-600 bg-ink-800">
+                          {rows.map((r) => {
+                            const on = r.id === 'libre' || chivasOn[r.id]
+                            return (
+                              <li key={r.id} className={cx('grid items-center gap-3 px-3 py-2.5 sm:grid-cols-[2rem_1fr_9rem_10rem]', !on && 'opacity-50')}>
+                                {r.id === 'libre' ? <span className="text-center text-lg text-brand">=</span> : (
+                                  <input type="checkbox" checked={on} onChange={(e) => setChivasOn({ ...chivasOn, [r.id]: e.target.checked })} className="h-5 w-5 accent-[#F2E30A]" aria-label={r.label} />
+                                )}
+                                <div className="min-w-0">
+                                  <p className="font-semibold">{r.label}</p>
+                                  <p className="text-sm text-muted">
+                                    {r.edit ? <span onDoubleClick={r.edit} title="Doble clic para cambiar el precio (aplica de aquí en adelante)" className="cursor-pointer underline decoration-dotted">{r.unit}</span> : r.unit}
+                                    {r.extra ? ` · ${r.extra}` : ''}
+                                  </p>
+                                </div>
+                                <p className="text-sm text-muted">Acumulado <b className="text-white">{cents(r.acc)}</b></p>
+                                {r.key ? <Input type="number" min="0" inputMode="decimal" value={saveAmt[r.key] ?? ''} placeholder="0" aria-label={r.label} disabled={!on}
+                                  onChange={(e) => setSaveAmt({ ...saveAmt, [r.key!]: e.target.value })} className="h-10 text-right text-base font-semibold" /> : <span />}
+                              </li>
+                            )
+                          })}
+                        </ul>
+                        <p className="mt-2 text-sm">Caja Chivas en total: <b className="text-brand">{cents(chivasTotal)}</b> <span className="text-muted">· doble clic en un precio para cambiarlo</span></p>
                       </li>
                     )
                   }
+                  if (f.kind === 'seguro') return null
                   if (f.kind === 'ahorro') return (
                     <li key={f.key} className="grid gap-3 bg-ok/5 px-5 py-3 md:grid-cols-[1fr_220px_150px]">
                       <div className="min-w-0">
@@ -613,8 +654,8 @@ export default function WeeklyCut() {
                   const pctAfter = f.target ? Math.min(100, ((f.saved + now) / f.target) * 100) : 0
                   const days = Math.max(0, Math.round((new Date(f.due + 'T12:00:00').getTime() - new Date(to + 'T12:00:00').getTime()) / 86_400_000))
                   // Cuánto es al mes: los mensuales su monto; los anuales (seguro) entre 12; pagos en partes y préstamos no aplica
-                  const monthly = f.kind === 'seguro' || days > 45 ? f.target / 12 : f.kind === 'fijo' ? f.target : null
-                  const how = f.kind === 'seguro' ? `${inscCount} inscripciones × ${cents(f.target / INSURANCE_STUDENTS)}` : f.kind === 'fijo' ? 'la parte de esta semana' : `lo que falta ÷ ${f.weeksLeft} ${f.weeksLeft === 1 ? 'semana' : 'semanas'}`
+                  const monthly = days > 45 ? f.target / 12 : f.kind === 'fijo' ? f.target : null
+                  const how = f.kind === 'fijo' ? 'la parte de esta semana' : `lo que falta ÷ ${f.weeksLeft} ${f.weeksLeft === 1 ? 'semana' : 'semanas'}`
                   return (
                     <li key={f.key} className="px-4 py-3">
                       <div className="rounded-2xl border border-ink-600 p-4">
@@ -840,14 +881,19 @@ function ReportButtons({ cut, small, iconOnly }: { cut: CashCut; small?: boolean
 /** Descarga el corte en un PDF visual (resumen, gráficas y todo el detalle). */
 function PdfButton({ cut, small, className, iconOnly }: { cut: CashCut; small?: boolean; className?: string; iconOnly?: boolean }) {
   const cuts = useCashCuts()
+  const expenses = useExpenses()
+  const settings = useSettings()
   const toast = useToast()
   const [busy, setBusy] = useState(false)
   const go = async () => {
     setBusy(true)
     try {
       const prev = (cuts.data ?? []).find((x) => x.period_to < cut.period_from && x.id !== cut.id)
-      const { renderCutPdf } = await import('@/pdf/cutPdf')
-      downloadBlob(await renderCutPdf(cut, prev), `Corte de caja ${cut.cut_date}.pdf`)
+      const { renderCutPdf, cutBoxes } = await import('@/pdf/cutPdf')
+      const seguroGasto = Number((expenses.data ?? []).find((e) => /seguro/i.test(e.name) && e.active)?.amount ?? 0)
+      const cfg = chivasConfig(settings.data, seguroGasto)
+      const boxes = cutBoxes(cut, cuts.data ?? [], expenses.data ?? [], { anual: cfg.seguroAnual, meta: cfg.meta })
+      downloadBlob(await renderCutPdf(cut, prev, boxes), `Corte de caja ${cut.cut_date}.pdf`)
     } catch (e) { toast.error(e) } finally { setBusy(false) }
   }
   if (iconOnly) return <IconButton icon={FileText} label="Descargar PDF del corte" onClick={go} className={cx('h-8 w-8', busy && 'animate-pulse')} />
@@ -1049,4 +1095,32 @@ function CutRow({ cut: c, prev, focus, mobile, onEdit, onDelete }: { cut: CashCu
       )}
     </>
   )
+}
+
+/** Columnas de "Cortes anteriores" con lo que significa cada una (sale al dejar el mouse encima). */
+const CUT_COLUMNS: [string, string][] = [
+  ['Corte', 'Día en que terminó el corte y desde qué día cuenta'],
+  ['Caja chica inicial', 'Lo que quedó en caja chica del corte anterior (con la regla nueva siempre es $0)'],
+  ['Entradas', 'Todo lo que se cobró en esas fechas: mensualidades, inscripciones, uniformes…'],
+  ['Gastos', 'Todo lo que salió: sueldos, gastos administrativos, gastos del mes y pagos de préstamos'],
+  ['Saldo', 'Caja chica inicial + entradas − gastos: el dinero que hay que repartir en las cajas'],
+  ['Ahorro', 'Caja de ahorro: lo que se guardó sin un gasto asignado (lo que sobra sin destino va aquí)'],
+  ['Apartado', 'Apartado de próximos gastos: lo guardado para regalías, renta, pagos en partes, préstamos y el fondo de uniformes'],
+  ['Chivas', 'Caja Chivas: las inscripciones, repartidas en credenciales, playeras, seguro y libre'],
+  ['Otro / caja chica', 'Lo que se mandó a otro lado (por ejemplo el viaje a Guadalajara) o lo que se quedó en caja chica'],
+  ['¿Cuadra?', 'Si el saldo se repartió completo: Cuadra, Faltan (se contó menos) o Sobran'],
+]
+
+/** Los números de un corte, separados por caja (para los totales). */
+function cutNums(c: CashCut, prev?: CashCut) {
+  const sv = (c.savings ?? []).filter((x) => Number(x.saved) > 0)
+  const isChivas = (k: string, name: string) => k.startsWith('x:chivas') || /seguro/i.test(name)
+  const sum = (xs: typeof sv) => xs.reduce((a, x) => a + Number(x.saved), 0)
+  return {
+    had: carryOverOf(prev), income: Number(c.income), outflow: Number(c.outflow),
+    ahorro: sum(sv.filter((x) => x.key === SAVINGS_BOX_KEY)),
+    chivas: sum(sv.filter((x) => isChivas(x.key, x.name))),
+    apartado: sum(sv.filter((x) => x.key !== SAVINGS_BOX_KEY && !isChivas(x.key, x.name))),
+    otro: Number(c.counted),
+  }
 }

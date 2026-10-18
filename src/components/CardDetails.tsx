@@ -17,7 +17,7 @@ export type CardKind =
   | 'total' | 'chica' | 'apartado' | 'ahorro' | 'chivas' | 'adeudo' | 'pendiente' | 'recargos' | 'becas' | 'nuevas'
   | 'muestra' | 'asistencia' | 'activos' | 'profes' | 'seguro' | 'uniformes' | 'porconfirmar'
 
-export interface Row { label: string; sub?: string; value?: number | string; link?: string; tone?: 'bad' | 'ok'; /** Alumno para cobrarle por WhatsApp */ wa?: StudentRow }
+export interface Row { label: string; sub?: string; value?: number | string; link?: string; tone?: 'bad' | 'ok'; /** Alumno para cobrarle por WhatsApp */ wa?: StudentRow; /** Etiqueta junto a la cantidad (p. ej. "12 días vencido") */ tag?: string }
 export interface Group { label: string; total?: number | string; rows: Row[] }
 export interface Detail { title: string; total?: number | string; note?: string; groups: Group[]; go?: { label: string; to: string }; /** Gráfica de pastel arriba del desglose */ pie?: { label: string; value: number }[] }
 
@@ -188,7 +188,7 @@ export default function CardDetailModal({ kind, onClose }: { kind: CardKind; onC
             rows: xs.sort((a, b) => b.total - a.total).map((x) => ({
               label: x.s.full_name,
               sub: x.fs.map((f) => `${f.concept} ${monthName(f.period)}${f.status === 'vencido' ? ' (vencido)' : ''}`).join(' · '),
-              value: x.total, link: `/alumnos/${x.id}?tab=pagos`, wa: x.s, tone: x.fs.some((f) => f.status === 'vencido') ? 'bad' as const : undefined,
+              value: x.total, link: `/alumnos/${x.id}?tab=pagos`, wa: x.s, tag: daysLate(x.fs), tone: x.fs.some((f) => f.status === 'vencido') ? 'bad' as const : undefined,
             })),
           })),
           go: { label: 'Ir a cobranza', to: '/cobranza?f=pendiente' },
@@ -284,6 +284,7 @@ export function DetailModal({ d, onClose }: { d: Detail; onClose: () => void }) 
                           <span className="block font-medium">{r.label}</span>
                           {r.sub && <span className="block text-sm text-muted">{r.sub}</span>}
                         </span>
+                        {r.tag && <span className="shrink-0 rounded-full bg-bad/15 px-2.5 py-0.5 text-sm font-semibold text-bad">{r.tag}</span>}
                         {r.value !== undefined && <span className={cx('shrink-0 text-lg font-semibold tabular-nums', r.tone === 'bad' ? 'text-bad' : r.tone === 'ok' ? 'text-ok' : '')}>{fmt(r.value)}</span>}
                       </>
                     )
@@ -304,4 +305,12 @@ export function DetailModal({ d, onClose }: { d: Detail; onClose: () => void }) 
       </div>
     </Modal>
   )
+}
+
+/** "12 días vencido" del cargo más atrasado (vacío si nada está vencido). */
+export function daysLate(fees: { status: string; due_date: string }[]) {
+  const due = fees.filter((f) => f.status === 'vencido').map((f) => f.due_date).sort()[0]
+  if (!due) return undefined
+  const n = Math.max(1, Math.floor((new Date(today() + 'T12:00:00').getTime() - new Date(due + 'T12:00:00').getTime()) / 86_400_000))
+  return `${n} ${n === 1 ? 'día' : 'días'} vencido`
 }
