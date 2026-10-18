@@ -271,8 +271,8 @@ export function savingFunds(opts: { cutDate: string; expenses: Expense[]; cuts: 
       const f = fund({ key: `f:${e.id}:${due}`, name: e.name, kind: isSeguro ? 'seguro' : 'fijo', target: isSeguro && seguro?.anual ? seguro.anual : Number(e.amount), due }, perCycle)
       // El seguro se junta con las inscripciones: (seguro ÷ 150 alumnos) por cada inscripción cobrada
       if (f.kind === 'seguro' && inscriptions != null) f.suggested = Math.round(Math.min(Math.max(0, f.target - f.saved), (f.target / (seguro?.meta || INSURANCE_STUDENTS)) * inscriptions) * 100) / 100
-      // Regalías Chivas: (regalías ÷ meta de alumnos) por cada niño que pagó mensualidad en el corte
-      if (/regal/i.test(e.name) && mensualidades != null) f.suggested = Math.round(Math.min(Math.max(0, f.target - f.saved), (Number(e.amount) / (seguro?.meta || INSURANCE_STUDENTS)) * mensualidades) * 100) / 100
+      // Regalías y renta: (monto ÷ meta de alumnos) por cada niño que pagó mensualidad en el corte
+      if (/regal|renta/i.test(e.name) && mensualidades != null) f.suggested = Math.round(Math.min(Math.max(0, f.target - f.saved), (Number(e.amount) / (seguro?.meta || INSURANCE_STUDENTS)) * mensualidades) * 100) / 100
       out.push(f)
       continue
     }

@@ -616,7 +616,7 @@ export default function WeeklyCut() {
                       const days = Math.max(0, Math.round((new Date(f.due + 'T12:00:00').getTime() - new Date(to + 'T12:00:00').getTime()) / 86_400_000))
                       // Cuánto es al mes: los mensuales su monto; los anuales entre 12; pagos en partes y préstamos no aplica
                       const monthly = days > 45 ? f.target / 12 : f.kind === 'fijo' ? f.target : null
-                      const how = /regal/i.test(f.name) ? `${mensCount} niños pagaron mensualidad × ${cents(f.target / cfg.meta)} (regalías ÷ ${cfg.meta} alumnos)` : f.kind === 'fijo' ? 'la parte de esta semana' : `lo que falta ÷ ${f.weeksLeft} ${f.weeksLeft === 1 ? 'semana' : 'semanas'}`
+                      const how = /regal|renta/i.test(f.name) ? `${mensCount} niños pagaron mensualidad × ${cents(f.target / cfg.meta)} (${cents(f.target)} ÷ ${cfg.meta} alumnos)` : f.kind === 'fijo' ? 'la parte de esta semana' : `lo que falta ÷ ${f.weeksLeft} ${f.weeksLeft === 1 ? 'semana' : 'semanas'}`
                       return (
                         <Fragment key={f.key}>
                           <tr className="[&>td]:border-b-0 [&>td]:pb-1">
