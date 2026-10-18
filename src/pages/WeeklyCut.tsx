@@ -167,6 +167,13 @@ export default function WeeklyCut() {
 
   // Caja
   const expected = carry + tot.income - tot.outflow
+  // Saldo en caja: lo que queda después del apartado y la Caja Chivas se queda en la Caja de ahorro
+  const otherSaved = funds.filter((f) => f.key !== SAVINGS_BOX_KEY).reduce((a, f) => a + savedNow(f), 0)
+  const restoAhorro = Math.max(0, Math.round((expected - otherSaved) * 100) / 100)
+  useEffect(() => {
+    if (editingCut) return
+    setSaveAmt((x) => ({ ...x, [SAVINGS_BOX_KEY]: String(restoAhorro) }))
+  }, [restoAhorro, editingCut])
   // Saldo después de apartar el ahorro; si es negativo, hay que decir de dónde salió lo que faltó
   const saldo = expected - savingsTotal
   const deficit = Math.max(0, -saldo)
@@ -561,42 +568,37 @@ export default function WeeklyCut() {
             </div>
             {(() => {
               // Las cajas: caja chica = lo de esta semana; las demás = lo juntado antes. "Sugerir" llena lo que toca a cada caja.
-              const week = items.filter((i) => !i.excluded && !i.pending && i.date <= t)
-              const chica = carry + week.filter((i) => i.type === 'entrada').reduce((a, i) => a + itemValue(i), 0) - week.filter((i) => i.type === 'salida').reduce((a, i) => a + itemValue(i), 0)
               const ahorroAntes = box?.saved ?? 0
               const isApartado = (f: SavingFund) => f.kind !== 'ahorro' && f.kind !== 'uniformes' && f.kind !== 'chivas' && f.kind !== 'seguro'
               const apartadoAntes = funds.filter(isApartado).reduce((a, f) => a + f.saved, 0)
               const unifAntes = funds.filter((f) => f.kind === 'uniformes').reduce((a, f) => a + f.saved, 0)
               const sugApartado = () => setSaveAmt((x) => ({ ...x, ...Object.fromEntries(funds.filter(isApartado).map((f) => [f.key, String(f.suggested)])) }))
-              // Ahorro: lo que queda del saldo después de lo demás que se apartó
-              const sugAhorro = () => { if (!box) return; const otros = savingsTotal - savedNow(box); setSaveAmt((x) => ({ ...x, [box.key]: String(Math.max(0, Math.round((expected - otros) * 100) / 100)) })) }
               const pill = (onClick: () => void) => <button type="button" onClick={onClick} className="rounded-full bg-ink px-3 py-1 text-xs font-bold uppercase tracking-wide text-brand hover:brightness-125">Sugerir</button>
               const apartadoNow = funds.filter(isApartado).reduce((a, f) => a + savedNow(f), 0)
               const unifNow = funds.filter((f) => f.kind === 'uniformes').reduce((a, f) => a + savedNow(f), 0)
               const ahorroNow = box ? savedNow(box) : 0
-              const box2 = (label: string, antes: number, ahora: number, hint: string, opts: { action?: () => void; input?: React.ReactNode; tone?: string } = {}) => (
-                <div className="rounded-2xl border border-ink-600 bg-ink-800 p-3">
-                  <div className="flex items-start justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wider text-muted">{label}</p>{opts.action && pill(opts.action)}</div>
-                  <div className="mt-1 grid grid-cols-2 gap-2">
-                    <div><p className="text-xs text-muted">Acumulado</p><p className={cx('font-display text-xl font-bold', opts.tone)}>{cents(antes)}</p></div>
-                    <div><p className="text-xs text-muted">Esta vez</p>{opts.input ?? <p className="font-display text-xl font-bold text-brand">+ {cents(ahora)}</p>}</div>
-                  </div>
-                  <p className="mt-1 text-xs text-muted">{hint} · después del corte <b className="text-white">{cents(antes + ahora)}</b></p>
-                </div>
-              )
               return (
                 <div className="grid gap-3 border-b border-ink-600 p-4 sm:grid-cols-2 xl:grid-cols-4">
                   <div className="rounded-2xl border border-ink-600 bg-ink-800 p-3">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-muted">Caja chica</p>
-                    <p className={cx('mt-1 font-display text-2xl font-bold', chica < -0.5 && 'text-bad')}>{cents(chica)}</p>
-                    <p className="text-xs text-muted">Lo de esta semana (empezó con {cents(carry)}). Al cerrar el corte queda en cero.</p>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted">Acumulado · Apartado próx. gastos</p>
+                    <p className="mt-1 font-display text-2xl font-bold">{cents(apartadoAntes + unifAntes)}</p>
+                    <p className="text-xs text-muted">Lo que ya estaba guardado para regalías, renta y pagos pendientes</p>
                   </div>
-                  {box2('Caja de ahorro', ahorroAntes, ahorroNow, 'Lo que sobra sin destino', {
-                    action: sugAhorro, tone: 'text-ok',
-                    input: box ? <Input type="number" min="0" inputMode="decimal" value={saveAmt[box.key] ?? ''} placeholder="0" aria-label="Esta vez a la caja de ahorro" onChange={(e) => setSaveAmt({ ...saveAmt, [box.key]: e.target.value })} className="h-9 text-base font-semibold" /> : undefined,
-                  })}
-                  {box2('Apartado próx. gastos', apartadoAntes + unifAntes, apartadoNow + unifNow, `Regalías, renta, pagos pendientes${unifNow || unifAntes ? ' y uniformes' : ''}`, { action: sugApartado })}
-                  {box2('Total ahorro y apartados', ahorroAntes + apartadoAntes + unifAntes, ahorroNow + apartadoNow + unifNow, 'Caja de ahorro + apartado')}
+                  <div className="rounded-2xl border border-brand/50 bg-brand/5 p-3">
+                    <div className="flex items-start justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wider text-muted">Nuevo ahorro · Apartado próx. gastos</p>{pill(sugApartado)}</div>
+                    <p className="mt-1 font-display text-2xl font-bold text-brand">+ {cents(apartadoNow + unifNow)}</p>
+                    <p className="text-xs text-muted">Lo que se aparta en este corte · queda en {cents(apartadoAntes + unifAntes + apartadoNow + unifNow)}</p>
+                  </div>
+                  <div className="rounded-2xl border border-bad/40 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted">Caja Chivas</p>
+                    <p className="mt-1 font-display text-2xl font-bold text-brand">+ {cents(funds.filter((f) => f.kind === 'chivas' || f.kind === 'seguro').reduce((a, f) => a + savedNow(f), 0))}</p>
+                    <p className="text-xs text-muted">Las inscripciones de este corte (ver la distribución arriba)</p>
+                  </div>
+                  <div className="rounded-2xl border border-ok/50 bg-ok/5 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted">Saldo en caja → Caja de ahorro</p>
+                    <p className="mt-1 font-display text-2xl font-bold text-ok">+ {cents(ahorroNow)}</p>
+                    <p className="text-xs text-muted">Lo que queda se guarda en la Caja de ahorro · tenía {cents(ahorroAntes)}, queda en <b className="text-white">{cents(ahorroAntes + ahorroNow)}</b></p>
+                  </div>
                 </div>
               )
             })()}
@@ -615,25 +617,25 @@ export default function WeeklyCut() {
                   const monthly = days > 45 ? f.target / 12 : f.kind === 'fijo' ? f.target : null
                   const how = f.kind === 'fijo' ? 'la parte de esta semana' : `lo que falta ÷ ${f.weeksLeft} ${f.weeksLeft === 1 ? 'semana' : 'semanas'}`
                   return (
-                    <li key={f.key} className="px-4 py-3">
-                      <div className="rounded-2xl border border-ink-600 p-4">
-                        <div className="grid items-center gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-[minmax(12rem,1.4fr)_repeat(3,minmax(6rem,1fr))_auto_9rem]">
+                    <li key={f.key} className="px-4 py-2">
+                      <div className="rounded-2xl border border-ink-600 px-4 py-3">
+                        <div className="grid items-center gap-x-5 gap-y-2 sm:grid-cols-2 xl:grid-cols-[minmax(12rem,1.4fr)_repeat(3,minmax(6rem,1fr))_auto_8rem]">
                           <div className="min-w-0">
-                            <p className="truncate font-display text-xl font-bold">{f.name}</p>
+                            <p className="truncate font-display text-lg font-bold">{f.name}</p>
                             <Badge tone={f.kind === 'prestamo' ? 'warn' : f.kind === 'parte' ? 'info' : 'neutral'}>{FUND_LABEL[f.kind]}</Badge>
                             {f.debt && <p className="mt-1 text-xs"><span className="text-muted">Deuda total</span> {cents(f.debt.total)} · <span className="text-warn">falta {cents(f.debt.total - f.debt.paid)}</span></p>}
                           </div>
                           <div><p className="text-xs uppercase tracking-wider text-muted">Total</p><p className="text-lg font-semibold text-brand">{cents(f.target)}</p></div>
                           <div><p className="text-xs uppercase tracking-wider text-muted">En # días</p><p className="text-lg font-semibold">{days === 0 ? 'Hoy' : `${days} ${days === 1 ? 'día' : 'días'}`}</p><p className="text-xs text-muted">{date(f.due, "d 'de' MMM")}</p></div>
                           <div><p className="text-xs uppercase tracking-wider text-muted">Mensual</p><p className="text-lg font-semibold">{monthly != null ? cents(monthly) : '—'}</p></div>
-                          <div title={`Sugerencia: ${how}`} className="rounded-xl bg-brand px-4 py-2 text-center text-ink">
-                            <p className="text-xs font-semibold uppercase tracking-wider">Sugerencia</p>
-                            <p className="font-display text-2xl font-bold">{cents(f.suggested)}</p>
+                          <div title={`Sugerencia: ${how}`} className="rounded-xl bg-brand px-3 py-1.5 text-center text-ink">
+                            <p className="text-[0.7rem] font-semibold uppercase tracking-wider">Sugerencia</p>
+                            <p className="font-display text-xl font-bold">{cents(f.suggested)}</p>
                           </div>
                           <Input type="number" min="0" inputMode="decimal" value={saveAmt[f.key] ?? ''} placeholder="___" aria-label={`Se guarda para ${f.name}`}
-                            onChange={(e) => setSaveAmt({ ...saveAmt, [f.key]: e.target.value })} className="h-12 text-center text-lg font-semibold" />
+                            onChange={(e) => setSaveAmt({ ...saveAmt, [f.key]: e.target.value })} className="h-11 text-center text-lg font-semibold" />
                         </div>
-                        <div className="mt-3 flex flex-wrap items-center gap-3">
+                        <div className="mt-2 flex flex-wrap items-center gap-3 xl:flex-nowrap">
                           <div className="relative h-2.5 min-w-[8rem] flex-1 overflow-hidden rounded-full bg-ink-700">
                             <div className="absolute inset-y-0 left-0 rounded-full bg-brand/40" style={{ width: `${pctAfter}%` }} />
                             <div className="absolute inset-y-0 left-0 rounded-full bg-brand" style={{ width: `${pctBefore}%` }} />
@@ -641,7 +643,7 @@ export default function WeeklyCut() {
                           <span className="text-sm"><b className={pctAfter >= 100 ? 'text-ok' : 'text-brand'}>Vas al {Math.round(pctAfter)}%</b> <span className="text-muted">· guardado {cents(f.saved)}{now > 0 ? ` + ${cents(now)} hoy` : ''}</span></span>
                           <button type="button" onClick={() => setSaveAmt({ ...saveAmt, [f.key]: String(f.suggested) })} className="rounded-lg bg-brand px-3 py-1 text-sm font-semibold text-ink hover:brightness-110">Aceptar sugerencia</button>
                           <button type="button" onClick={() => setSaveAmt({ ...saveAmt, [f.key]: '0' })} className="text-sm text-muted hover:underline">Nada</button>
-                          <Input value={saveNote[f.key] ?? ''} onChange={(e) => setSaveNote({ ...saveNote, [f.key]: e.target.value })} placeholder="Nota" className="h-8 w-40 text-xs" aria-label="Nota" />
+                          <Input value={saveNote[f.key] ?? ''} onChange={(e) => setSaveNote({ ...saveNote, [f.key]: e.target.value })} placeholder="Nota" className="h-8 w-56 shrink-0 text-sm" aria-label="Nota" />
                         </div>
                       </div>
                     </li>
