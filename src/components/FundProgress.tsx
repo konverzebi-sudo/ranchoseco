@@ -80,8 +80,8 @@ export function ProfeGauges({ month, picker }: { month: string; picker?: React.R
   const list = by === 'profe' ? profes : cats
   return (
     <GaugeGrid title={`Sueldo de cada ${by === 'profe' ? 'profe' : 'categoría'} · ${mesDe(month)}`}
-      actions={<div className="flex flex-wrap items-center gap-2">
-        <div className="flex rounded-xl border border-ink-600 p-0.5 text-sm">
+      actions={<div className="flex items-center gap-2">
+        <div className="flex shrink-0 rounded-xl border border-ink-600 p-0.5 text-sm">
           {(['profe', 'categoria'] as const).map((k) => <button key={k} type="button" onClick={() => setBy(k)} className={'rounded-lg px-3 py-1.5 font-semibold ' + (by === k ? 'bg-brand text-ink' : 'text-muted hover:text-white')}>{k === 'profe' ? 'Por profe' : 'Por categoría'}</button>)}
         </div>
         {picker}
@@ -102,7 +102,7 @@ export default function FundProgress({ month: initial, chivasNew, before }: { mo
   return (
     <div className="space-y-3">
       <ChivasDistribution before={before}>{chivasNew}</ChivasDistribution>
-      <ProfeGauges month={month} picker={<Input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className="h-10 w-48" aria-label="Mes" />} />
+      <ProfeGauges month={month} picker={<div className="w-48 shrink-0"><Input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className="h-10" aria-label="Mes" /></div>} />
     </div>
   )
 }
