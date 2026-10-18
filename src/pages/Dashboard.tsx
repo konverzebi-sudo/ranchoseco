@@ -42,6 +42,15 @@ function byFamily<T extends { acc: { balance: number | string }; s: StudentRow }
   return [...m.values()].map((list) => ({ list, total: list.reduce((a, r) => a + Number(r.acc.balance), 0) })).sort((a, b) => b.total - a.total)
 }
 
+/** Cuánto deben y cuántos días lleva vencido lo más atrasado de estos niños. */
+function owedInfo(fees: { student_id: string; balance: number | string; status: string; due_date: string }[], ids: string[]) {
+  const fs = fees.filter((f) => ids.includes(f.student_id) && Number(f.balance) > 0 && f.status !== 'por_confirmar')
+  const total = fs.reduce((a, f) => a + Number(f.balance), 0)
+  const due = fs.filter((f) => f.status === 'vencido').map((f) => f.due_date).sort()[0]
+  const days = due ? Math.max(1, Math.floor((new Date(today() + 'T12:00:00').getTime() - new Date(due + 'T12:00:00').getTime()) / 86_400_000)) : 0
+  return { total, days, label: days ? `${days} ${days === 1 ? 'día' : 'días'} vencido` : 'Pago pendiente' }
+}
+
 export default function Dashboard() {
   const role = useRole()
   if (!role.ready) return <Spinner />
@@ -220,8 +229,9 @@ function AdminDashboard() {
                           <p className="truncate font-medium">{!r.valid ? 'Promo hermanos no válida' : 'Promo hermanos con pagos vencidos'} · {r.g.name}</p>
                           <p className="truncate text-xs text-muted">{!r.valid
                             ? `${r.notEnrolled.map((m) => m.full_name).join(', ')} ya no está inscrito`
-                            : `${r.overdue.map((m) => m.full_name).join(', ')} con pago vencido`}</p>
+                            : `${r.overdue.map((m) => m.full_name).join(', ')} · ${owedInfo(data.openFees, r.overdue.map((m) => m.id)).label}`}</p>
                         </div>
+                        {r.valid && r.overdue.length > 0 && <b className="shrink-0 text-bad">{money(owedInfo(data.openFees, r.overdue.map((m) => m.id)).total)}</b>}
                         <ChevronRight className="h-4 w-4 text-muted" />
                       </Link>
                       {/* Hermanos con pago vencido: un solo mensaje a la familia con lo que deben */}
@@ -235,7 +245,7 @@ function AdminDashboard() {
                         <Avatar name={s.full_name} path={s.photo_path} size={36} />
                         <Link to={`/alumnos/${s.id}`} className="min-w-0 flex-1">
                           <p className="truncate font-medium">{list.length > 1 ? `Familia: ${list.map((x) => x.s.full_name.split(' ')[0]).join(' y ')}` : s.full_name}</p>
-                          <p className="truncate text-xs text-muted">{list.length > 1 ? `Hermanos · ${list.map((x) => x.s.full_name).join(', ')}` : catName(s.category_id ?? '')} · Pago vencido</p>
+                          <p className="truncate text-xs text-muted">{list.length > 1 ? `Hermanos · ${list.map((x) => x.s.full_name).join(', ')}` : catName(s.category_id ?? '')} · {owedInfo(data.openFees, list.map((x) => x.s.id)).label}</p>
                         </Link>
                         <span className="font-semibold text-bad">{money(total)}</span>
                         <CollectButton student={s} />
